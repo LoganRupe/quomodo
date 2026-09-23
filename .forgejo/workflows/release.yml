@@ -2,7 +2,9 @@
 #
 # - x86_64 agent binary attached to the Forgejo release as `quomodo-agent-x86_64`
 #   (plus its .sha256), which an Ansible role fetches by version
-# - core image pushed to this Forgejo's registry as <registry>/<owner>/quomodo:<tag> and :latest
+# - core image pushed to this Forgejo's registry as forgejo.example.com/org/quomodo:<tag>
+#   and :latest (an org, where the CI package token can write; the owner's user
+#   namespace is only writable by its owner)
 #
 # aarch64 is added when a host needs it.
 name: Release
@@ -15,6 +17,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   REGISTRY: forgejo.example.com
+  IMAGE: forgejo.example.com/org/quomodo
 
 jobs:
   agent:
@@ -77,7 +80,6 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
-          IMAGE="${REGISTRY}/${GITHUB_REPOSITORY_OWNER}/quomodo"
           # A package-write token, the way other image workflows do it. The automatic
           # GITHUB_TOKEN could not push to the registry (release run 5).
           echo "${{ secrets.CI_PACKAGE_TOKEN }}" | docker login "${REGISTRY}" -u "${{ vars.CI_PACKAGE_USERNAME }}" --password-stdin
