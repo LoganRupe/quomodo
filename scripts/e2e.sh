@@ -33,16 +33,20 @@ log() { printf '\n\033[1;34m== %s\033[0m\n' "$*"; }
 fail() { printf '\n\033[1;31mFAIL: %s\033[0m\n' "$*"; exit 1; }
 hexec() { docker exec "$HOST_NAME" "$@"; }
 
-cleanup() {
-  if [ "${KEEP:-0}" = "1" ]; then echo "KEEP=1: leaving $HOST_NAME, $DB_NAME, core (pid $(cat "$WORK/core.pid" 2>/dev/null || echo ?)) running"; return; fi
+teardown() {
   [ -f "$WORK/core.pid" ] && kill "$(cat "$WORK/core.pid")" 2>/dev/null || true
   [ -f "$WORK/git.pid" ] && kill "$(cat "$WORK/git.pid")" 2>/dev/null || true
   docker rm -f "$HOST_NAME" "$DB_NAME" >/dev/null 2>&1 || true
 }
+cleanup() {
+  if [ "${KEEP:-0}" = "1" ]; then echo "KEEP=1: leaving $HOST_NAME, $DB_NAME, core (pid $(cat "$WORK/core.pid" 2>/dev/null || echo ?)) running"; return; fi
+  teardown
+}
 trap cleanup EXIT
 
+# Always start clean, even after a KEEP=1 run.
+teardown
 rm -rf "$WORK"; mkdir -p "$WORK"/{keys,repo-cache,syncs,actions,git}
-cleanup
 
 log "build"
 (cd "$ROOT" && cargo build --release -p komodo_core -p komodo_periphery -q)
@@ -114,14 +118,28 @@ def jwt():
     raise SystemExit("login failed: %r" % r)
 J = jwt()
 def api(kind, typ, params): return post("/" + kind, {"type": typ, "params": params}, J)
-def execute(typ, params):
-    u = api("execute", typ, params)
-    if "error" in u: raise SystemExit("%s refused: %s" % (typ, u["error"]))
+def wait_update(uid):
     for _ in range(120):
-        u = api("read", "GetUpdate", {"id": u["id"]})
+        u = api("read", "GetUpdate", {"id": uid})
         if u.get("status") == "Complete": return u
         time.sleep(1)
-    raise SystemExit("%s did not complete" % typ)
+    raise SystemExit("update %s did not complete" % uid)
+def execute(typ, params):
+    # /execute returns the initial Update at once and runs the task in the background.
+    # DeployStackIfChanged creates no Update at all when nothing changed, so an empty
+    # id means: watch the stack's update list for a DeployStack to appear.
+    t0 = int(time.time() * 1000)
+    u = api("execute", typ, params)
+    if "error" in u: raise SystemExit("%s refused: %s" % (typ, u["error"]))
+    uid = u.get("id") or (u.get("_id") or {}).get("\$oid")
+    if uid: return wait_update(uid)
+    stack_id = api("read", "GetStack", {"stack": "$STACK"})["_id"]["\$oid"]
+    for _ in range(10):
+        time.sleep(1)
+        for it in api("read", "ListUpdates", {"query": {"target.id": stack_id}})["updates"]:
+            if it["start_ts"] >= t0 and it["operation"] == "DeployStack":
+                return wait_update(it["id"])
+    return {"noop": True, "success": True, "logs": []}
 cmd = sys.argv[1]
 if cmd == "create-server":
     print(json.dumps(api("write", "CreateServer", {"name": "$HOST_NAME", "config": {"enabled": True}, "public_key": sys.argv[2]})))
@@ -138,7 +156,7 @@ elif cmd == "services":
     print(json.dumps([(s["service"], s["state"]) for s in api("read", "ListStackServices", {"stack": "$STACK"})]))
 elif cmd in ("DeployStack", "DeployStackIfChanged", "DestroyStack", "RestartStack", "StopStack"):
     u = execute(cmd, {"stack": "$STACK", **({"services": []} if cmd in ("DeployStack", "RestartStack", "StopStack") else {})})
-    print(json.dumps({"success": u["success"], "stages": [(l["stage"], l["success"]) for l in u["logs"]]}))
+    print(json.dumps({"success": u["success"], "noop": u.get("noop", False), "stages": [(l["stage"], l["success"]) for l in u["logs"]]}))
     if not u["success"]:
         for l in u["logs"]:
             if not l["success"]: print("--", l["stage"], "\n", l["stdout"][-1500:], "\n", l["stderr"][-1500:])
@@ -154,8 +172,6 @@ docker run -d --name "$HOST_NAME" --privileged --cgroupns=private --tmpfs /run -
 sleep 4
 docker cp "$AGENT_BIN" "$HOST_NAME:/usr/local/bin/quomodo-agent"
 hexec mkdir -p /etc/quomodo/keys /var/lib/quomodo
-hexec sh -c '/usr/local/bin/quomodo-agent key gen > /tmp/keys; grep "Private Key" /tmp/keys | sed "s/Private Key: //" > /etc/quomodo/keys/agent.key; chmod 600 /etc/quomodo/keys/agent.key; rm /tmp/keys'
-PUBKEY=$(hexec sh -c '/usr/local/bin/quomodo-agent key compute /etc/quomodo/keys/agent.key | grep "Public" | sed -E "s/Public +Key: //"')
 hexec sh -c "cat > /etc/quomodo/config.toml <<CFG
 core_addresses = [\"ws://$BRIDGE_IP:$CORE_PORT\"]
 connect_as = \"$HOST_NAME\"
@@ -173,6 +189,9 @@ RestartSec=2
 WantedBy=multi-user.target
 UNIT
 systemctl daemon-reload && systemctl enable --now quomodo-agent'
+# The agent generates its key file on first start; public-key reads it back.
+PUBKEY=$(hexec /usr/local/bin/quomodo-agent --config-path /etc/quomodo/config.toml public-key)
+[ -n "$PUBKEY" ] || fail "no public key"
 
 log "1. server connects"
 $API create-server "$PUBKEY" | head -c 200; echo
@@ -194,8 +213,10 @@ $API stack; sleep 12
 $API services
 
 log "3. no change is a no-op"
-$API DeployStackIfChanged | grep -q '"Diff stack files"' || fail "expected the no-changes short circuit"
-echo "short-circuited"
+WEB_ID_BEFORE=$(hexec podman inspect -f '{{.Id}}' e2e-web)
+$API DeployStackIfChanged | grep -q '"noop": true' || fail "expected no DeployStack update when nothing changed"
+[ "$(hexec podman inspect -f '{{.Id}}' e2e-web)" = "$WEB_ID_BEFORE" ] || fail "web was recreated with no change"
+echo "short-circuited, containers untouched"
 
 log "4. a changed unit redeploys only that unit"
 WEB_ID_BEFORE=$(hexec podman inspect -f '{{.Id}}' e2e-web); WORKER_ID_BEFORE=$(hexec podman inspect -f '{{.Id}}' e2e-worker)

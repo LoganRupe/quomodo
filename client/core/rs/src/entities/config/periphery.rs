@@ -86,6 +86,10 @@ pub enum Command {
     #[command(subcommand)]
     command: mogh_pki::cli::KeyCommand,
   },
+  /// Print the agent's public key, generating the configured private key
+  /// file first if it does not exist yet. Use this to register the Server on Core.
+  #[clap(name = "public-key", alias = "pk")]
+  PublicKey,
 }
 
 /// # Agent Environment Variables

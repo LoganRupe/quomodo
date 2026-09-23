@@ -1,9 +1,10 @@
+use anyhow::Context;
 use futures_util::{StreamExt, stream::FuturesUnordered};
 use komodo_client::entities::config::periphery::Command;
 use tracing::Instrument;
 
 use crate::{
-  config::periphery_args,
+  config::{periphery_args, periphery_config},
   state::{core_public_keys, periphery_keys},
 };
 
@@ -101,9 +102,26 @@ async fn app() -> anyhow::Result<()> {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
   // Handle `quomodo-agent key gen` and `quomodo-agent key compute <private-key>`
-  if let Some(Command::Key { command }) = &periphery_args().command {
-    return mogh_pki::cli::handle(command, mogh_pki::PkiKind::Mutual)
+  match &periphery_args().command {
+    Some(Command::Key { command }) => {
+      return mogh_pki::cli::handle(
+        command,
+        mogh_pki::PkiKind::Mutual,
+      )
       .await;
+    }
+    Some(Command::PublicKey) => {
+      // Same loader the agent uses at startup: reads the configured
+      // private key file, or generates and writes it when missing.
+      let keys = mogh_pki::RotatableKeyPair::from_private_key_spec(
+        mogh_pki::PkiKind::Mutual,
+        &periphery_config().private_key_spec(),
+      )
+      .context("Failed to load or generate the agent private key")?;
+      println!("{}", keys.load().public());
+      return Ok(());
+    }
+    None => {}
   }
 
   let mut term_signal = tokio::signal::unix::signal(
