@@ -2,15 +2,9 @@ use indexmap::{IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
 use typeshare::typeshare;
 
-use crate::entities::swarm::_PartialSwarmConfig;
-
 use super::{
   ResourceTarget, ResourceTargetVariant,
   action::_PartialActionConfig,
-  alerter::_PartialAlerterConfig,
-  build::_PartialBuildConfig,
-  builder::_PartialBuilderConfig,
-  deployment::_PartialDeploymentConfig,
   permission::{
     PermissionLevel, PermissionLevelAndSpecifics, SpecificPermission,
   },
@@ -29,15 +23,6 @@ use super::{
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[cfg_attr(feature = "schemars", schemars(rename = "Resources"))]
 pub struct ResourcesToml {
-  /// Declare a swarm
-  #[serde(
-    default,
-    alias = "swarm",
-    skip_serializing_if = "Vec::is_empty"
-  )]
-  #[cfg_attr(feature = "schemars", schemars(rename = "swarm"))]
-  pub swarms: Vec<ResourceToml<_PartialSwarmConfig>>,
-
   /// Declare a server
   #[serde(
     default,
@@ -56,24 +41,7 @@ pub struct ResourcesToml {
   #[cfg_attr(feature = "schemars", schemars(rename = "stack"))]
   pub stacks: Vec<ResourceToml<_PartialStackConfig>>,
 
-  /// Declare a deployment
-  #[serde(
-    default,
-    alias = "deployment",
-    skip_serializing_if = "Vec::is_empty"
-  )]
-  #[cfg_attr(feature = "schemars", schemars(rename = "deployment"))]
-  pub deployments: Vec<ResourceToml<_PartialDeploymentConfig>>,
-
   /// Declare a build
-  #[serde(
-    default,
-    alias = "build",
-    skip_serializing_if = "Vec::is_empty"
-  )]
-  #[cfg_attr(feature = "schemars", schemars(rename = "build"))]
-  pub builds: Vec<ResourceToml<_PartialBuildConfig>>,
-
   /// Declare a repo
   #[serde(
     default,
@@ -102,23 +70,7 @@ pub struct ResourcesToml {
   pub actions: Vec<ResourceToml<_PartialActionConfig>>,
 
   /// Declare an alerter
-  #[serde(
-    default,
-    alias = "alerter",
-    skip_serializing_if = "Vec::is_empty"
-  )]
-  #[cfg_attr(feature = "schemars", schemars(rename = "alerter"))]
-  pub alerters: Vec<ResourceToml<_PartialAlerterConfig>>,
-
   /// Declare a builder
-  #[serde(
-    default,
-    alias = "builder",
-    skip_serializing_if = "Vec::is_empty"
-  )]
-  #[cfg_attr(feature = "schemars", schemars(rename = "builder"))]
-  pub builders: Vec<ResourceToml<_PartialBuilderConfig>>,
-
   /// Declare a resource sync
   #[serde(
     default,

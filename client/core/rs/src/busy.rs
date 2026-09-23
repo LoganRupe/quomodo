@@ -1,70 +1,33 @@
 use crate::entities::{
-  action::ActionActionState, build::BuildActionState,
-  deployment::DeploymentActionState, procedure::ProcedureActionState,
+  action::ActionActionState, procedure::ProcedureActionState,
   repo::RepoActionState, server::ServerActionState,
-  stack::StackActionState, swarm::SwarmActionState,
-  sync::ResourceSyncActionState,
+  stack::StackActionState, sync::ResourceSyncActionState,
 };
 
 pub trait Busy {
   fn busy(&self) -> bool;
 }
 
-impl Busy for SwarmActionState {
-  fn busy(&self) -> bool {
-    false
-  }
-}
-
 impl Busy for ServerActionState {
   fn busy(&self) -> bool {
-    self.pruning_containers
-      || self.pruning_images
-      || self.pruning_networks
-      || self.pruning_volumes
-      || self.starting_containers > 0
-      || self.restarting_containers > 0
-      || self.pausing_containers > 0
-      || self.unpausing_containers > 0
-      || self.stopping_containers > 0
-      || self.destroying_containers > 0
-  }
-}
-
-impl Busy for DeploymentActionState {
-  fn busy(&self) -> bool {
-    self.deploying
-      || self.starting
-      || self.restarting
-      || self.pausing
-      || self.unpausing
-      || self.stopping
-      || self.destroying
-      || self.renaming
+    self.pruning_images || self.pruning_system
   }
 }
 
 impl Busy for StackActionState {
   fn busy(&self) -> bool {
-    self.deploying
+    self.pulling
+      || self.deploying
       || self.starting
       || self.restarting
-      || self.pausing
-      || self.unpausing
       || self.stopping
       || self.destroying
   }
 }
 
-impl Busy for BuildActionState {
-  fn busy(&self) -> bool {
-    self.building
-  }
-}
-
 impl Busy for RepoActionState {
   fn busy(&self) -> bool {
-    self.cloning || self.pulling || self.building
+    self.cloning || self.pulling
   }
 }
 

@@ -1,10 +1,7 @@
 use crate::entities::update::Update;
-use anyhow::Context;
-use clap::ArgAction::SetTrue;
 use clap::Parser;
 use mogh_resolver::Resolve;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use typeshare::typeshare;
 
 use super::{BatchExecutionResponse, KomodoExecuteRequest};
@@ -312,74 +309,6 @@ pub struct RestartStack {
 #[cfg(feature = "utoipa")]
 #[utoipa::path(
   post,
-  path = "/PauseStack",
-  description = "Pauses the target stack.",
-  request_body(content = PauseStack),
-  responses(
-    (status = 200, description = "The update", body = Update),
-  ),
-)]
-pub fn pause_stack() {}
-
-/// Pauses the target stack. `docker compose pause`. Response: [Update]
-#[typeshare]
-#[derive(
-  Debug, Clone, PartialEq, Serialize, Deserialize, Resolve, Parser,
-)]
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
-#[empty_traits(KomodoExecuteRequest)]
-#[response(Update)]
-#[error(mogh_error::Error)]
-pub struct PauseStack {
-  /// Id or name
-  pub stack: String,
-  /// Filter to only pause specific services.
-  /// If empty, will pause all services.
-  #[serde(default)]
-  pub services: Vec<String>,
-}
-
-//
-
-#[cfg(feature = "utoipa")]
-#[utoipa::path(
-  post,
-  path = "/UnpauseStack",
-  description = "Unpauses the target stack.",
-  request_body(content = UnpauseStack),
-  responses(
-    (status = 200, description = "The update", body = Update),
-  ),
-)]
-pub fn unpause_stack() {}
-
-/// Unpauses the target stack. `docker compose unpause`. Response: [Update].
-///
-/// Note. This is the only way to restart a paused container.
-#[typeshare]
-#[derive(
-  Debug, Clone, PartialEq, Serialize, Deserialize, Resolve, Parser,
-)]
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
-#[empty_traits(KomodoExecuteRequest)]
-#[response(Update)]
-#[error(mogh_error::Error)]
-pub struct UnpauseStack {
-  /// Id or name
-  pub stack: String,
-  /// Filter to only unpause specific services.
-  /// If empty, will unpause all services.
-  #[serde(default)]
-  pub services: Vec<String>,
-}
-
-//
-
-#[cfg(feature = "utoipa")]
-#[utoipa::path(
-  post,
   path = "/StopStack",
   description = "Stops the target stack.",
   request_body(content = StopStack),
@@ -446,71 +375,6 @@ pub struct DestroyStack {
   pub remove_orphans: bool,
   /// Override the default termination max time.
   pub stop_time: Option<i32>,
-}
-
-//
-
-#[cfg(feature = "utoipa")]
-#[utoipa::path(
-  post,
-  path = "/RunStackService",
-  description = "Runs a one-time command against a service using docker compose run.",
-  request_body(content = RunStackService),
-  responses(
-    (status = 200, description = "The update", body = Update),
-  ),
-)]
-pub fn run_stack_service() {}
-
-/// Runs a one-time command against a service using `docker compose run`. Response: [Update]
-#[typeshare]
-#[derive(
-  Debug, Clone, PartialEq, Serialize, Deserialize, Resolve, Parser,
-)]
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
-#[empty_traits(KomodoExecuteRequest)]
-#[response(Update)]
-#[error(mogh_error::Error)]
-pub struct RunStackService {
-  /// Id or name
-  pub stack: String,
-  /// Service to run
-  pub service: String,
-  /// Command and args to pass to the service container
-  #[arg(trailing_var_arg = true, num_args = 1.., allow_hyphen_values = true)]
-  pub command: Option<Vec<String>>,
-  /// Do not allocate TTY
-  #[arg(long = "no-tty", action = SetTrue)]
-  pub no_tty: Option<bool>,
-  /// Do not start linked services
-  #[arg(long = "no-deps", action = SetTrue)]
-  pub no_deps: Option<bool>,
-  /// Detach container on run
-  #[arg(long = "detach", action = SetTrue)]
-  pub detach: Option<bool>,
-  /// Map service ports to the host
-  #[arg(long = "service-ports", action = SetTrue)]
-  pub service_ports: Option<bool>,
-  /// Extra environment variables for the run
-  #[arg(long = "env", short = 'e', value_parser = env_parser)]
-  pub env: Option<HashMap<String, String>>,
-  /// Working directory inside the container
-  #[arg(long = "workdir")]
-  pub workdir: Option<String>,
-  /// User to run as inside the container
-  #[arg(long = "user")]
-  pub user: Option<String>,
-  /// Override the default entrypoint
-  #[arg(long = "entrypoint")]
-  pub entrypoint: Option<String>,
-  /// Pull the image before running
-  #[arg(long = "pull", action = SetTrue)]
-  pub pull: Option<bool>,
-}
-
-fn env_parser(args: &str) -> anyhow::Result<HashMap<String, String>> {
-  serde_qs::from_str(args).context("Failed to parse env")
 }
 
 //

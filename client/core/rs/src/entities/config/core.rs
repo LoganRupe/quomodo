@@ -9,9 +9,8 @@
 //! into the image at `/config/config.toml`.
 //!
 
-use std::{collections::HashMap, path::PathBuf};
+use std::path::PathBuf;
 
-use mogh_auth_client::config::NamedOauthConfig;
 use serde::Deserialize;
 
 use crate::{
@@ -82,10 +81,6 @@ pub struct Env {
   /// Override `periphery_public_keys`
   #[serde(alias = "komodo_periphery_public_key")]
   pub komodo_periphery_public_keys: Option<Vec<String>>,
-  /// Override `passkey`
-  pub komodo_passkey: Option<String>,
-  /// Override `passkey` from file
-  pub komodo_passkey_file: Option<PathBuf>,
   /// Override `timezone`
   #[serde(alias = "tz")]
   pub komodo_timezone: Option<String>,
@@ -179,28 +174,6 @@ pub struct Env {
   /// Override `oidc_auto_redirect`
   pub komodo_oidc_auto_redirect: Option<bool>,
 
-  /// Override `google_oauth.enabled`
-  pub komodo_google_oauth_enabled: Option<bool>,
-  /// Override `google_oauth.id`
-  pub komodo_google_oauth_id: Option<String>,
-  /// Override `google_oauth.id` from file
-  pub komodo_google_oauth_id_file: Option<PathBuf>,
-  /// Override `google_oauth.secret`
-  pub komodo_google_oauth_secret: Option<String>,
-  /// Override `google_oauth.secret` from file
-  pub komodo_google_oauth_secret_file: Option<PathBuf>,
-
-  /// Override `github_oauth.enabled`
-  pub komodo_github_oauth_enabled: Option<bool>,
-  /// Override `github_oauth.id`
-  pub komodo_github_oauth_id: Option<String>,
-  /// Override `github_oauth.id` from file
-  pub komodo_github_oauth_id_file: Option<PathBuf>,
-  /// Override `github_oauth.secret`
-  pub komodo_github_oauth_secret: Option<String>,
-  /// Override `github_oauth.secret` from file
-  pub komodo_github_oauth_secret_file: Option<PathBuf>,
-
   /// Override `auth_rate_limit_disabled`
   pub komodo_auth_rate_limit_disabled: Option<bool>,
   /// Override `auth_rate_limit_max_attempts`
@@ -253,15 +226,6 @@ pub struct Env {
   /// Override `database.db_name`
   #[serde(alias = "komodo_mongo_db_name")]
   pub komodo_database_db_name: Option<String>,
-
-  /// Override `aws.access_key_id`
-  pub komodo_aws_access_key_id: Option<String>,
-  /// Override `aws.access_key_id` with file
-  pub komodo_aws_access_key_id_file: Option<PathBuf>,
-  /// Override `aws.secret_access_key`
-  pub komodo_aws_secret_access_key: Option<String>,
-  /// Override `aws.secret_access_key` with file
-  pub komodo_aws_secret_access_key_file: Option<PathBuf>,
 
   /// Override `logging.level`
   pub komodo_logging_level: Option<LogLevel>,
@@ -392,11 +356,6 @@ pub struct CoreConfig {
     skip_serializing_if = "Option::is_none"
   )]
   pub periphery_public_keys: Option<Vec<String>>,
-
-  /// Deprecated. Legacy v1 compatibility.
-  /// Users should upgrade to private / public key authentication.
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub passkey: Option<String>,
 
   /// A TZ Identifier. If not provided, will use Core local timezone.
   /// https://en.wikipedia.org/wiki/List_of_tz_database_time_zones.
@@ -574,17 +533,6 @@ pub struct CoreConfig {
   #[serde(default)]
   pub oidc_auto_redirect: bool,
 
-  // =========
-  // = Oauth =
-  // =========
-  /// Configure google oauth
-  #[serde(default)]
-  pub google_oauth: NamedOauthConfig,
-
-  /// Configure github oauth
-  #[serde(default)]
-  pub github_oauth: NamedOauthConfig,
-
   // =================
   // = Rate Limiting =
   // =================
@@ -716,13 +664,6 @@ pub struct CoreConfig {
   #[serde(default = "default_monitoring_interval")]
   pub monitoring_interval: Timelength,
 
-  // ===================
-  // = Cloud Providers =
-  // ===================
-  /// Configure AWS credentials to use with AWS builds / server launches.
-  #[serde(default)]
-  pub aws: AwsCredentials,
-
   // =================
   // = Git Providers =
   // =================
@@ -749,15 +690,6 @@ pub struct CoreConfig {
     skip_serializing_if = "Vec::is_empty"
   )]
   pub image_registries: Vec<ImageRegistry>,
-
-  // ===========
-  // = Secrets =
-  // ===========
-  /// Configure core-based secrets. These will be preferentially interpolated into
-  /// values if they contain a matching secret. Otherwise, the periphery will have to have the
-  /// secret configured.
-  #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-  pub secrets: HashMap<String, String>,
 
   // =======
   // = SSL =
@@ -938,7 +870,6 @@ impl Default for CoreConfig {
       internet_interface: Default::default(),
       private_key: default_private_key(),
       periphery_public_keys: Default::default(),
-      passkey: Default::default(),
       timezone: Default::default(),
       default_pagination_limit: default_default_pagination_limit(),
       ui_write_disabled: Default::default(),
@@ -970,8 +901,6 @@ impl Default for CoreConfig {
       oidc_use_full_email: Default::default(),
       oidc_additional_audiences: Default::default(),
       oidc_auto_redirect: Default::default(),
-      google_oauth: Default::default(),
-      github_oauth: Default::default(),
       auth_rate_limit_disabled: Default::default(),
       auth_rate_limit_max_attempts:
         default_auth_rate_limit_max_attempts(),
@@ -994,10 +923,8 @@ impl Default for CoreConfig {
       keep_alerts_for_days: default_prune_days(),
       resource_poll_interval: default_poll_interval(),
       monitoring_interval: default_monitoring_interval(),
-      aws: Default::default(),
       git_providers: Default::default(),
       image_registries: Default::default(),
-      secrets: Default::default(),
       ssl_enabled: Default::default(),
       ssl_key_file: default_ssl_key_file(),
       ssl_cert_file: default_ssl_cert_file(),
@@ -1026,7 +953,6 @@ impl CoreConfig {
         empty_or_redacted(&self.private_key)
       },
       periphery_public_keys: config.periphery_public_keys,
-      passkey: config.passkey.as_deref().map(empty_or_redacted),
       timezone: config.timezone,
       default_pagination_limit: config.default_pagination_limit,
       first_server_address: config.first_server_address,
@@ -1078,20 +1004,6 @@ impl CoreConfig {
         .map(|aud| empty_or_redacted(aud))
         .collect(),
       oidc_auto_redirect: config.oidc_auto_redirect,
-      google_oauth: NamedOauthConfig {
-        enabled: config.google_oauth.enabled,
-        client_id: empty_or_redacted(&config.google_oauth.client_id),
-        client_secret: empty_or_redacted(
-          &config.google_oauth.client_secret,
-        ),
-      },
-      github_oauth: NamedOauthConfig {
-        enabled: config.github_oauth.enabled,
-        client_id: empty_or_redacted(&config.github_oauth.client_id),
-        client_secret: empty_or_redacted(
-          &config.github_oauth.client_secret,
-        ),
-      },
       auth_rate_limit_disabled: config.auth_rate_limit_disabled,
       auth_rate_limit_max_attempts: config
         .auth_rate_limit_max_attempts,
@@ -1108,17 +1020,6 @@ impl CoreConfig {
       webhook_secret: empty_or_redacted(&config.webhook_secret),
       webhook_base_url: config.webhook_base_url,
       database: config.database.sanitized(),
-      aws: AwsCredentials {
-        access_key_id: empty_or_redacted(&config.aws.access_key_id),
-        secret_access_key: empty_or_redacted(
-          &config.aws.secret_access_key,
-        ),
-      },
-      secrets: config
-        .secrets
-        .into_iter()
-        .map(|(id, secret)| (id, empty_or_redacted(&secret)))
-        .collect(),
       git_providers: config
         .git_providers
         .into_iter()
@@ -1164,15 +1065,6 @@ impl CoreConfig {
       && !self.oidc_provider.is_empty()
       && !self.oidc_client_id.is_empty()
   }
-}
-
-/// Provide AWS credentials for Komodo to use.
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct AwsCredentials {
-  /// The aws ACCESS_KEY_ID
-  pub access_key_id: String,
-  /// The aws SECRET_ACCESS_KEY
-  pub secret_access_key: String,
 }
 
 impl mogh_server::ServerConfig for &CoreConfig {

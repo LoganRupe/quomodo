@@ -12,18 +12,12 @@ use crate::api::write;
     // resource
     write::update_resource_meta,
     // swarm
-    write::create_swarm,
-    write::copy_swarm,
-    write::delete_swarm,
-    write::update_swarm,
-    write::rename_swarm,
     // server
     write::create_server,
     write::copy_server,
     write::delete_server,
     write::update_server,
     write::rename_server,
-    write::create_network,
     write::update_server_public_key,
     write::rotate_server_keys,
     // stack
@@ -32,25 +26,9 @@ use crate::api::write;
     write::delete_stack,
     write::update_stack,
     write::rename_stack,
-    write::write_stack_file_contents,
     write::refresh_stack_cache,
-    write::check_stack_for_update,
     // deployment
-    write::create_deployment,
-    write::copy_deployment,
-    write::create_deployment_from_container,
-    write::delete_deployment,
-    write::update_deployment,
-    write::rename_deployment,
-    write::check_deployment_for_update,
     // build
-    write::create_build,
-    write::copy_build,
-    write::delete_build,
-    write::update_build,
-    write::rename_build,
-    write::write_build_file_contents,
-    write::refresh_build_cache,
     // repo
     write::create_repo,
     write::copy_repo,
@@ -71,17 +49,7 @@ use crate::api::write;
     write::update_action,
     write::rename_action,
     // builder
-    write::create_builder,
-    write::copy_builder,
-    write::delete_builder,
-    write::update_builder,
-    write::rename_builder,
     // alerter
-    write::create_alerter,
-    write::copy_alerter,
-    write::delete_alerter,
-    write::update_alerter,
-    write::rename_alerter,
     // resource_sync
     write::create_resource_sync,
     write::copy_resource_sync,
@@ -98,10 +66,6 @@ use crate::api::write;
     write::update_variable_is_secret,
     write::delete_variable,
     // terminal
-    write::create_terminal,
-    write::delete_terminal,
-    write::delete_all_terminals,
-    write::batch_delete_all_terminals,
     // alert
     write::close_alert,
     // tags

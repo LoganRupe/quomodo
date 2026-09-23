@@ -167,37 +167,6 @@ pub struct RenameServer {
 #[cfg(feature = "utoipa")]
 #[utoipa::path(
   post,
-  path = "/CreateNetwork",
-  description = "Create a docker network on the server.",
-  request_body(content = CreateNetwork),
-  responses(
-    (status = 200, description = "The update", body = Update),
-  ),
-)]
-pub fn create_network() {}
-
-/// Create a docker network on the server.
-/// Response: [Update]
-///
-/// `docker network create {name}`
-#[typeshare]
-#[derive(Serialize, Deserialize, Debug, Clone, Resolve)]
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[empty_traits(KomodoWriteRequest)]
-#[response(Update)]
-#[error(mogh_error::Error)]
-pub struct CreateNetwork {
-  /// Server Id or name
-  pub server: String,
-  /// The name of the network to create.
-  pub name: String,
-}
-
-//
-
-#[cfg(feature = "utoipa")]
-#[utoipa::path(
-  post,
   path = "/UpdateServerPublicKey",
   description = "Updates the Server with an explicit Public Key.",
   request_body(content = UpdateServerPublicKey),

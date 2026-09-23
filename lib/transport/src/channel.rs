@@ -5,7 +5,6 @@ use encoding::{
 use futures_util::FutureExt;
 use periphery_client::transport::{
   EncodedTransportMessage, RequestMessage, ResponseMessage,
-  TerminalMessage,
 };
 use serde::Serialize;
 use tokio::sync::{Mutex, MutexGuard, mpsc};
@@ -119,25 +118,6 @@ impl Sender<EncodedTransportMessage> {
       .await
   }
 
-  pub async fn send_terminal(
-    &self,
-    channel: Uuid,
-    data: anyhow::Result<Vec<u8>>,
-  ) -> anyhow::Result<()> {
-    self.send_message(TerminalMessage::new(channel, data)).await
-  }
-
-  pub async fn send_terminal_exited(
-    &self,
-    channel: Uuid,
-  ) -> anyhow::Result<()> {
-    self
-      .send_message(TerminalMessage::new(
-        channel,
-        Err(anyhow!("pty exited")),
-      ))
-      .await
-  }
 }
 
 #[derive(Debug)]

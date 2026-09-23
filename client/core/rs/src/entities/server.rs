@@ -76,11 +76,6 @@ pub struct ServerListItemInfo {
   /// If a Periphery fails to authenticate to Core with invalid Periphery public key,
   /// it will be stored here to accept the connection later on.
   pub attempted_public_key: Option<String>,
-  /// Whether server is configured to send unreachable alerts.
-  /// Whether terminals are disabled for this Server.
-  pub terminals_disabled: bool,
-  /// Whether container terminals are disabled for this Server.
-  pub container_terminals_disabled: bool,
 }
 
 #[typeshare]
@@ -438,14 +433,10 @@ pub struct PeripheryInformation {
   pub version: String,
   /// The public key of Periphery
   pub public_key: String,
-  /// Whether terminals are disabled on this Periphery server
-  pub terminals_disabled: bool,
-  /// Whether container exec is disabled on this Periphery server
-  pub container_terminals_disabled: bool,
   /// The rate the system stats are being polled from the system
   pub stats_polling_rate: Timelength,
-  /// Whether Periphery is successfully connected to docker daemon.
-  pub docker_connected: bool,
+  /// Whether Periphery is successfully talking to podman.
+  pub podman_connected: bool,
   /// The host public ip, if it can be resolved.
   pub public_ip: Option<String>,
 }
@@ -455,32 +446,10 @@ pub struct PeripheryInformation {
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct ServerActionState {
-  /// Server currently pruning networks
-  pub pruning_networks: bool,
-  /// Server currently pruning containers
-  pub pruning_containers: bool,
   /// Server currently pruning images
   pub pruning_images: bool,
-  /// Server currently pruning volumes
-  pub pruning_volumes: bool,
-  /// Server currently pruning docker builders
-  pub pruning_builders: bool,
-  /// Server currently pruning builx cache
-  pub pruning_buildx: bool,
   /// Server currently pruning system
   pub pruning_system: bool,
-  /// Server currently starting containers.
-  pub starting_containers: u32,
-  /// Server currently restarting containers.
-  pub restarting_containers: u32,
-  /// Server currently pausing containers.
-  pub pausing_containers: u32,
-  /// Server currently unpausing containers.
-  pub unpausing_containers: u32,
-  /// Server currently stopping containers.
-  pub stopping_containers: u32,
-  /// Server currently destroying containers.
-  pub destroying_containers: u32,
 }
 
 #[typeshare]

@@ -4,11 +4,9 @@ use std::path::PathBuf;
 
 use crate::api::execute::Execution;
 
-pub mod container;
 pub mod create;
 pub mod database;
 pub mod list;
-pub mod terminal;
 pub mod update;
 
 #[derive(Debug, clap::Parser)]
@@ -84,24 +82,6 @@ pub enum Command {
     #[command(subcommand)]
     command: update::UpdateCommand,
   },
-
-  /// Container info (aliases: `ps`, `cn`, `containers`)
-  #[clap(alias = "ps", alias = "cn", alias = "containers")]
-  Container(container::Container),
-
-  /// Inspect containers (alias: `i`)
-  #[clap(alias = "i")]
-  Inspect(container::InspectContainer),
-
-  /// Connect to Server Terminals. (alias: `ssh`)
-  #[clap(alias = "ssh")]
-  Connect(terminal::Connect),
-
-  /// Connect to Container Terminals. `docker exec` analogue.
-  Exec(terminal::Exec),
-
-  /// Attach to Container Terminals. `docker attach` analogue.
-  Attach(terminal::Attach),
 
   /// Private-Public key utilities. (alias: `k`)
   #[clap(alias = "k")]

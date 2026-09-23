@@ -3,12 +3,11 @@ use std::{
   str::FromStr,
 };
 
-use anyhow::{Context, anyhow};
+use anyhow::Context;
 use async_timing_util::unix_timestamp_ms;
 use clap::{Parser, ValueEnum};
-use mogh_error::{AddStatusCodeError, Serror};
+use mogh_error::Serror;
 use rand::RngExt as _;
-use reqwest::StatusCode;
 use serde::{
   Deserialize, Serialize,
   de::{Visitor, value::MapAccessDeserializer},
@@ -26,17 +25,13 @@ pub mod action;
 /// Subtypes of [Alert][alert::Alert].
 pub mod alert;
 /// Subtypes of [Alerter][alerter::Alerter].
-pub mod alerter;
 /// Subtypes of [ApiKey][api_key::ApiKey].
 pub mod api_key;
 /// Subtypes of [Build][build::Build].
-pub mod build;
 /// Subtypes of [Builder][builder::Builder].
-pub mod builder;
 /// [core config][config::core] and [periphery config][config::periphery]
 pub mod config;
 /// Subtypes of [Deployment][deployment::Deployment].
-pub mod deployment;
 /// Networks, Images, Containers.
 pub mod docker;
 /// Subtypes of [LogConfig][logger::LogConfig].
@@ -64,13 +59,11 @@ pub mod stack;
 /// Subtypes for server stats reporting.
 pub mod stats;
 /// Subtypes of [Swarm][swarm::Swarm].
-pub mod swarm;
 /// Subtypes of [ResourceSync][sync::ResourceSync]
 pub mod sync;
 /// Subtypes of [Tag][tag::Tag].
 pub mod tag;
 /// Subtypes of [Terminal][terminal::Terminal].
-pub mod terminal;
 /// Subtypes of [ResourcesToml][toml::ResourcesToml].
 pub mod toml;
 /// Subtypes of [Update][update::Update].
@@ -437,93 +430,6 @@ pub struct FileContents {
   pub contents: String,
 }
 
-/// Example:
-/// apache/tika@sha256:c0154cb95587cde64be74f35ada1a2bd7892219f3f0ac3c9dc6cab34046b3573
-#[typeshare]
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-pub struct ImageDigest(String);
-
-impl ImageDigest {
-  pub fn new(image: &str, digest: &str) -> Self {
-    Self(format!("{image}@{digest}"))
-  }
-
-  /// Handles incoming forms:
-  /// - image-name@sha256:HASH
-  /// - sha256:HASH
-  pub fn parse(digest: &str) -> Option<Self> {
-    if digest.contains('@') {
-      Some(Self(digest.to_string()))
-    } else if digest.starts_with("sha256:") {
-      Some(Self(format!("__unknown__@{digest}")))
-    } else {
-      None
-    }
-  }
-
-  /// Handles incoming forms:
-  /// - image-name@sha256:HASH
-  /// - sha256:HASH (replaces image with __unknown__)
-  pub fn vec(image_digests: &[String]) -> Vec<Self> {
-    image_digests
-      .iter()
-      .filter_map(|digest| ImageDigest::parse(digest))
-      .collect()
-  }
-
-  pub fn into_inner(self) -> String {
-    self.0
-  }
-
-  pub fn as_str(&self) -> &str {
-    self.0.as_str()
-  }
-
-  /// Assumes this ImageDigest represents latest.
-  /// Checks all the digests against latest, if none are equal
-  /// then there is an update available.
-  pub fn update_available(
-    &self,
-    current_digests: &[ImageDigest],
-  ) -> bool {
-    let Some(latest_digest) = self.digest() else {
-      return false;
-    };
-    let digests = current_digests
-      .iter()
-      .filter_map(|digest| digest.digest())
-      .collect::<Vec<_>>();
-    // No valid digests to compare to,
-    // avoid potentially false positive
-    if digests.is_empty() {
-      return false;
-    }
-    // If the image digests do not contain latest
-    // digest, then there is update available.
-    !digests.contains(&latest_digest)
-  }
-
-  pub fn is_empty(&self) -> bool {
-    self.0.is_empty()
-  }
-
-  /// Returns (image, digest)
-  pub fn image_digest(&self) -> Option<(&str, &str)> {
-    self.0.split_once('@')
-  }
-
-  /// Get the image part of the digest
-  pub fn image(&self) -> Option<&str> {
-    self.image_digest().map(|(image, _)| image)
-  }
-
-  /// Get the image part of the digest
-  pub fn digest(&self) -> Option<&str> {
-    self.image_digest().map(|(_, digest)| digest)
-  }
-}
-
 /// Represents a scheduled maintenance window
 #[typeshare]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -576,8 +482,6 @@ fn default_enabled() -> bool {
 pub enum DefaultRepoFolder {
   /// /${root_directory}/stacks
   Stacks,
-  /// /${root_directory}/builds
-  Builds,
   /// /${root_directory}/repos
   Repos,
   /// If the repo is only cloned
@@ -685,24 +589,6 @@ impl From<&self::stack::Stack> for RepoExecutionArgs {
       commit: optional_string(&stack.config.commit),
       destination: optional_string(&stack.config.clone_path),
       default_folder: DefaultRepoFolder::Stacks,
-    }
-  }
-}
-
-impl From<&self::build::Build> for RepoExecutionArgs {
-  fn from(build: &self::build::Build) -> RepoExecutionArgs {
-    RepoExecutionArgs {
-      name: build.name.clone(),
-      provider: optional_string(&build.config.git_provider)
-        .unwrap_or_else(|| String::from("github.com")),
-      https: build.config.git_https,
-      account: optional_string(&build.config.git_account),
-      repo: optional_string(&build.config.repo),
-      branch: optional_string(&build.config.branch)
-        .unwrap_or_else(|| String::from("main")),
-      commit: optional_string(&build.config.commit),
-      destination: None,
-      default_folder: DefaultRepoFolder::Builds,
     }
   }
 }
@@ -1203,49 +1089,13 @@ pub enum Operation {
   #[default]
   None,
 
-  // Swarm
-  CreateSwarm,
-  UpdateSwarm,
-  RenameSwarm,
-  DeleteSwarm,
-  RemoveSwarmNodes,
-  UpdateSwarmNode,
-  RemoveSwarmStacks,
-  RemoveSwarmServices,
-  CreateSwarmConfig,
-  RotateSwarmConfig,
-  RemoveSwarmConfigs,
-  CreateSwarmSecret,
-  RotateSwarmSecret,
-  RemoveSwarmSecrets,
-
   // Server
   CreateServer,
   UpdateServer,
   UpdateServerKey,
   DeleteServer,
   RenameServer,
-  StartContainer,
-  RestartContainer,
-  PauseContainer,
-  UnpauseContainer,
-  StopContainer,
-  DestroyContainer,
-  StartAllContainers,
-  RestartAllContainers,
-  PauseAllContainers,
-  UnpauseAllContainers,
-  StopAllContainers,
-  PruneContainers,
-  CreateNetwork,
-  DeleteNetwork,
-  PruneNetworks,
-  DeleteImage,
   PruneImages,
-  DeleteVolume,
-  PruneVolumes,
-  PruneDockerBuilders,
-  PruneBuildx,
   PruneSystem,
 
   // Stack
@@ -1253,52 +1103,13 @@ pub enum Operation {
   UpdateStack,
   RenameStack,
   DeleteStack,
-  WriteStackContents,
   RefreshStackCache,
   PullStack,
   DeployStack,
   StartStack,
   RestartStack,
-  PauseStack,
-  UnpauseStack,
   StopStack,
   DestroyStack,
-  RunStackService,
-  CheckStackForUpdate,
-
-  // Stack (Service)
-  DeployStackService,
-  PullStackService,
-  StartStackService,
-  RestartStackService,
-  PauseStackService,
-  UnpauseStackService,
-  StopStackService,
-  DestroyStackService,
-
-  // Deployment
-  CreateDeployment,
-  UpdateDeployment,
-  RenameDeployment,
-  DeleteDeployment,
-  Deploy,
-  PullDeployment,
-  StartDeployment,
-  RestartDeployment,
-  PauseDeployment,
-  UnpauseDeployment,
-  StopDeployment,
-  DestroyDeployment,
-  CheckDeploymentForUpdate,
-
-  // Build
-  CreateBuild,
-  UpdateBuild,
-  RenameBuild,
-  DeleteBuild,
-  RunBuild,
-  CancelBuild,
-  WriteDockerfile,
 
   // Repo
   CreateRepo,
@@ -1307,8 +1118,6 @@ pub enum Operation {
   DeleteRepo,
   CloneRepo,
   PullRepo,
-  BuildRepo,
-  CancelRepoBuild,
 
   // Procedure
   CreateProcedure,
@@ -1335,24 +1144,9 @@ pub enum Operation {
   CommitSync,
   RunSync,
 
-  // Builder
-  CreateBuilder,
-  UpdateBuilder,
-  RenameBuilder,
-  DeleteBuilder,
-
-  // Alerter
-  CreateAlerter,
-  UpdateAlerter,
-  RenameAlerter,
-  DeleteAlerter,
-  TestAlerter,
-  SendAlert,
-
   // Maintenance
   ClearRepoCache,
   BackupCoreDatabase,
-  GlobalAutoUpdate,
   RotateAllServerKeys,
   RotateCoreKeys,
 
@@ -1474,16 +1268,11 @@ pub enum TerminationSignal {
 #[serde(tag = "type", content = "id")]
 pub enum ResourceTarget {
   System(String),
-  Swarm(String),
   Server(String),
   Stack(String),
-  Deployment(String),
-  Build(String),
   Repo(String),
   Procedure(String),
   Action(String),
-  Builder(String),
-  Alerter(String),
   ResourceSync(String),
 }
 
@@ -1503,16 +1292,11 @@ impl ResourceTarget {
   pub fn is_empty(&self) -> bool {
     match self {
       ResourceTarget::System(id) => id.is_empty(),
-      ResourceTarget::Swarm(id) => id.is_empty(),
       ResourceTarget::Server(id) => id.is_empty(),
       ResourceTarget::Stack(id) => id.is_empty(),
-      ResourceTarget::Deployment(id) => id.is_empty(),
-      ResourceTarget::Build(id) => id.is_empty(),
       ResourceTarget::Repo(id) => id.is_empty(),
       ResourceTarget::Procedure(id) => id.is_empty(),
       ResourceTarget::Action(id) => id.is_empty(),
-      ResourceTarget::Builder(id) => id.is_empty(),
-      ResourceTarget::Alerter(id) => id.is_empty(),
       ResourceTarget::ResourceSync(id) => id.is_empty(),
     }
   }
@@ -1526,14 +1310,9 @@ impl ResourceTarget {
   ) -> (ResourceTargetVariant, &String) {
     let id = match self {
       ResourceTarget::System(id) => id,
-      ResourceTarget::Swarm(id) => id,
       ResourceTarget::Server(id) => id,
       ResourceTarget::Stack(id) => id,
-      ResourceTarget::Build(id) => id,
-      ResourceTarget::Builder(id) => id,
-      ResourceTarget::Deployment(id) => id,
       ResourceTarget::Repo(id) => id,
-      ResourceTarget::Alerter(id) => id,
       ResourceTarget::Procedure(id) => id,
       ResourceTarget::Action(id) => id,
       ResourceTarget::ResourceSync(id) => id,
@@ -1551,18 +1330,6 @@ impl From<&server::Server> for ResourceTarget {
 impl From<&stack::Stack> for ResourceTarget {
   fn from(stack: &stack::Stack) -> Self {
     Self::Stack(stack.id.clone())
-  }
-}
-
-impl From<&deployment::Deployment> for ResourceTarget {
-  fn from(deployment: &deployment::Deployment) -> Self {
-    Self::Deployment(deployment.id.clone())
-  }
-}
-
-impl From<&build::Build> for ResourceTarget {
-  fn from(build: &build::Build) -> Self {
-    Self::Build(build.id.clone())
   }
 }
 
@@ -1590,34 +1357,17 @@ impl From<&sync::ResourceSync> for ResourceTarget {
   }
 }
 
-impl From<&builder::Builder> for ResourceTarget {
-  fn from(builder: &builder::Builder) -> Self {
-    Self::Builder(builder.id.clone())
-  }
-}
-
-impl From<&alerter::Alerter> for ResourceTarget {
-  fn from(alerter: &alerter::Alerter) -> Self {
-    Self::Alerter(alerter.id.clone())
-  }
-}
-
 impl ResourceTargetVariant {
   /// These need to use snake case
   pub fn toml_header(&self) -> &'static str {
     match self {
       ResourceTargetVariant::System => "system",
-      ResourceTargetVariant::Swarm => "swarm",
       ResourceTargetVariant::Server => "server",
       ResourceTargetVariant::Stack => "stack",
-      ResourceTargetVariant::Deployment => "deployment",
-      ResourceTargetVariant::Build => "build",
       ResourceTargetVariant::Repo => "repo",
       ResourceTargetVariant::Procedure => "procedure",
       ResourceTargetVariant::Action => "action",
       ResourceTargetVariant::ResourceSync => "resource_sync",
-      ResourceTargetVariant::Builder => "builder",
-      ResourceTargetVariant::Alerter => "alerter",
     }
   }
 }
@@ -1649,9 +1399,6 @@ pub enum FileFormat {
   Json,
 }
 
-/// Used with ExecuteTerminal to capture the exit code
-pub const KOMODO_EXIT_CODE: &str = "__KOMODO_EXIT_CODE:";
-
 pub fn resource_link(
   host: &str,
   resource_type: ResourceTargetVariant,
@@ -1659,17 +1406,12 @@ pub fn resource_link(
 ) -> String {
   let path = match resource_type {
     ResourceTargetVariant::System => unreachable!(),
-    ResourceTargetVariant::Swarm => format!("/swarms/{id}"),
     ResourceTargetVariant::Server => {
       format!("/servers/{id}")
     }
     ResourceTargetVariant::Stack => {
       format!("/stacks/{id}")
     }
-    ResourceTargetVariant::Deployment => {
-      format!("/deployments/{id}")
-    }
-    ResourceTargetVariant::Build => format!("/builds/{id}"),
     ResourceTargetVariant::Repo => format!("/repos/{id}"),
     ResourceTargetVariant::Procedure => {
       format!("/procedures/{id}")
@@ -1680,60 +1422,7 @@ pub fn resource_link(
     ResourceTargetVariant::ResourceSync => {
       format!("/resource-syncs/{id}")
     }
-    ResourceTargetVariant::Builder => {
-      format!("/builders/{id}")
-    }
-    ResourceTargetVariant::Alerter => {
-      format!("/alerters/{id}")
-    }
   };
   format!("{host}{path}")
 }
 
-#[allow(clippy::large_enum_variant)]
-pub enum SwarmOrServer {
-  Swarm(swarm::Swarm),
-  Server(server::Server),
-  None,
-}
-
-impl SwarmOrServer {
-  pub fn verify_has_target(&self) -> mogh_error::Result<()> {
-    if let Self::None = self {
-      Err(
-        anyhow!("Must attach either swarm or server")
-          .status_code(StatusCode::BAD_REQUEST),
-      )
-    } else {
-      Ok(())
-    }
-  }
-
-  pub fn swarm_id(&self) -> Option<&str> {
-    let Self::Swarm(swarm) = self else {
-      return None;
-    };
-    Some(&swarm.id)
-  }
-
-  pub fn swarm_name(&self) -> Option<&str> {
-    let Self::Swarm(swarm) = self else {
-      return None;
-    };
-    Some(&swarm.name)
-  }
-
-  pub fn server_id(&self) -> Option<&str> {
-    let Self::Server(server) = self else {
-      return None;
-    };
-    Some(&server.id)
-  }
-
-  pub fn server_name(&self) -> Option<&str> {
-    let Self::Server(server) = self else {
-      return None;
-    };
-    Some(&server.name)
-  }
-}

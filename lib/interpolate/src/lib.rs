@@ -2,8 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::Context;
 use komodo_client::entities::{
-  EnvironmentVar, build::Build, deployment::Deployment, repo::Repo,
-  stack::Stack, update::Log,
+  EnvironmentVar, repo::Repo, stack::Stack, update::Log,
 };
 
 pub struct Interpolator<'a> {
@@ -34,13 +33,8 @@ impl<'a> Interpolator<'a> {
       return Ok(self);
     }
     self
-      .interpolate_string(&mut stack.config.file_contents)?
-      .interpolate_string(&mut stack.config.environment)?
       .interpolate_string(&mut stack.config.pre_deploy.command)?
-      .interpolate_string(&mut stack.config.post_deploy.command)?
-      .interpolate_string(&mut stack.config.compose_cmd_wrapper)?
-      .interpolate_extra_args(&mut stack.config.extra_args)?
-      .interpolate_extra_args(&mut stack.config.build_extra_args)
+      .interpolate_string(&mut stack.config.post_deploy.command)
   }
 
   pub fn interpolate_repo(
@@ -54,38 +48,6 @@ impl<'a> Interpolator<'a> {
       .interpolate_string(&mut repo.config.environment)?
       .interpolate_string(&mut repo.config.on_clone.command)?
       .interpolate_string(&mut repo.config.on_pull.command)
-  }
-
-  pub fn interpolate_build(
-    &mut self,
-    build: &mut Build,
-  ) -> anyhow::Result<&mut Self> {
-    if build.config.skip_secret_interp {
-      return Ok(self);
-    }
-    self
-      .interpolate_string(&mut build.config.build_args)?
-      .interpolate_string(&mut build.config.secret_args)?
-      .interpolate_string(&mut build.config.labels)?
-      .interpolate_string(&mut build.config.pre_build.command)?
-      .interpolate_string(&mut build.config.dockerfile)?
-      .interpolate_extra_args(&mut build.config.extra_args)
-  }
-
-  pub fn interpolate_deployment(
-    &mut self,
-    deployment: &mut Deployment,
-  ) -> anyhow::Result<&mut Self> {
-    if deployment.config.skip_secret_interp {
-      return Ok(self);
-    }
-    self
-      .interpolate_string(&mut deployment.config.environment)?
-      .interpolate_string(&mut deployment.config.ports)?
-      .interpolate_string(&mut deployment.config.volumes)?
-      .interpolate_string(&mut deployment.config.labels)?
-      .interpolate_string(&mut deployment.config.command)?
-      .interpolate_extra_args(&mut deployment.config.extra_args)
   }
 
   pub fn interpolate_string(

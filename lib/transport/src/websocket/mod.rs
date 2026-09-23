@@ -10,7 +10,7 @@ use encoding::{
 };
 use periphery_client::transport::{
   EncodedTransportMessage, RequestMessage, ResponseMessage,
-  TerminalMessage, TransportMessage,
+  TransportMessage,
 };
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
@@ -161,13 +161,6 @@ pub trait WebsocketSenderExt: WebsocketSender + Send {
     self.send_message(ResponseMessage::new(channel, response))
   }
 
-  fn send_terminal(
-    &mut self,
-    channel: Uuid,
-    data: anyhow::Result<Vec<u8>>,
-  ) -> impl Future<Output = anyhow::Result<()>> + Send {
-    self.send_message(TerminalMessage::new(channel, data))
-  }
 }
 
 impl<S: WebsocketSender + Send> WebsocketSenderExt for S {}

@@ -18,9 +18,11 @@ logger = ["dep:mogh_logger"]
 svi = ["dep:svi"]
 cli = ["logger", "dep:mogh_pki",]
 core = ["mongo", "utoipa", "logger", "svi", "dep:mogh_server"]
-periphery = ["cli", "dep:ipnetwork", "svi", "dep:mogh_server"]
+periphery = ["cli", "svi"]
 
 [dependencies]
+# Vendored openssl so every crate in the graph builds the same way
+openssl-sys.workspace = true
 # mogh
 mogh_pki = { workspace = true, optional = true, features = ["cli"] }
 mongo_indexed = { workspace = true, optional = true }
@@ -34,7 +36,6 @@ mogh_auth_client.workspace = true
 partial_derive2.workspace = true
 mogh_resolver.workspace = true
 # external
-ipnetwork = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
 utoipa = { workspace = true, optional = true }
 tokio-tungstenite.workspace = true
@@ -50,7 +51,6 @@ serde_qs.workspace = true
 reqwest.workspace = true
 tracing.workspace = true
 anyhow.workspace = true
-bytes.workspace = true
 serde.workspace = true
 tokio.workspace = true
 strum.workspace = true

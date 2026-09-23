@@ -78,8 +78,6 @@ pub enum RepoState {
   Cloning,
   /// Currently pulling
   Pulling,
-  /// Currently building
-  Building,
   /// Last clone / pull successful (or never cloned)
   Ok,
   /// Last clone / pull failed
@@ -335,8 +333,6 @@ pub struct RepoActionState {
   pub cloning: bool,
   /// Whether Repo currently pulling on the attached Server
   pub pulling: bool,
-  /// Whether Repo currently building using the attached Builder.
-  pub building: bool,
   /// Whether Repo currently renaming.
   pub renaming: bool,
 }

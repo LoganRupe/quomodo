@@ -11,7 +11,6 @@ use typeshare::typeshare;
 
 use crate::KomodoClient;
 
-pub mod terminal;
 pub mod update;
 
 #[typeshare]

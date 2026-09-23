@@ -7,8 +7,8 @@ use typeshare::typeshare;
 use crate::entities::{I64, MongoId};
 
 use super::{
-  _Serror, ResourceTarget, ResourceTargetVariant, Version,
-  deployment::DeploymentState, stack::StackState,
+  _Serror, ResourceTarget, ResourceTargetVariant,
+  stack::StackState,
 };
 
 /// Representation of an alert in the system.
@@ -93,15 +93,6 @@ pub enum AlertData {
   },
 
   /// A server could not be reached.
-  SwarmUnhealthy {
-    /// The id of the swarm
-    id: String,
-    /// The name of the swarm
-    name: String,
-    /// The error data
-    err: Option<_Serror>,
-  },
-
   /// A server could not be reached.
   ServerUnreachable {
     /// The id of the server
@@ -173,61 +164,8 @@ pub enum AlertData {
 
   /// A container's state has changed unexpectedly.
   /// For swarms, this refers to swarm service.
-  ContainerStateChange {
-    /// The id of the deployment
-    id: String,
-    /// The name of the deployment
-    name: String,
-    /// The server id of server that the deployment is on
-    server_id: Option<String>,
-    /// The server name
-    server_name: Option<String>,
-    /// The swarm id of swarm that the deployment is on
-    swarm_id: Option<String>,
-    /// The swarm name
-    swarm_name: Option<String>,
-    /// The previous container state
-    from: DeploymentState,
-    /// The current container state
-    to: DeploymentState,
-  },
-
   /// A Deployment has an image update available
-  DeploymentImageUpdateAvailable {
-    /// The id of the deployment
-    id: String,
-    /// The name of the deployment
-    name: String,
-    /// The server id of server that the deployment is on
-    server_id: Option<String>,
-    /// The server name
-    server_name: Option<String>,
-    /// The swarm id of swarm that the deployment is on
-    swarm_id: Option<String>,
-    /// The swarm name
-    swarm_name: Option<String>,
-    /// The image with update
-    image: String,
-  },
-
   /// A Deployment has an image update available
-  DeploymentAutoUpdated {
-    /// The id of the deployment
-    id: String,
-    /// The name of the deployment
-    name: String,
-    /// The server id of server that the deployment is on
-    server_id: Option<String>,
-    /// The server name
-    server_name: Option<String>,
-    /// The swarm id of swarm that the deployment is on
-    swarm_id: Option<String>,
-    /// The swarm name
-    swarm_name: Option<String>,
-    /// The updated image
-    image: String,
-  },
-
   /// A stack's state has changed unexpectedly.
   StackStateChange {
     /// The id of the stack
@@ -249,51 +187,8 @@ pub enum AlertData {
   },
 
   /// A Stack has an image update available
-  StackImageUpdateAvailable {
-    /// The id of the stack
-    id: String,
-    /// The name of the stack
-    name: String,
-    /// The server id of server that the stack is on
-    server_id: Option<String>,
-    /// The server name
-    server_name: Option<String>,
-    /// The swarm id of swarm that the stack is on
-    swarm_id: Option<String>,
-    /// The swarm name
-    swarm_name: Option<String>,
-    /// The service name to update
-    service: String,
-    /// The image with update
-    image: String,
-  },
-
   /// A Stack was auto updated
-  StackAutoUpdated {
-    /// The id of the stack
-    id: String,
-    /// The name of the stack
-    name: String,
-    /// The server id of server that the stack is on
-    server_id: Option<String>,
-    /// The server name
-    server_name: Option<String>,
-    /// The swarm id of swarm that the stack is on
-    swarm_id: Option<String>,
-    /// The swarm name
-    swarm_name: Option<String>,
-    /// One or more images that were updated
-    images: Vec<String>,
-  },
-
   /// An AWS builder failed to terminate.
-  AwsBuilderTerminationFailed {
-    /// The id of the aws instance which failed to terminate
-    instance_id: String,
-    /// A reason for the failure
-    message: String,
-  },
-
   /// A resource sync has pending updates
   ResourceSyncPendingUpdates {
     /// The id of the resource sync
@@ -303,23 +198,7 @@ pub enum AlertData {
   },
 
   /// A build has failed
-  BuildFailed {
-    /// The id of the build
-    id: String,
-    /// The name of the build
-    name: String,
-    /// The version that failed to build
-    version: Version,
-  },
-
   /// A repo has failed
-  RepoBuildFailed {
-    /// The id of the repo
-    id: String,
-    /// The name of the repo
-    name: String,
-  },
-
   /// A procedure has failed
   ProcedureFailed {
     /// The id of the procedure

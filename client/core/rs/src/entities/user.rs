@@ -21,8 +21,6 @@ use super::{
   derive(mongo_indexed::derive::MongoIndexed)
 )]
 #[cfg_attr(feature = "mongo", doc_index({ "config.type": 1 }))]
-#[cfg_attr(feature = "mongo", sparse_doc_index({ "config.data.google_id": 1 }))]
-#[cfg_attr(feature = "mongo", sparse_doc_index({ "config.data.github_id": 1 }))]
 pub struct User {
   /// The Mongo ID of the User.
   /// This field is de/serialized from/to JSON as
@@ -179,11 +177,7 @@ pub enum UserConfig {
   /// User that logs in with username / password
   Local { password: String },
 
-  /// User that logs in via Google Oauth
-  Google { google_id: String, avatar: String },
 
-  /// User that logs in via Github Oauth
-  Github { github_id: String, avatar: String },
 
   /// User that logs in via Oidc provider
   Oidc { provider: String, user_id: String },

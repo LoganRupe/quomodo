@@ -16,7 +16,7 @@ use super::KomodoWriteRequest;
   description = "**Admin only**. Create an api key for a service user.",
   request_body(content = CreateApiKeyForServiceUser),
   responses(
-    (status = 200, description = "The new alerter", body = crate::entities::alerter::AlerterSchema),
+    (status = 200, description = "The api key response", body = CreateApiKeyResponse),
   ),
 )]
 pub fn create_api_key_for_service_user() {}
@@ -52,7 +52,7 @@ pub type CreateApiKeyForServiceUserResponse = CreateApiKeyResponse;
   description = "**Admin only.** Delete an api key for a service user.",
   request_body(content = DeleteApiKeyForServiceUser),
   responses(
-    (status = 200, description = "The new alerter", body = crate::entities::alerter::AlerterSchema),
+    (status = 200, description = "The api key response", body = CreateApiKeyResponse),
   ),
 )]
 pub fn delete_api_key_for_service_user() {}

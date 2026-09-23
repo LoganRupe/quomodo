@@ -28,18 +28,22 @@
 //! let update = client.execute(RunBuild { build: "test-build".to_string() }).await?:
 //! ```
 
-use std::{sync::OnceLock, time::Duration};
+use std::sync::OnceLock;
+#[cfg(not(feature = "blocking"))]
+use std::time::Duration;
 
 use anyhow::Context;
 use api::read::GetVersion;
 use serde::Deserialize;
 
 pub mod api;
+
+// Vendored openssl is linked for the whole graph; keep the dependency live.
+use openssl_sys as _;
 pub mod busy;
 pub mod deserializers;
 pub mod entities;
 pub mod parsers;
-pub mod terminal;
 pub mod ws;
 
 #[cfg(feature = "utoipa")]

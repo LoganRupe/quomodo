@@ -1,39 +1,18 @@
-use std::{collections::HashMap, sync::OnceLock};
-
-use anyhow::Context;
 use bson::{Document, doc};
 use derive_builder::Builder;
 use derive_default_builder::DefaultBuilder;
-use indexmap::IndexSet;
 use partial_derive2::Partial;
-use serde::{
-  Deserialize, Serialize,
-  de::{IntoDeserializer, Visitor, value::MapAccessDeserializer},
-};
+use serde::{Deserialize, Serialize};
 use strum::Display;
 use typeshare::typeshare;
 
-use crate::{
-  deserializers::{
-    env_vars_deserializer, file_contents_deserializer,
-    option_env_vars_deserializer, option_file_contents_deserializer,
-    option_maybe_string_i64_deserializer,
-    option_string_list_deserializer, string_list_deserializer,
-  },
-  entities::{
-    EnvironmentVar, ImageDigest,
-    docker::{
-      container::ContainerStateStatusEnum,
-      service::SwarmServiceListItem,
-    },
-    environment_vars_from_str,
-    swarm::SwarmState,
-  },
+use crate::deserializers::{
+  option_string_list_deserializer, string_list_deserializer,
 };
 
 use super::{
   FileContents, SystemCommand,
-  docker::container::ContainerListItem,
+  docker::container::{ContainerListItem, ContainerStateStatusEnum},
   resource::{Resource, ResourceListItem, ResourceQuery},
 };
 
@@ -44,103 +23,11 @@ pub struct StackSchema(
   #[schema(inline)] pub Resource<StackConfig, StackInfo>,
 );
 
+/// A Stack is a directory of podman quadlet unit files
+/// (`.container`, `.pod`, `.network`, `.volume`, `.build`, `.image`, `.kube`)
+/// plus any config files they reference, sourced from a git repo.
 #[typeshare]
 pub type Stack = Resource<StackConfig, StackInfo>;
-
-impl Stack {
-  /// If fresh is passed, it will bypass the deployed project name.
-  /// and get the most up to date one from just project_name field falling back to stack name.
-  pub fn project_name(&self, fresh: bool) -> String {
-    if !fresh
-      && let Some(project_name) = &self.info.deployed_project_name
-    {
-      return project_name.clone();
-    }
-    if self.config.project_name.is_empty() {
-      self.name.clone()
-    } else {
-      self.config.project_name.clone()
-    }
-  }
-
-  pub fn compose_file_paths(&self) -> &[String] {
-    if self.config.file_paths.is_empty() {
-      default_stack_file_paths()
-    } else {
-      &self.config.file_paths
-    }
-  }
-
-  pub fn is_compose_file(&self, path: &str) -> bool {
-    // First make sure its not a config file, which *could* also include
-    // other compose files not directly treated as compose.
-    if self.is_config_file(path) {
-      return false;
-    }
-    for compose_path in self.compose_file_paths() {
-      if path.ends_with(compose_path) {
-        return true;
-      }
-    }
-    false
-  }
-
-  pub fn is_config_file(&self, path: &str) -> bool {
-    for file in &self.config.config_files {
-      if path.ends_with(&file.path) {
-        return true;
-      }
-    }
-    false
-  }
-
-  /// Get tracked additional env files (those that Komodo should manage)
-  fn tracked_env_files(&self) -> impl Iterator<Item = &str> {
-    self
-      .config
-      .additional_env_files
-      .iter()
-      .filter(|f| f.track)
-      .map(|f| f.path.as_str())
-  }
-
-  pub fn all_tracked_file_paths(&self) -> Vec<String> {
-    let mut res = self
-      .compose_file_paths()
-      .iter()
-      .cloned()
-      // Makes sure to dedup them, while maintaining ordering
-      .collect::<IndexSet<_>>();
-    res.extend(self.tracked_env_files().map(str::to_string));
-    res.extend(
-      self.config.config_files.iter().map(|f| f.path.clone()),
-    );
-    res.into_iter().collect()
-  }
-
-  pub fn all_file_dependencies(&self) -> Vec<StackFileDependency> {
-    let mut res = self
-      .compose_file_paths()
-      .iter()
-      .cloned()
-      .map(StackFileDependency::full_redeploy)
-      // Makes sure to dedup them, while maintaining ordering
-      .collect::<IndexSet<_>>();
-    res.extend(
-      self
-        .tracked_env_files()
-        .map(|p| StackFileDependency::full_redeploy(p.to_string())),
-    );
-    res.extend(self.config.config_files.clone());
-    res.into_iter().collect()
-  }
-}
-
-fn default_stack_file_paths() -> &'static [String] {
-  static DEFAULT_FILE_PATHS: OnceLock<Vec<String>> = OnceLock::new();
-  DEFAULT_FILE_PATHS
-    .get_or_init(|| vec![String::from("compose.yaml")])
-}
 
 #[typeshare]
 pub type StackListItem = ResourceListItem<StackListItemInfo>;
@@ -149,20 +36,11 @@ pub type StackListItem = ResourceListItem<StackListItemInfo>;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct StackListItemInfo {
-  /// The swarm that stack is deployed on, when in Swarm mode.
-  pub swarm_id: String,
-  /// The name of the swarm that stack is deployed on, when in Swarm mode.
-  #[serde(default)]
-  pub swarm_name: String,
-  /// The server that stack is deployed on, when in Server mode.
+  /// The server that stack is deployed on.
   pub server_id: String,
-  /// The name of the server that stack is deployed on, when in Server mode.
+  /// The name of the server that stack is deployed on.
   #[serde(default)]
   pub server_name: String,
-  /// Whether stack is using files on host mode
-  pub files_on_host: bool,
-  /// Whether stack has file contents defined.
-  pub file_contents: bool,
   /// Linked repo, if one is attached.
   pub linked_repo: String,
   /// The name of the linked repo, if one is attached.
@@ -178,44 +56,19 @@ pub struct StackListItemInfo {
   pub repo_link: String,
   /// The stack state
   pub state: StackState,
-  /// A string given by docker conveying the status of the stack.
+  /// A string conveying the status of the stack.
   pub status: Option<String>,
-  /// The services that are part of the stack.
-  /// If deployed, will be `deployed_services`.
-  /// Otherwise, its `latest_services`
-  pub services: Vec<StackServiceWithUpdate>,
-  /// Whether stack has auto_update_all_services enabled.
-  pub auto_update_all_services: bool,
-  /// Whether the compose project is missing on the host.
-  /// Ie, it does not show up in `docker compose ls`.
-  /// If true, and the stack is not Down, this is an unhealthy state.
-  pub project_missing: bool,
-  /// If any compose files are missing in the repo, the path will be here.
-  /// If there are paths here, this is an unhealthy state, and deploying will fail.
-  pub missing_files: Vec<String>,
-  /// Deployed short commit hash, or null. Only for repo based stacks.
+  /// The quadlet units that are part of the stack.
+  /// If deployed, will be `deployed_units`.
+  /// Otherwise, its `latest_units`
+  pub units: Vec<QuadletUnit>,
+  /// If the stack directory has no quadlet units, or could not be read.
+  /// If true, this is an unhealthy state, and deploying will fail.
+  pub missing_units: bool,
+  /// Deployed short commit hash, or null.
   pub deployed_hash: Option<String>,
-  /// Latest short commit hash, or null. Only for repo based stacks
+  /// Latest short commit hash, or null.
   pub latest_hash: Option<String>,
-}
-
-impl StackListItemInfo {
-  pub fn update_available(&self) -> bool {
-    self.services.iter().any(|s| s.update_available)
-  }
-}
-
-#[typeshare]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-pub struct StackServiceWithUpdate {
-  pub service: String,
-  /// The service's (current) image
-  pub image: String,
-  /// The latest image (if different than current)
-  pub latest_image: Option<String>,
-  /// Whether there is a newer image available for this service
-  pub update_available: bool,
 }
 
 #[typeshare]
@@ -233,8 +86,6 @@ pub struct StackServiceWithUpdate {
   Display,
 )]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-// Do this one snake_case in line with DeploymentState.
-// Also in line with docker terminology.
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum StackState {
@@ -267,42 +118,29 @@ pub enum StackState {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct StackInfo {
-  /// If any of the expected compose / additional files are missing in the repo,
-  /// they will be stored here.
-  #[serde(default)]
-  pub missing_files: Vec<String>,
-
-  /// The deployed project name.
-  /// This is updated whenever Komodo successfully deploys the stack.
-  /// If it is present, Komodo will use it for actions over other options,
-  /// to ensure control is maintained after changing the project name (there is no rename compose project api).
-  pub deployed_project_name: Option<String>,
-
-  /// Deployed short commit hash, or null. Only for repo based stacks.
+  /// Deployed short commit hash, or null.
   pub deployed_hash: Option<String>,
-  /// Deployed commit message, or null. Only for repo based stacks
+  /// Deployed commit message, or null.
   pub deployed_message: Option<String>,
-  /// The deployed compose / additional file contents.
-  /// This is updated whenever Komodo successfully deploys the stack.
+  /// Hash over the deployed file contents and the resolved secret values.
+  /// Used by `DeployStackIfChanged` to decide whether a redeploy is needed.
+  /// Secret values themselves are never stored, only their hash contributes.
+  pub deployed_contents_hash: Option<String>,
+  /// The deployed file contents (with secret references unresolved).
+  /// This is updated whenever the stack is successfully deployed.
   pub deployed_contents: Option<Vec<FileContents>>,
-  /// The deployed service names.
-  /// This is updated whenever it is empty, or deployed contents is updated.
-  pub deployed_services: Option<Vec<StackServiceNames>>,
-  /// The output of `docker compose config`.
-  /// This is updated whenever Komodo successfully deploys the stack.
-  pub deployed_config: Option<String>,
-  /// The latest service names.
-  /// This is updated whenever the stack cache refreshes, using the latest file contents (either db defined or remote).
+  /// The deployed quadlet units.
+  /// This is updated whenever the stack is successfully deployed.
+  pub deployed_units: Option<Vec<QuadletUnit>>,
+  /// The latest quadlet units, parsed from the latest remote contents.
+  /// This is updated whenever the stack cache refreshes.
   #[serde(default)]
-  pub latest_services: Vec<StackServiceNames>,
-
-  /// The remote compose / additional file contents, whether on host or in repo.
-  /// This is updated whenever Komodo refreshes the stack cache.
-  /// It will be empty if the file is defined directly in the stack config.
-  pub remote_contents: Option<Vec<StackRemoteFileContents>>,
+  pub latest_units: Vec<QuadletUnit>,
+  /// The latest file contents in the stack directory (secret references unresolved).
+  /// This is updated whenever the stack cache refreshes.
+  pub remote_contents: Option<Vec<FileContents>>,
   /// If there was an error in getting the remote contents, it will be here.
   pub remote_errors: Option<Vec<FileContents>>,
-
   /// Latest commit hash, or null
   pub latest_hash: Option<String>,
   /// Latest commit message, or null
@@ -312,7 +150,7 @@ pub struct StackInfo {
 #[typeshare(serialized_as = "Partial<StackConfig>")]
 pub type _PartialStackConfig = PartialStackConfig;
 
-/// The compose file configuration.
+/// The quadlet stack configuration.
 #[typeshare]
 #[derive(Debug, Clone, Serialize, Deserialize, Builder, Partial)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -324,23 +162,7 @@ pub type _PartialStackConfig = PartialStackConfig;
 #[diff_derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[partial(skip_serializing_none, from, diff)]
 pub struct StackConfig {
-  /// The Swarm to deploy the Stack on, setting the Stack into Swarm mode.
-  ///
-  /// Note. If both swarm_id and server_id are set,
-  /// swarm_id overrides server_id and the Stack will be in Swarm mode.
-  #[serde(default, alias = "swarm")]
-  #[partial_attr(serde(alias = "swarm"))]
-  #[cfg_attr(
-    feature = "schemars",
-    partial_attr(schemars(rename = "swarm"))
-  )]
-  #[builder(default)]
-  pub swarm_id: String,
-
-  /// The Server to deploy the Stack on, setting the Stack into Compose mode.
-  ///
-  /// Note. If both swarm_id and server_id are set,
-  /// swarm_id overrides server_id and the Stack will be in Swarm mode.
+  /// The Server to deploy the Stack on.
   #[serde(default, alias = "server")]
   #[partial_attr(serde(alias = "server"))]
   #[cfg_attr(
@@ -359,76 +181,27 @@ pub struct StackConfig {
   #[builder(default)]
   pub links: Vec<String>,
 
-  /// Optionally specify a custom project name for the stack.
-  /// If this is empty string, it will default to the stack name.
-  /// Used with `docker compose -p {project_name}` / `docker stack deploy {project_name}`.
-  ///
-  /// Note. Can be used to import pre-existing stacks with names that do not match Stack name.
-  #[serde(default)]
-  #[builder(default)]
-  pub project_name: String,
-
-  /// Whether to automatically `compose pull` before redeploying stack.
-  /// Ensured latest images are deployed.
-  /// Will fail if the compose file specifies a locally build image.
-  ///
-  /// Note. Not used in Swarm mode.
+  /// Whether to `podman pull` the images of every container unit
+  /// before restarting units. Ensures latest images are deployed
+  /// while minimizing downtime.
   #[serde(default = "default_auto_pull")]
   #[builder(default = "default_auto_pull()")]
   #[partial_default(default_auto_pull())]
   pub auto_pull: bool,
 
-  /// Whether to `docker compose build` before `compose down` / `compose up`.
-  /// Combine with build_extra_args for custom behaviors.
-  ///
-  /// Note. Not used in Swarm mode.
-  #[serde(default)]
-  #[builder(default)]
-  pub run_build: bool,
-
-  /// Whether to poll for any updates to the images.
-  #[serde(default)]
-  #[builder(default)]
-  pub poll_for_updates: bool,
-
-  /// Whether to automatically redeploy when
-  /// newer images are found. Will implicitly
-  /// enable `poll_for_updates`, you don't need to
-  /// enable both.
-  #[serde(default)]
-  #[builder(default)]
-  pub auto_update: bool,
-
-  /// If auto update is enabled, Komodo will
-  /// by default only update the specific services
-  /// with image updates. If this parameter is set to true,
-  /// Komodo will redeploy the whole Stack (all services).
-  #[serde(default)]
-  #[builder(default)]
-  pub auto_update_all_services: bool,
-
-  /// Ignore certain services during Global Auto Update polling.
-  /// Services listed here are skipped only in the global auto-update flow.
-  /// Manual checks still include all services.
-  #[serde(default, deserialize_with = "string_list_deserializer")]
-  #[partial_attr(serde(
-    default,
-    deserialize_with = "option_string_list_deserializer"
-  ))]
-  #[builder(default)]
-  pub auto_update_skip_services: Vec<String>,
-
-  /// Whether to run `docker compose down` before `compose up`.
-  #[serde(default)]
-  #[builder(default)]
-  pub destroy_before_deploy: bool,
-
-  /// Whether to skip secret interpolation into the stack environment variables.
+  /// Whether to skip variable / secret interpolation into the stack files.
   #[serde(default)]
   #[builder(default)]
   pub skip_secret_interp: bool,
 
-  /// Choose a Komodo Repo (Resource) to source the compose files.
+  /// The secret store collection this stack reads secrets from.
+  /// Required if any file in the stack references a secret.
+  /// A stack that references a secret without naming a collection fails at sync.
+  #[serde(default)]
+  #[builder(default)]
+  pub secrets_collection: String,
+
+  /// Choose a Repo (Resource) to source the quadlet files.
   #[serde(default)]
   #[builder(default)]
   pub linked_repo: String,
@@ -440,8 +213,6 @@ pub struct StackConfig {
   pub git_provider: String,
 
   /// Whether to use https to clone the repo (versus http). Default: true
-  ///
-  /// Note. Komodo does not currently support cloning repos via ssh.
   #[serde(default = "default_git_https")]
   #[builder(default = "default_git_https()")]
   #[partial_default(default_git_https())]
@@ -449,14 +220,11 @@ pub struct StackConfig {
 
   /// The git account used to access private repos.
   /// Passing empty string can only clone public repos.
-  ///
-  /// Note. A token for the account must be available in the core config or the builder server's periphery config
-  /// for the configured git provider.
   #[serde(default)]
   #[builder(default)]
   pub git_account: String,
 
-  /// The repo used as the source of the build.
+  /// The repo used as the source of the stack.
   /// {namespace}/{repo_name}
   #[serde(default)]
   #[builder(default)]
@@ -502,60 +270,11 @@ pub struct StackConfig {
   #[builder(default)]
   pub webhook_force_deploy: bool,
 
-  /// If this is checked, the stack will source the files on the host.
-  /// Use `run_directory` and `file_paths` to specify the path on the host.
-  /// This is useful for those who wish to setup their files on the host,
-  /// rather than defining the contents in UI or in a git repo.
-  #[serde(default)]
-  #[builder(default)]
-  pub files_on_host: bool,
-
-  /// Directory to change to (`cd`) before running `docker compose up -d`.
+  /// The directory inside the repo holding the quadlet unit files.
+  /// Relative to the repo root.
   #[serde(default)]
   #[builder(default)]
   pub run_directory: String,
-
-  /// Add paths to compose files, relative to the run path.
-  /// If this is empty, will use file `compose.yaml`.
-  #[serde(default, deserialize_with = "string_list_deserializer")]
-  #[partial_attr(serde(
-    default,
-    deserialize_with = "option_string_list_deserializer"
-  ))]
-  #[builder(default)]
-  pub file_paths: Vec<String>,
-
-  /// The name of the written environment file before `docker compose up`.
-  /// Relative to the run directory root.
-  /// Default: .env
-  ///
-  /// Note. Not used in Swarm mode.
-  #[serde(default = "default_env_file_path")]
-  #[builder(default = "default_env_file_path()")]
-  #[partial_default(default_env_file_path())]
-  pub env_file_path: String,
-
-  /// Add additional env files to attach with `--env-file`.
-  /// Relative to the run directory root.
-  ///
-  /// Note. It is already included as an `additional_file`.
-  /// Don't add it again there.
-  #[serde(default)]
-  #[partial_attr(serde(default))]
-  #[builder(default)]
-  pub additional_env_files: Vec<AdditionalEnvFile>,
-
-  /// Add additional config files either in repo or on host to track.
-  /// Can add any files associated with the stack to enable editing them in the UI.
-  /// Doing so will also include diffing these when deciding to deploy in `DeployStackIfChanged`.
-  /// Relative to the run directory.
-  ///
-  /// Note. If the config file is .env and should be included in compose command
-  /// using `--env-file`, add it to `additional_env_files` instead.
-  #[serde(default)]
-  #[partial_attr(serde(default))]
-  #[builder(default)]
-  pub config_files: Vec<StackFileDependency>,
 
   /// Whether to send StackStateChange alerts for this stack.
   #[serde(default = "default_send_alerts")]
@@ -563,12 +282,12 @@ pub struct StackConfig {
   #[partial_default(default_send_alerts())]
   pub send_alerts: bool,
 
-  /// Used with `registry_account` to login to a registry before docker compose up.
+  /// Used with `registry_account` to `podman login` before pulling images.
   #[serde(default)]
   #[builder(default)]
   pub registry_provider: String,
 
-  /// Used with `registry_provider` to login to a registry before docker compose up.
+  /// Used with `registry_provider` to `podman login` before pulling images.
   #[serde(default)]
   #[builder(default)]
   pub registry_account: String,
@@ -583,112 +302,22 @@ pub struct StackConfig {
   #[builder(default)]
   pub post_deploy: SystemCommand,
 
-  /// The extra arguments to pass to the deploy command.
-  ///
-  /// - For Compose stack, uses `docker compose up -d [EXTRA_ARGS]`.
-  /// - For Swarm mode. `docker stack deploy [EXTRA_ARGS] STACK_NAME`
-  ///
-  /// If empty, no extra arguments will be passed.
+  /// Ignore certain units when checking the stack status.
+  /// For example, an init container might be exited, but the
+  /// stack should be healthy. Give the unit file name, eg `init.container`.
   #[serde(default, deserialize_with = "string_list_deserializer")]
   #[partial_attr(serde(
     default,
     deserialize_with = "option_string_list_deserializer"
   ))]
   #[builder(default)]
-  pub extra_args: Vec<String>,
-
-  /// The extra arguments to pass after `docker compose build`.
-  /// If empty, no extra build arguments will be passed.
-  /// Only used if `run_build: true`
-  ///
-  /// Note. Not used in Swarm mode.
-  #[serde(default, deserialize_with = "string_list_deserializer")]
-  #[partial_attr(serde(
-    default,
-    deserialize_with = "option_string_list_deserializer"
-  ))]
-  #[builder(default)]
-  pub build_extra_args: Vec<String>,
-
-  /// Optional command wrapper for secrets management tools.
-  /// Wraps the docker compose up command with a prefix command.
-  /// Use [[COMPOSE_COMMAND]] as placeholder for the full compose command.
-  ///
-  /// Examples:
-  /// - "op run -- [[COMPOSE_COMMAND]]" (1password CLI)
-  /// - "sops exec-file --no-fifo /path/to/secret.env '[[COMPOSE_COMMAND]]'" (sops)
-  #[serde(default)]
-  #[builder(default)]
-  pub compose_cmd_wrapper: String,
-
-  /// Which compose subcommands should use the wrapper.
-  /// Valid values for Compose: "config", "build", "pull", "up", "run"
-  /// Valid values for Swarm: "config", "deploy"
-  /// Default: [] (empty). If empty and wrapper is set, defaults to ["up"] (Compose) or ["deploy"] (Swarm).
-  /// Set to ["config", "build", "pull", "up"] for sops exec-file with {} placeholder.
-  #[serde(
-    default = "default_wrapper_include",
-    deserialize_with = "string_list_deserializer"
-  )]
-  #[partial_attr(serde(
-    default,
-    deserialize_with = "option_string_list_deserializer"
-  ))]
-  #[builder(default = "default_wrapper_include()")]
-  pub compose_cmd_wrapper_include: Vec<String>,
-
-  /// Ignore certain services declared in the compose file when checking
-  /// the stack status. For example, an init service might be exited, but the
-  /// stack should be healthy. This init service should be in `ignore_services`
-  #[serde(default, deserialize_with = "string_list_deserializer")]
-  #[partial_attr(serde(
-    default,
-    deserialize_with = "option_string_list_deserializer"
-  ))]
-  #[builder(default)]
-  pub ignore_services: Vec<String>,
-
-  /// The contents of the file directly, for management in the UI.
-  /// If this is empty, it will fall back to checking git config for
-  /// repo based compose file.
-  /// Supports variable / secret interpolation.
-  #[serde(default, deserialize_with = "file_contents_deserializer")]
-  #[partial_attr(serde(
-    default,
-    deserialize_with = "option_file_contents_deserializer"
-  ))]
-  #[builder(default)]
-  pub file_contents: String,
-
-  /// The environment variables passed to the compose file.
-  /// They will be written to path defined in env_file_path,
-  /// which is given relative to the run directory.
-  ///
-  /// If it is empty, no file will be written.
-  ///
-  /// Note. Not used in Swarm mode.
-  #[serde(default, deserialize_with = "env_vars_deserializer")]
-  #[partial_attr(serde(
-    default,
-    deserialize_with = "option_env_vars_deserializer"
-  ))]
-  #[builder(default)]
-  pub environment: String,
+  pub ignore_units: Vec<String>,
 }
 
 impl StackConfig {
   pub fn builder() -> StackConfigBuilder {
     StackConfigBuilder::default()
   }
-
-  pub fn env_vars(&self) -> anyhow::Result<Vec<EnvironmentVar>> {
-    environment_vars_from_str(&self.environment)
-      .context("Invalid environment")
-  }
-}
-
-fn default_env_file_path() -> String {
-  String::from(".env")
 }
 
 fn default_auto_pull() -> bool {
@@ -715,55 +344,33 @@ fn default_send_alerts() -> bool {
   true
 }
 
-fn default_wrapper_include() -> Vec<String> {
-  vec![]
-}
-
 impl Default for StackConfig {
   fn default() -> Self {
     Self {
-      swarm_id: Default::default(),
       server_id: Default::default(),
-      project_name: Default::default(),
-      run_directory: Default::default(),
-      file_paths: Default::default(),
-      files_on_host: Default::default(),
-      registry_provider: Default::default(),
-      registry_account: Default::default(),
-      file_contents: Default::default(),
+      links: Default::default(),
       auto_pull: default_auto_pull(),
-      poll_for_updates: Default::default(),
-      auto_update: Default::default(),
-      auto_update_all_services: Default::default(),
-      auto_update_skip_services: Default::default(),
-      ignore_services: Default::default(),
-      pre_deploy: Default::default(),
-      post_deploy: Default::default(),
-      extra_args: Default::default(),
-      environment: Default::default(),
-      env_file_path: default_env_file_path(),
-      additional_env_files: Default::default(),
-      config_files: Default::default(),
-      run_build: Default::default(),
-      destroy_before_deploy: Default::default(),
-      build_extra_args: Default::default(),
-      compose_cmd_wrapper: Default::default(),
-      compose_cmd_wrapper_include: default_wrapper_include(),
       skip_secret_interp: Default::default(),
+      secrets_collection: Default::default(),
       linked_repo: Default::default(),
       git_provider: default_git_provider(),
       git_https: default_git_https(),
+      git_account: Default::default(),
       repo: Default::default(),
       branch: default_branch(),
       commit: Default::default(),
       clone_path: Default::default(),
       reclone: Default::default(),
-      git_account: Default::default(),
       webhook_enabled: default_webhook_enabled(),
       webhook_secret: Default::default(),
       webhook_force_deploy: Default::default(),
+      run_directory: Default::default(),
       send_alerts: default_send_alerts(),
-      links: Default::default(),
+      registry_provider: Default::default(),
+      registry_account: Default::default(),
+      pre_deploy: Default::default(),
+      post_deploy: Default::default(),
+      ignore_units: Default::default(),
     }
   }
 }
@@ -779,80 +386,117 @@ impl utoipa::PartialSchema for PartialStackConfig {
 #[cfg(feature = "utoipa")]
 impl utoipa::ToSchema for PartialStackConfig {}
 
+/// The kind of quadlet unit, by file extension.
 #[typeshare]
 #[derive(
-  Debug, Clone, Default, PartialEq, Serialize, Deserialize,
+  Debug,
+  Clone,
+  Copy,
+  PartialEq,
+  Eq,
+  Hash,
+  Default,
+  Serialize,
+  Deserialize,
+  Display,
 )]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-pub struct ComposeProject {
-  /// The compose project name.
-  pub name: String,
-  /// The status of the project, as returned by docker.
-  pub status: Option<String>,
-  /// The compose files included in the project.
-  pub compose_files: Vec<String>,
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
+pub enum QuadletKind {
+  #[default]
+  Container,
+  Pod,
+  Network,
+  Volume,
+  Build,
+  Image,
+  Kube,
 }
 
+impl QuadletKind {
+  /// Parse from the unit file name, eg `web.container`.
+  pub fn from_file_name(file_name: &str) -> Option<QuadletKind> {
+    let (_, ext) = file_name.rsplit_once('.')?;
+    match ext {
+      "container" => Some(QuadletKind::Container),
+      "pod" => Some(QuadletKind::Pod),
+      "network" => Some(QuadletKind::Network),
+      "volume" => Some(QuadletKind::Volume),
+      "build" => Some(QuadletKind::Build),
+      "image" => Some(QuadletKind::Image),
+      "kube" => Some(QuadletKind::Kube),
+      _ => None,
+    }
+  }
+
+  /// The systemd service name quadlet generates for a unit file
+  /// with this kind and the given stem (file name without extension).
+  pub fn service_name(&self, stem: &str) -> String {
+    match self {
+      QuadletKind::Container | QuadletKind::Kube => {
+        format!("{stem}.service")
+      }
+      QuadletKind::Pod => format!("{stem}-pod.service"),
+      QuadletKind::Network => format!("{stem}-network.service"),
+      QuadletKind::Volume => format!("{stem}-volume.service"),
+      QuadletKind::Build => format!("{stem}-build.service"),
+      QuadletKind::Image => format!("{stem}-image.service"),
+    }
+  }
+
+  /// Whether this kind of unit is started directly on deploy.
+  /// Network / volume / image / build units are pulled in
+  /// as dependencies of the units that reference them.
+  pub fn is_runnable(&self) -> bool {
+    matches!(
+      self,
+      QuadletKind::Container | QuadletKind::Pod | QuadletKind::Kube
+    )
+  }
+}
+
+/// A quadlet unit belonging to a Stack.
 #[typeshare]
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(
+  Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize,
+)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-pub struct StackServiceNames {
-  /// The name of the service
-  pub service_name: String,
-  /// Will either be the declared container_name in the compose file,
-  /// or a pattern to match auto named containers.
-  ///
-  /// Auto named containers are composed of three parts:
-  ///
-  /// 1. The name of the compose project (top level name field of compose file).
-  ///    This defaults to the name of the parent folder of the compose file.
-  ///    Komodo will always set it to be the name of the stack, but imported stacks
-  ///    will have a different name.
-  /// 2. The service name
-  /// 3. The replica number
-  ///
-  /// Example: stacko-mongo-1.
-  ///
-  /// This stores only 1. and 2., ie stacko-mongo.
-  /// Containers will be matched via regex like `^container_name-?[0-9]*$``
-  ///
-  /// Note. Setting container_name is not supported by Swarm,
-  /// so will always be 1. and 2. in Swarm mode.
-  pub container_name: String,
-  /// The services image.
+pub struct QuadletUnit {
+  /// The unit file name, relative to the stack directory. Eg `web.container`.
+  pub file: String,
+  /// The kind of unit
+  pub kind: QuadletKind,
+  /// The systemd service name quadlet generates. Eg `web.service`, `db-pod.service`.
+  pub service: String,
+  /// The podman object name (container / pod / network / volume name).
+  /// Quadlet defaults this to `systemd-{stem}` unless overridden in the unit.
+  pub name: String,
+  /// For container units, the `Image=`.
   #[serde(default)]
   pub image: String,
-  /// Store the associated image digest.
-  /// This includes both the image name / tag, and the specific digest hash.
-  pub image_digest: Option<ImageDigest>,
+  /// For container units, the `Pod=` reference, if any (eg `db.pod`).
+  #[serde(default)]
+  pub pod: Option<String>,
 }
 
-/// A stack service, whether server or swarm based.
 #[typeshare]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct StackService {
-  /// The stack which the service is a part of.
   pub stack_id: String,
-  /// The name of the stack which the service is a part of.
   #[serde(default)]
   pub stack_name: String,
-  /// The service name
+  /// The unit file name, eg `web.container`
   pub service: String,
-  /// The service image
-  pub image: String,
-  /// The container (Server mode)
+  /// The unit
+  pub unit: QuadletUnit,
+  /// The container backing the unit, if found.
   pub container: Option<ContainerListItem>,
-  /// The service (Swarm mode)
-  pub swarm_service: Option<SwarmServiceListItem>,
-  /// The service state
   pub state: StackServiceState,
-  /// The service image digests
-  pub image_digests: Option<Vec<ImageDigest>>,
 }
 
-/// Combined state options for
-/// both Server and Swarm based Stacks.
 #[typeshare]
 #[derive(
   Debug,
@@ -869,42 +513,19 @@ pub struct StackService {
 )]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub enum StackServiceState {
-  /// (Swarm) All tasks OK
   Healthy,
-  /// (Swarm) Some tasks don't match desired state
   Unhealthy,
-  /// (Swarm) All tasks down.
   Down,
-  /// (Container) Container is running
   Running,
-  /// (Container) Container is created
   Created,
-  /// (Container) Container is paused
   Paused,
-  /// (Container) Container is restarting
   Restarting,
-  /// (Container) Container is exited
   Exited,
-  /// (Container) Container is stopping
   Stopping,
-  /// (Container) Container is removing
   Removing,
-  /// (Container) Container is dead
   Dead,
-  /// Unknown case
   #[default]
   Unknown,
-}
-
-impl From<SwarmState> for StackServiceState {
-  fn from(value: SwarmState) -> Self {
-    match value {
-      SwarmState::Healthy => StackServiceState::Healthy,
-      SwarmState::Unhealthy => StackServiceState::Unhealthy,
-      SwarmState::Down => StackServiceState::Down,
-      SwarmState::Unknown => StackServiceState::Unknown,
-    }
-  }
 }
 
 impl From<ContainerStateStatusEnum> for StackServiceState {
@@ -937,8 +558,6 @@ pub struct StackActionState {
   pub deploying: bool,
   pub starting: bool,
   pub restarting: bool,
-  pub pausing: bool,
-  pub unpausing: bool,
   pub stopping: bool,
   pub destroying: bool,
 }
@@ -952,14 +571,10 @@ pub type StackQuery = ResourceQuery<StackQuerySpecifics>;
 )]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub enum StackSortBy {
-  /// Sort by name. Default.
   #[default]
   Name,
-  /// Sort by source repo.
   Source,
-  /// Sort by host Server / Swarm name.
   Host,
-  /// Sort by state.
   State,
 }
 
@@ -969,28 +584,12 @@ pub enum StackSortBy {
 )]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct StackQuerySpecifics {
-  /// Query only for Stacks on these Servers.
-  /// If empty, does not filter by Server.
-  /// Only accepts Server id (not name).
   #[serde(default)]
   pub server_ids: Vec<String>,
-  /// Query only for Stacks on these Swarms.
-  /// If empty, does not filter by Swarm.
-  /// Only accepts Swarm id (not name).
-  #[serde(default)]
-  pub swarm_ids: Vec<String>,
-  /// Query only for Stacks with these linked repos.
-  /// Only accepts Repo id (not name).
   #[serde(default)]
   pub linked_repos: Vec<String>,
-  /// Filter syncs by their repo.
   #[serde(default)]
   pub repos: Vec<String>,
-  /// Query only for Stack with available image updates.
-  #[serde(default)]
-  pub update_available: bool,
-  /// Query only for Stacks matching these states.
-  /// If empty, does not filter by state.
   #[serde(default)]
   pub states: Vec<StackState>,
 }
@@ -1000,10 +599,6 @@ impl super::resource::AddFilters for StackQuerySpecifics {
     if !self.server_ids.is_empty() {
       filters
         .insert("config.server_id", doc! { "$in": &self.server_ids });
-    }
-    if !self.swarm_ids.is_empty() {
-      filters
-        .insert("config.swarm_id", doc! { "$in": &self.swarm_ids });
     }
     if !self.linked_repos.is_empty() {
       filters.insert(
@@ -1016,277 +611,3 @@ impl super::resource::AddFilters for StackQuerySpecifics {
     }
   }
 }
-
-/// Keeping this minimal for now as its only needed to parse the service names / container names,
-/// and replica count. Not a typeshared type.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ComposeFile {
-  /// If not provided, will default to the parent folder holding the compose file.
-  pub name: Option<String>,
-  #[serde(default)]
-  pub services: HashMap<String, ComposeService>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ComposeService {
-  pub image: Option<String>,
-  pub container_name: Option<String>,
-  pub deploy: Option<ComposeServiceDeploy>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ComposeServiceDeploy {
-  #[serde(
-    default,
-    deserialize_with = "option_maybe_string_i64_deserializer"
-  )]
-  pub replicas: Option<i64>,
-}
-
-// PRE-1.19.1 BACKWARD COMPAT NOTE
-// This was split from general FileContents in 1.19.1,
-// and must maintain 2 way de/ser backward compatibility
-// with the mentioned struct.
-/// Same as [FileContents] with some extra
-/// info specific to Stacks.
-#[typeshare]
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-pub struct StackRemoteFileContents {
-  /// The path to the file
-  pub path: String,
-  /// The contents of the file
-  pub contents: String,
-  /// The services depending on this file,
-  /// or empty for global requirement (eg all compose files and env files).
-  #[serde(default)]
-  pub services: Vec<String>,
-  /// Whether diff requires Redeploy / Restart / None
-  #[serde(default)]
-  pub requires: StackFileRequires,
-}
-
-#[typeshare]
-#[derive(
-  Debug,
-  Clone,
-  Copy,
-  PartialEq,
-  Eq,
-  Hash,
-  Default,
-  Serialize,
-  Deserialize,
-)]
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
-pub enum StackFileRequires {
-  /// Diff requires service redeploy.
-  #[serde(alias = "redeploy")]
-  Redeploy,
-  /// Diff requires service restart
-  #[serde(alias = "restart")]
-  Restart,
-  /// Diff requires no action. Default.
-  #[default]
-  #[serde(alias = "none")]
-  None,
-}
-
-/// Additional env file configuration for Stack.
-/// Supports backward compatibility with string-only format.
-#[typeshare]
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
-pub struct AdditionalEnvFile {
-  /// File path relative to run directory
-  pub path: String,
-  /// Whether Komodo should track this file's contents.
-  /// If true (default), Komodo will read, display, diff, and validate.
-  /// If false, only passed to docker compose via --env-file.
-  /// Useful for externally managed files (e.g., sops decrypted files).
-  #[serde(default = "default_true")]
-  pub track: bool,
-}
-
-fn default_true() -> bool {
-  true
-}
-
-/// Used with custom de/serializer for [AdditionalEnvFile]
-#[derive(Deserialize)]
-struct __AdditionalEnvFile {
-  path: String,
-  #[serde(default = "default_true")]
-  track: bool,
-}
-
-impl<'de> Deserialize<'de> for AdditionalEnvFile {
-  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-  where
-    D: serde::Deserializer<'de>,
-  {
-    struct AdditionalEnvFileVisitor;
-
-    impl<'de> Visitor<'de> for AdditionalEnvFileVisitor {
-      type Value = AdditionalEnvFile;
-
-      fn expecting(
-        &self,
-        formatter: &mut std::fmt::Formatter,
-      ) -> std::fmt::Result {
-        write!(formatter, "string or AdditionalEnvFile (object)")
-      }
-
-      fn visit_string<E>(self, path: String) -> Result<Self::Value, E>
-      where
-        E: serde::de::Error,
-      {
-        Ok(AdditionalEnvFile {
-          path,
-          track: default_true(),
-        })
-      }
-
-      fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-      where
-        E: serde::de::Error,
-      {
-        Self::visit_string(self, v.to_string())
-      }
-
-      fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
-      where
-        A: serde::de::MapAccess<'de>,
-      {
-        __AdditionalEnvFile::deserialize(
-          MapAccessDeserializer::new(map).into_deserializer(),
-        )
-        .map(|v| AdditionalEnvFile {
-          path: v.path,
-          track: v.track,
-        })
-      }
-    }
-
-    deserializer.deserialize_any(AdditionalEnvFileVisitor)
-  }
-}
-
-/// Configure additional file dependencies of the Stack.
-#[typeshare]
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
-pub struct StackFileDependency {
-  /// Specify the file
-  pub path: String,
-  /// Specify specific service/s
-  #[serde(default, skip_serializing_if = "Vec::is_empty")]
-  pub services: Vec<String>,
-  /// Specify
-  #[serde(default, skip_serializing_if = "is_none")]
-  pub requires: StackFileRequires,
-}
-
-impl StackFileDependency {
-  pub fn full_redeploy(path: String) -> StackFileDependency {
-    StackFileDependency {
-      path,
-      services: Vec::new(),
-      requires: StackFileRequires::Redeploy,
-    }
-  }
-}
-
-fn is_none(requires: &StackFileRequires) -> bool {
-  matches!(requires, StackFileRequires::None)
-}
-
-/// Used with custom de/serializer for [StackFileDependency]
-#[derive(Deserialize)]
-struct __StackFileDependency {
-  path: String,
-  #[serde(
-    default,
-    alias = "service",
-    deserialize_with = "string_list_deserializer"
-  )]
-  services: Vec<String>,
-  #[serde(default, alias = "req")]
-  requires: StackFileRequires,
-}
-
-impl<'de> Deserialize<'de> for StackFileDependency {
-  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-  where
-    D: serde::Deserializer<'de>,
-  {
-    struct StackFileDependencyVisitor;
-
-    impl<'de> Visitor<'de> for StackFileDependencyVisitor {
-      type Value = StackFileDependency;
-
-      fn expecting(
-        &self,
-        formatter: &mut std::fmt::Formatter,
-      ) -> std::fmt::Result {
-        write!(formatter, "string or StackFileDependency (object)")
-      }
-
-      fn visit_string<E>(self, path: String) -> Result<Self::Value, E>
-      where
-        E: serde::de::Error,
-      {
-        Ok(StackFileDependency {
-          path,
-          services: Vec::new(),
-          requires: StackFileRequires::None,
-        })
-      }
-
-      fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-      where
-        E: serde::de::Error,
-      {
-        Self::visit_string(self, v.to_string())
-      }
-
-      fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
-      where
-        A: serde::de::MapAccess<'de>,
-      {
-        __StackFileDependency::deserialize(
-          MapAccessDeserializer::new(map).into_deserializer(),
-        )
-        .map(|v| StackFileDependency {
-          path: v.path,
-          services: v.services,
-          requires: v.requires,
-        })
-      }
-    }
-
-    deserializer.deserialize_any(StackFileDependencyVisitor)
-  }
-}
-
-// // This one is nice for TOML, but annoying to use in UI
-// impl Serialize for StackFileDependency {
-//   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//   where
-//     S: serde::Serializer,
-//   {
-//     // Serialize to string in default case
-//     if is_redeploy(&self.requires) && self.services.is_empty() {
-//       return serializer.serialize_str(&self.path);
-//     }
-//     __StackFileDependency {
-//       path: self.path.clone(),
-//       services: self.services.clone(),
-//       requires: self.requires,
-//     }
-//     .serialize(serializer)
-//   }
-// }

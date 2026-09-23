@@ -64,7 +64,6 @@
 
 pub mod execute;
 pub mod read;
-pub mod terminal;
 pub mod write;
 
 pub mod auth {

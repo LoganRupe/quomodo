@@ -4,9 +4,6 @@ use typeshare::typeshare;
 
 use crate::entities::{
   SearchCombinator, U64,
-  docker::{
-    container::Container, service::SwarmService, stack::SwarmStack,
-  },
   stack::{
     Stack, StackActionState, StackListItem, StackQuery, StackService,
     StackServiceState, StackSortBy,
@@ -240,103 +237,6 @@ pub type ListAllStackServicesResponse = Vec<StackService>;
 #[cfg(feature = "utoipa")]
 #[utoipa::path(
   post,
-  path = "/InspectStackContainer",
-  description = "Inspect a docker container associated with a Stack.",
-  request_body(content = InspectStackContainer),
-  responses(
-    (status = 200, description = "The container", body = InspectStackContainerResponse),
-  ),
-)]
-pub fn inspect_stack_container() {}
-
-/// Inspect a docker container associated with a Stack.
-/// Response: [Container].
-#[typeshare]
-#[derive(Serialize, Deserialize, Debug, Clone, Resolve)]
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[empty_traits(KomodoReadRequest)]
-#[response(InspectStackContainerResponse)]
-#[error(mogh_error::Error)]
-pub struct InspectStackContainer {
-  /// Id or name
-  #[serde(alias = "id", alias = "name")]
-  pub stack: String,
-  /// The service name to inspect
-  pub service: String,
-}
-
-#[typeshare]
-pub type InspectStackContainerResponse = Container;
-
-//
-
-#[cfg(feature = "utoipa")]
-#[utoipa::path(
-  post,
-  path = "/InspectStackSwarmService",
-  description = "Inspect a swarm service associated with a Stack.",
-  request_body(content = InspectStackSwarmService),
-  responses(
-    (status = 200, description = "The swarm service", body = InspectStackSwarmServiceResponse),
-  ),
-)]
-pub fn inspect_stack_swarm_service() {}
-
-/// Inspect a swarm service associated with a Stack.
-/// Response: [SwarmService].
-#[typeshare]
-#[derive(Serialize, Deserialize, Debug, Clone, Resolve)]
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[empty_traits(KomodoReadRequest)]
-#[response(InspectStackSwarmServiceResponse)]
-#[error(mogh_error::Error)]
-pub struct InspectStackSwarmService {
-  /// Id or name
-  #[serde(alias = "id", alias = "name")]
-  pub stack: String,
-  /// The service name to inspect
-  pub service: String,
-}
-
-#[typeshare]
-pub type InspectStackSwarmServiceResponse = SwarmService;
-
-//
-
-#[cfg(feature = "utoipa")]
-#[utoipa::path(
-  post,
-  path = "/InspectStackSwarmInfo",
-  description = "Inspect swarm info associated with a Stack.",
-  request_body(content = InspectStackSwarmInfo),
-  responses(
-    (status = 200, description = "The swarm info", body = InspectStackSwarmInfoResponse),
-  ),
-)]
-pub fn inspect_stack_swarm_info() {}
-
-/// Inspect swarm info associated with a Stack.
-/// Response: [SwarmStack].
-#[typeshare]
-#[derive(Serialize, Deserialize, Debug, Clone, Resolve)]
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[empty_traits(KomodoReadRequest)]
-#[response(InspectStackSwarmInfoResponse)]
-#[error(mogh_error::Error)]
-pub struct InspectStackSwarmInfo {
-  /// Id or name
-  #[serde(alias = "id", alias = "name")]
-  pub stack: String,
-}
-
-#[typeshare]
-pub type InspectStackSwarmInfoResponse = SwarmStack;
-
-//
-
-#[cfg(feature = "utoipa")]
-#[utoipa::path(
-  post,
   path = "/GetStackLog",
   description = "Get a stack's logs. Filter down included services.",
   request_body(content = GetStackLog),
@@ -428,68 +328,6 @@ pub struct SearchStackLog {
 
 #[typeshare]
 pub type SearchStackLogResponse = Log;
-
-//
-
-#[cfg(feature = "utoipa")]
-#[utoipa::path(
-  post,
-  path = "/ListCommonStackExtraArgs",
-  description = "Gets a list of existing values used as extra args across other stacks.",
-  request_body(content = ListCommonStackExtraArgs),
-  responses(
-    (status = 200, description = "The list of extra args", body = ListCommonStackExtraArgsResponse),
-  ),
-)]
-pub fn list_common_stack_extra_args() {}
-
-/// Gets a list of existing values used as extra args across other stacks.
-/// Useful to offer suggestions. Response: [ListCommonStackExtraArgsResponse]
-#[typeshare]
-#[derive(Serialize, Deserialize, Debug, Clone, Resolve)]
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[empty_traits(KomodoReadRequest)]
-#[response(ListCommonStackExtraArgsResponse)]
-#[error(mogh_error::Error)]
-pub struct ListCommonStackExtraArgs {
-  /// optional structured query to filter stacks.
-  #[serde(default)]
-  pub query: StackQuery,
-}
-
-#[typeshare]
-pub type ListCommonStackExtraArgsResponse = Vec<String>;
-
-//
-
-#[cfg(feature = "utoipa")]
-#[utoipa::path(
-  post,
-  path = "/ListCommonStackBuildExtraArgs",
-  description = "Gets a list of existing values used as build extra args across other stacks.",
-  request_body(content = ListCommonStackBuildExtraArgs),
-  responses(
-    (status = 200, description = "The list of build extra args", body = ListCommonStackBuildExtraArgsResponse),
-  ),
-)]
-pub fn list_common_stack_build_extra_args() {}
-
-/// Gets a list of existing values used as build extra args across other stacks.
-/// Useful to offer suggestions. Response: [ListCommonStackBuildExtraArgsResponse]
-#[typeshare]
-#[derive(Serialize, Deserialize, Debug, Clone, Resolve)]
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[empty_traits(KomodoReadRequest)]
-#[response(ListCommonStackBuildExtraArgsResponse)]
-#[error(mogh_error::Error)]
-pub struct ListCommonStackBuildExtraArgs {
-  /// optional structured query to filter stacks.
-  #[serde(default)]
-  pub query: StackQuery,
-}
-
-#[typeshare]
-pub type ListCommonStackBuildExtraArgsResponse = Vec<String>;
 
 //
 

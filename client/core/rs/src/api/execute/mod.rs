@@ -5,27 +5,19 @@ use strum::{AsRefStr, Display, EnumDiscriminants, EnumString};
 use typeshare::typeshare;
 
 mod action;
-mod alerter;
-mod build;
-mod deployment;
 mod maintenance;
 mod procedure;
 mod repo;
 mod server;
 mod stack;
-mod swarm;
 mod sync;
 
 pub use action::*;
-pub use alerter::*;
-pub use build::*;
-pub use deployment::*;
 pub use maintenance::*;
 pub use procedure::*;
 pub use repo::*;
 pub use server::*;
 pub use stack::*;
-pub use swarm::*;
 pub use sync::*;
 
 use crate::{
@@ -95,33 +87,9 @@ pub enum Execution {
   BatchPullStack(BatchPullStack),
   StartStack(StartStack),
   RestartStack(RestartStack),
-  PauseStack(PauseStack),
-  UnpauseStack(UnpauseStack),
   StopStack(StopStack),
   DestroyStack(DestroyStack),
   BatchDestroyStack(BatchDestroyStack),
-  RunStackService(RunStackService),
-
-  // DEPLOYMENT
-  /// Deploy the target deployment. (alias: `dp`)
-  #[clap(alias = "dp")]
-  Deploy(Deploy),
-  BatchDeploy(BatchDeploy),
-  PullDeployment(PullDeployment),
-  StartDeployment(StartDeployment),
-  RestartDeployment(RestartDeployment),
-  PauseDeployment(PauseDeployment),
-  UnpauseDeployment(UnpauseDeployment),
-  StopDeployment(StopDeployment),
-  DestroyDeployment(DestroyDeployment),
-  BatchDestroyDeployment(BatchDestroyDeployment),
-
-  // BUILD
-  /// Run the target build. (alias: `build`, `bd`)
-  #[clap(alias = "build", alias = "bd")]
-  RunBuild(RunBuild),
-  BatchRunBuild(BatchRunBuild),
-  CancelBuild(CancelBuild),
 
   // REPO
   /// Clone the target repo
@@ -130,9 +98,6 @@ pub enum Execution {
   BatchCloneRepo(BatchCloneRepo),
   PullRepo(PullRepo),
   BatchPullRepo(BatchPullRepo),
-  BuildRepo(BuildRepo),
-  BatchBuildRepo(BatchBuildRepo),
-  CancelRepoBuild(CancelRepoBuild),
 
   // PROCEDURE
   /// Run the target procedure. (alias: `procedure`, `pr`)
@@ -156,45 +121,9 @@ pub enum Execution {
   #[clap(alias = "commit")]
   CommitSync(CommitSync), // This is a special case, its actually a write operation.
 
-  // ALERTER
-  TestAlerter(TestAlerter),
-  #[clap(alias = "alert")]
-  SendAlert(SendAlert),
-
   // SERVER
-  StartContainer(StartContainer),
-  RestartContainer(RestartContainer),
-  PauseContainer(PauseContainer),
-  UnpauseContainer(UnpauseContainer),
-  StopContainer(StopContainer),
-  DestroyContainer(DestroyContainer),
-  StartAllContainers(StartAllContainers),
-  RestartAllContainers(RestartAllContainers),
-  PauseAllContainers(PauseAllContainers),
-  UnpauseAllContainers(UnpauseAllContainers),
-  StopAllContainers(StopAllContainers),
-  PruneContainers(PruneContainers),
-  DeleteNetwork(DeleteNetwork),
-  PruneNetworks(PruneNetworks),
-  DeleteImage(DeleteImage),
   PruneImages(PruneImages),
-  DeleteVolume(DeleteVolume),
-  PruneVolumes(PruneVolumes),
-  PruneDockerBuilders(PruneDockerBuilders),
-  PruneBuildx(PruneBuildx),
   PruneSystem(PruneSystem),
-
-  // SWARM
-  RemoveSwarmNodes(RemoveSwarmNodes),
-  UpdateSwarmNode(UpdateSwarmNode),
-  RemoveSwarmStacks(RemoveSwarmStacks),
-  RemoveSwarmServices(RemoveSwarmServices),
-  CreateSwarmConfig(CreateSwarmConfig),
-  RotateSwarmConfig(RotateSwarmConfig),
-  RemoveSwarmConfigs(RemoveSwarmConfigs),
-  CreateSwarmSecret(CreateSwarmSecret),
-  RotateSwarmSecret(RotateSwarmSecret),
-  RemoveSwarmSecrets(RemoveSwarmSecrets),
 
   // MAINTENANCE
   ClearRepoCache(ClearRepoCache),
@@ -204,8 +133,6 @@ pub enum Execution {
     alias = "backup"
   )]
   BackupCoreDatabase(BackupCoreDatabase),
-  #[clap(alias = "auto-update")]
-  GlobalAutoUpdate(GlobalAutoUpdate),
   #[clap(alias = "rotate-keys")]
   RotateAllServerKeys(RotateAllServerKeys),
   RotateCoreKeys(RotateCoreKeys),

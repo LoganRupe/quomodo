@@ -160,11 +160,6 @@ impl Default for &PermissionLevel {
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum SpecificPermission {
   /// On **Server**
-  ///   - Access the terminal apis
-  /// On **Stack / Deployment**
-  ///   - Access the container exec Apis
-  Terminal,
-  /// On **Server**
   ///   - Allowed to attach Stacks, Deployments, Repos, Builders to the Server
   /// On **Builder**
   ///   - Allowed to attach Builds to the Builder
@@ -247,11 +242,6 @@ impl PermissionLevel {
       level: self,
       specific: [specific].into_iter().collect(),
     }
-  }
-
-  /// Operation requires Terminal permission
-  pub fn terminal(self) -> PermissionLevelAndSpecifics {
-    self.specific(SpecificPermission::Terminal)
   }
 
   /// Operation requires Attach permission
@@ -376,11 +366,6 @@ impl PermissionLevelAndSpecifics {
       level: self.level,
       specific: self.specific,
     }
-  }
-
-  /// Operation requires Terminal permission
-  pub fn terminal(self) -> PermissionLevelAndSpecifics {
-    self.specific(SpecificPermission::Terminal)
   }
 
   /// Operation requires Attach permission

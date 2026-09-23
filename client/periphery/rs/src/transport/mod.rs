@@ -32,7 +32,6 @@ pub enum TransportMessage {
   Login(EncodedLoginMessage),
   Request(EncodedRequestMessage),
   Response(EncodedResponseMessage),
-  Terminal(EncodedTerminalMessage),
 }
 
 impl Encode<EncodedTransportMessage> for TransportMessage {
@@ -43,7 +42,6 @@ impl Encode<EncodedTransportMessage> for TransportMessage {
       TransportMessage::Login(data) => data.into_vec(),
       TransportMessage::Request(data) => data.0.into_vec(),
       TransportMessage::Response(data) => data.0.into_vec(),
-      TransportMessage::Terminal(data) => data.0.into_vec(),
     };
     bytes.push(variant_byte);
     EncodedTransportMessage(bytes)
@@ -68,9 +66,6 @@ impl Decode<TransportMessage> for EncodedTransportMessage {
         Response => TransportMessage::Response(
           EncodedResponseMessage(EncodedChannel::from_vec(bytes)),
         ),
-        Terminal => TransportMessage::Terminal(
-          EncodedTerminalMessage(EncodedChannel::from_vec(bytes)),
-        ),
       };
     Ok(message)
   }
@@ -83,7 +78,6 @@ impl TransportMessageVariant {
       0 => Login,
       1 => Request,
       2 => Response,
-      3 => Terminal,
       other => {
         return Err(anyhow!(
           "Got unrecognized TransportMessageVariant byte: {other}"
@@ -99,7 +93,6 @@ impl TransportMessageVariant {
       Login => 0,
       Request => 1,
       Response => 2,
-      Terminal => 3,
     }
   }
 }
@@ -195,50 +188,5 @@ impl Encode<EncodedTransportMessage> for ResponseMessage {
 impl Decode<ResponseMessage> for EncodedResponseMessage {
   fn decode(self) -> anyhow::Result<ResponseMessage> {
     self.0.decode().map(ResponseMessage)
-  }
-}
-
-// ==================
-//  TERMINAL MESSAGE
-// ==================
-
-#[derive(Debug)]
-pub struct EncodedTerminalMessage(
-  EncodedChannel<EncodedResponse<Vec<u8>>>,
-);
-
-impl TerminalMessage {
-  pub fn new(channel: Uuid, bytes: anyhow::Result<Vec<u8>>) -> Self {
-    Self(WithChannel {
-      channel,
-      data: bytes,
-    })
-  }
-}
-
-impl_cast_bytes_vec!(EncodedTerminalMessage, EncodedChannel);
-
-pub struct TerminalMessage(WithChannel<anyhow::Result<Vec<u8>>>);
-
-impl Encode<EncodedTransportMessage> for TerminalMessage {
-  fn encode(self) -> EncodedTransportMessage {
-    TransportMessage::Terminal(EncodedTerminalMessage(
-      self.0.map_encode(),
-    ))
-    .encode()
-  }
-}
-
-impl Decode<WithChannel<anyhow::Result<Vec<u8>>>>
-  for EncodedTerminalMessage
-{
-  fn decode(
-    self,
-  ) -> anyhow::Result<WithChannel<anyhow::Result<Vec<u8>>>> {
-    Ok(self.0.decode()?.map(|data| {
-      data.decode().and_then(|r| {
-        r.context("Terminal should not recieve Pending byte")
-      })
-    }))
   }
 }

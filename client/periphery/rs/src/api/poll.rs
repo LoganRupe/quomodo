@@ -1,5 +1,5 @@
 use komodo_client::entities::{
-  docker::DockerLists,
+  docker::container::ContainerListItem,
   server::PeripheryInformation,
   stats::{SystemInformation, SystemStats},
 };
@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 pub struct PollStatus {
   /// Include system stats
   pub include_stats: bool,
-  /// Include docker info
-  pub include_docker: bool,
+  /// Include the container list
+  pub include_containers: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,6 +24,6 @@ pub struct PollStatusResponse {
   pub system_info: SystemInformation,
   /// Current System Stats (Cpu, Mem, Disk)
   pub system_stats: Option<SystemStats>,
-  /// Docker lists
-  pub docker: Option<DockerLists>,
+  /// Containers on the host, from `podman ps -a`
+  pub containers: Option<Vec<ContainerListItem>>,
 }
