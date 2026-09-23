@@ -78,6 +78,8 @@ jobs:
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
           IMAGE="${REGISTRY}/${GITHUB_REPOSITORY_OWNER}/quomodo"
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login "${REGISTRY}" -u "${{ github.actor }}" --password-stdin
+          # A package-write token, the way other image workflows do it. The automatic
+          # GITHUB_TOKEN could not push to the registry (release run 5).
+          echo "${{ secrets.CI_PACKAGE_TOKEN }}" | docker login "${REGISTRY}" -u "${{ vars.CI_PACKAGE_USERNAME }}" --password-stdin
           docker buildx build --file bin/core/Dockerfile --build-arg VERSION="$VERSION" \
             --tag "$IMAGE:$GITHUB_REF_NAME" --tag "$IMAGE:latest" --push .
