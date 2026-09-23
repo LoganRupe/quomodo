@@ -1,0 +1,56 @@
+- generic [ref=f3e3]:
+  - generic [ref=f3e4]:
+    - link [ref=f3e6] [cursor=pointer]:
+      - /url: /
+      - generic [ref=f3e7]:
+        - img "moghtech" [ref=f3e9]
+        - paragraph [ref=f3e11]: KOMODO
+    - button "Search shift + s" [ref=f3e13] [cursor=pointer]:
+      - generic [ref=f3e14]:
+        - generic [ref=f3e15]: Search
+        - generic [ref=f3e20]: shift + s
+    - generic [ref=f3e23]:
+      - link "API" [ref=f3e24] [cursor=pointer]:
+        - /url: /docs
+      - link "Docs" [ref=f3e27] [cursor=pointer]:
+        - /url: https://komo.do/docs/intro
+      - button [ref=f3e30] [cursor=pointer]
+      - button [ref=f3e35] [cursor=pointer]
+      - button [ref=f3e39] [cursor=pointer]
+      - button "ThemeToggle" [ref=f3e47] [cursor=pointer]
+      - button [ref=f3e55] [cursor=pointer]:
+        - paragraph [ref=f3e62]: smoke
+  - navigation [ref=f3e63]:
+    - generic [ref=f3e68]:
+      - link "Dashboard" [ref=f3e69] [cursor=pointer]:
+        - /url: /
+      - link "Containers" [ref=f3e78] [cursor=pointer]:
+        - /url: /containers
+      - link "Stats" [ref=f3e85] [cursor=pointer]:
+        - /url: /stats
+      - separator [ref=f3e92]:
+        - paragraph [ref=f3e94]: Resources
+      - link "Servers" [ref=f3e95] [cursor=pointer]:
+        - /url: /servers
+      - link "Stacks" [ref=f3e102] [cursor=pointer]:
+        - /url: /stacks
+      - link "Repos" [ref=f3e110] [cursor=pointer]:
+        - /url: /repos
+      - link "Procedures" [ref=f3e117] [cursor=pointer]:
+        - /url: /procedures
+      - link "Actions" [ref=f3e125] [cursor=pointer]:
+        - /url: /actions
+      - link "Syncs" [ref=f3e134] [cursor=pointer]:
+        - /url: /resource-syncs
+      - separator [ref=f3e144]:
+        - paragraph [ref=f3e146]: Notifications
+      - link "Alerts" [ref=f3e147] [cursor=pointer]:
+        - /url: /alerts
+      - link "Updates" [ref=f3e153] [cursor=pointer]:
+        - /url: /updates
+      - separator [ref=f3e160]
+      - link "Schedules" [ref=f3e161] [cursor=pointer]:
+        - /url: /schedules
+      - link "Settings" [ref=f3e167] [cursor=pointer]:
+        - /url: /settings
+  - main [ref=f3e174]

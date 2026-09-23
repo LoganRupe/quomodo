@@ -313,7 +313,12 @@ impl Resolve<ReadArgs> for ListGitProvidersFromConfig {
     if let Some(target) = self.target {
       match target {
         ResourceTarget::Server(id) => {
-          merge_git_providers_for_server(&mut providers, &id).await?;
+          // An unreachable Server still leaves the Core providers usable.
+          if let Err(e) =
+            merge_git_providers_for_server(&mut providers, &id).await
+          {
+            warn!("{:#}", e.error);
+          }
         }
         _ => {
           return Err(
@@ -386,8 +391,13 @@ impl Resolve<ReadArgs> for ListImageRegistriesFromConfig {
     if let Some(target) = self.target {
       match target {
         ResourceTarget::Server(id) => {
-          merge_image_registries_for_server(&mut registries, &id)
-            .await?;
+          // An unreachable Server still leaves the Core registries usable.
+          if let Err(e) =
+            merge_image_registries_for_server(&mut registries, &id)
+              .await
+          {
+            warn!("{:#}", e.error);
+          }
         }
         _ => {
           return Err(anyhow!("target must be `Server`").into());
