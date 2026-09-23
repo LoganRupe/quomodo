@@ -4,7 +4,7 @@ use async_timing_util::{
 };
 use database::mungos::{find::find_collect, mongodb::bson::doc};
 use futures_util::{StreamExt, stream::FuturesUnordered};
-use periphery_client::api::docker::PruneImages;
+use periphery_client::api::PruneImages;
 
 use crate::{config::core_config, state::db_client};
 

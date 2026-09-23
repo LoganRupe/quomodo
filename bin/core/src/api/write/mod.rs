@@ -20,10 +20,6 @@ use super::Variant;
 
 mod action;
 mod alert;
-mod alerter;
-mod build;
-mod builder;
-mod deployment;
 mod onboarding;
 mod permissions;
 mod procedure;
@@ -33,18 +29,13 @@ mod resource;
 mod server;
 mod service_user;
 mod stack;
-mod swarm;
 mod sync;
 mod tag;
-mod terminal;
 mod user;
 mod user_group;
 mod variable;
 
-pub use {
-  deployment::check_deployment_for_update_inner,
-  stack::check_stack_for_update_inner,
-};
+pub use stack::refresh_stack_cache;
 
 pub struct WriteArgs {
   pub user: User,
@@ -64,11 +55,6 @@ pub enum WriteRequest {
   UpdateResourceMeta(UpdateResourceMeta),
 
   // ==== SWARM ====
-  CreateSwarm(CreateSwarm),
-  CopySwarm(CopySwarm),
-  DeleteSwarm(DeleteSwarm),
-  UpdateSwarm(UpdateSwarm),
-  RenameSwarm(RenameSwarm),
 
   // ==== SERVER ====
   CreateServer(CreateServer),
@@ -76,15 +62,10 @@ pub enum WriteRequest {
   DeleteServer(DeleteServer),
   UpdateServer(UpdateServer),
   RenameServer(RenameServer),
-  CreateNetwork(CreateNetwork),
   UpdateServerPublicKey(UpdateServerPublicKey),
   RotateServerKeys(RotateServerKeys),
 
   // ==== TERMINAL ====
-  CreateTerminal(CreateTerminal),
-  DeleteTerminal(DeleteTerminal),
-  DeleteAllTerminals(DeleteAllTerminals),
-  BatchDeleteAllTerminals(BatchDeleteAllTerminals),
 
   // ==== STACK ====
   CreateStack(CreateStack),
@@ -92,29 +73,11 @@ pub enum WriteRequest {
   DeleteStack(DeleteStack),
   UpdateStack(UpdateStack),
   RenameStack(RenameStack),
-  WriteStackFileContents(WriteStackFileContents),
   RefreshStackCache(RefreshStackCache),
-  CheckStackForUpdate(CheckStackForUpdate),
-  BatchCheckStackForUpdate(BatchCheckStackForUpdate),
 
   // ==== DEPLOYMENT ====
-  CreateDeployment(CreateDeployment),
-  CopyDeployment(CopyDeployment),
-  CreateDeploymentFromContainer(CreateDeploymentFromContainer),
-  DeleteDeployment(DeleteDeployment),
-  UpdateDeployment(UpdateDeployment),
-  RenameDeployment(RenameDeployment),
-  CheckDeploymentForUpdate(CheckDeploymentForUpdate),
-  BatchCheckDeploymentForUpdate(BatchCheckDeploymentForUpdate),
 
   // ==== BUILD ====
-  CreateBuild(CreateBuild),
-  CopyBuild(CopyBuild),
-  DeleteBuild(DeleteBuild),
-  UpdateBuild(UpdateBuild),
-  RenameBuild(RenameBuild),
-  WriteBuildFileContents(WriteBuildFileContents),
-  RefreshBuildCache(RefreshBuildCache),
 
   // ==== REPO ====
   CreateRepo(CreateRepo),
@@ -149,18 +112,8 @@ pub enum WriteRequest {
   RefreshResourceSyncPending(RefreshResourceSyncPending),
 
   // ==== BUILDER ====
-  CreateBuilder(CreateBuilder),
-  CopyBuilder(CopyBuilder),
-  DeleteBuilder(DeleteBuilder),
-  UpdateBuilder(UpdateBuilder),
-  RenameBuilder(RenameBuilder),
 
   // ==== ALERTER ====
-  CreateAlerter(CreateAlerter),
-  CopyAlerter(CopyAlerter),
-  DeleteAlerter(DeleteAlerter),
-  UpdateAlerter(UpdateAlerter),
-  RenameAlerter(RenameAlerter),
 
   // ==== ONBOARDING KEY ====
   CreateOnboardingKey(CreateOnboardingKey),

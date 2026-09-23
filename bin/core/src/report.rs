@@ -81,33 +81,15 @@ async fn report(
     .count_documents(Default::default())
     .await
     .context("Failed to query database for servers")?;
-  let swarms = db
-    .swarms
-    .count_documents(Default::default())
-    .await
-    .context("Failed to query database for swarms")?;
   let stacks = db
     .stacks
     .count_documents(Default::default())
     .await
     .context("Failed to query database for stacks")?;
-  let deployments = db
-    .deployments
-    .count_documents(Default::default())
-    .await
-    .context("Failed to query database for deployments")?;
-  let builds = db
-    .builds
-    .count_documents(Default::default())
-    .await
-    .context("Failed to query database for builds")?;
 
   let count = [
     (ResourceTargetVariant::Server, servers),
-    (ResourceTargetVariant::Swarm, swarms),
     (ResourceTargetVariant::Stack, stacks),
-    (ResourceTargetVariant::Deployment, deployments),
-    (ResourceTargetVariant::Build, builds),
   ]
   .into_iter()
   .collect();

@@ -3,21 +3,18 @@ use std::{fmt::Write as _, sync::OnceLock};
 use anyhow::{Context, anyhow};
 use command::{CommandOptions, run_komodo_standard_command};
 use database::{
-  bson::{Document, doc},
+  bson::Document,
   mungos::find::find_collect,
 };
 use formatting::{bold, format_serror};
 use futures_util::{StreamExt, stream::FuturesOrdered};
 use komodo_client::{
   api::execute::{
-    BackupCoreDatabase, ClearRepoCache, GlobalAutoUpdate,
-    RotateAllServerKeys, RotateCoreKeys,
-  },
-  entities::{
-    SwarmOrServer, deployment::DeploymentState, server::ServerState,
-    stack::StackState, swarm::SwarmState,
+    BackupCoreDatabase, ClearRepoCache, RotateAllServerKeys,
+    RotateCoreKeys,
   },
 };
+use komodo_client::entities::server::ServerState;
 use mogh_error::AddStatusCodeError;
 use mogh_resolver::Resolve;
 use periphery_client::api;
@@ -25,22 +22,11 @@ use reqwest::StatusCode;
 use tokio::sync::Mutex;
 
 use crate::{
-  api::{
-    execute::ExecuteArgs,
-    write::{
-      check_deployment_for_update_inner, check_stack_for_update_inner,
-    },
-  },
+  api::execute::ExecuteArgs,
   config::{core_config, core_keys},
-  helpers::{
-    periphery_client, query::find_swarm_or_server,
-    update::update_update,
-  },
+  helpers::{periphery_client, update::update_update},
   resource::rotate_server_keys,
-  state::{
-    db_client, deployment_status_cache, server_status_cache,
-    stack_status_cache, swarm_status_cache,
-  },
+  state::{db_client, server_status_cache},
 };
 
 /// Makes sure the method can only be called once at a time
@@ -182,232 +168,6 @@ impl Resolve<ExecuteArgs> for BackupCoreDatabase {
 }
 
 //
-
-/// Makes sure the method can only be called once at a time
-fn global_update_lock() -> &'static Mutex<()> {
-  static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-  LOCK.get_or_init(Default::default)
-}
-
-impl Resolve<ExecuteArgs> for GlobalAutoUpdate {
-  #[instrument(
-    "GlobalAutoUpdate",
-    skip_all,
-    fields(
-      task_id = task_id.to_string(),
-      operator = user.id,
-      update_id = update.id,
-    )
-  )]
-  async fn resolve(
-    self,
-    ExecuteArgs {
-      user,
-      update,
-      task_id,
-    }: &ExecuteArgs,
-  ) -> Result<Self::Response, Self::Error> {
-    if !user.admin {
-      return Err(
-        anyhow!("This method is admin only.")
-          .status_code(StatusCode::FORBIDDEN),
-      );
-    }
-
-    let _lock = global_update_lock()
-      .try_lock()
-      .context("Global update already in progress...")?;
-
-    let mut update = update.clone();
-
-    update_update(update.clone()).await?;
-
-    // This is all done in sequence because there is no rush,
-    // the pulls / deploys happen spaced out to ease the load on system.
-    let servers = find_collect(&db_client().servers, None, None)
-      .await
-      .context("Failed to query for servers from database")?;
-    let swarms = find_collect(&db_client().swarms, None, None)
-      .await
-      .context("Failed to query for swarms from database")?;
-
-    let query = doc! {
-      "$or": [
-        { "config.poll_for_updates": true },
-        { "config.auto_update": true }
-      ]
-    };
-
-    let stacks =
-      find_collect(&db_client().stacks, query.clone(), None)
-        .await
-        .context("Failed to query for stacks from database")?;
-
-    let server_status_cache = server_status_cache();
-    let swarm_status_cache = swarm_status_cache();
-    let stack_status_cache = stack_status_cache();
-
-    // Will be edited later at update.logs[0]
-    update.push_simple_log("Auto Pull", String::new());
-
-    for stack in stacks {
-      let Some(status) = stack_status_cache.get(&stack.id).await
-      else {
-        continue;
-      };
-
-      // Only check running stacks.
-      if !matches!(status.curr.state, StackState::Running) {
-        continue;
-      }
-
-      let swarm_or_server = find_swarm_or_server(
-        &stack.config.swarm_id,
-        &swarms,
-        &stack.config.server_id,
-        &servers,
-      )?;
-
-      // Ensure server / swarm is reachable
-      match &swarm_or_server {
-        SwarmOrServer::None => continue,
-        SwarmOrServer::Server(server) => {
-          if !server_status_cache
-            .get(&server.id)
-            .await
-            .map(|s| matches!(s.state, ServerState::Ok))
-            .unwrap_or_default()
-          {
-            continue;
-          }
-        }
-        SwarmOrServer::Swarm(swarm) => {
-          if !swarm_status_cache
-            .get(&swarm.id)
-            .await
-            .map(|s| {
-              matches!(
-                s.state,
-                SwarmState::Healthy | SwarmState::Unhealthy
-              )
-            })
-            .unwrap_or_default()
-          {
-            continue;
-          }
-        }
-      }
-
-      if let Err(e) = check_stack_for_update_inner(
-        stack.id,
-        &swarm_or_server,
-        self.skip_auto_update,
-        true,
-        false,
-      )
-      .await
-      {
-        update.push_error_log(
-          &format!("Check Stack {}", stack.name),
-          format_serror(&e.into()),
-        );
-      } else {
-        if !update.logs[0].stdout.is_empty() {
-          update.logs[0].stdout.push('\n');
-        }
-
-        update.logs[0].stdout.push_str(&format!(
-          "Checked Stack {} ✅",
-          bold(&stack.name)
-        ));
-      }
-    }
-
-    let deployment_status_cache = deployment_status_cache();
-    let deployments =
-      find_collect(&db_client().deployments, query, None)
-        .await
-        .context("Failed to query for deployments from database")?;
-
-    for deployment in deployments {
-      let Some(status) =
-        deployment_status_cache.get(&deployment.id).await
-      else {
-        continue;
-      };
-
-      // Only check running deployments.
-      if !matches!(status.curr.state, DeploymentState::Running) {
-        continue;
-      }
-
-      let swarm_or_server = find_swarm_or_server(
-        &deployment.config.swarm_id,
-        &swarms,
-        &deployment.config.server_id,
-        &servers,
-      )?;
-
-      // Ensure server / swarm is reachable
-      match &swarm_or_server {
-        SwarmOrServer::None => continue,
-        SwarmOrServer::Server(server) => {
-          if !server_status_cache
-            .get(&server.id)
-            .await
-            .map(|s| matches!(s.state, ServerState::Ok))
-            .unwrap_or_default()
-          {
-            continue;
-          }
-        }
-        SwarmOrServer::Swarm(swarm) => {
-          if !swarm_status_cache
-            .get(&swarm.id)
-            .await
-            .map(|s| {
-              matches!(
-                s.state,
-                SwarmState::Healthy | SwarmState::Unhealthy
-              )
-            })
-            .unwrap_or_default()
-          {
-            continue;
-          }
-        }
-      }
-
-      let name = deployment.name.clone();
-
-      if let Err(e) = check_deployment_for_update_inner(
-        deployment,
-        &swarm_or_server,
-        self.skip_auto_update,
-        true,
-      )
-      .await
-      {
-        update.push_error_log(
-          &format!("Check Deployment {name}"),
-          format_serror(&e.into()),
-        );
-      } else {
-        if !update.logs[0].stdout.is_empty() {
-          update.logs[0].stdout.push('\n');
-        }
-        update.logs[0]
-          .stdout
-          .push_str(&format!("Checked Deployment {} ✅", bold(name)));
-      }
-    }
-
-    update.finalize();
-    update_update(update.clone()).await?;
-
-    Ok(update)
-  }
-}
 
 //
 

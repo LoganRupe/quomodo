@@ -28,9 +28,6 @@ use crate::api::execute;
     execute::batch_clone_repo,
     execute::pull_repo,
     execute::batch_pull_repo,
-    execute::build_repo,
-    execute::batch_build_repo,
-    execute::cancel_repo_build,
     // procedure
     execute::run_procedure,
     execute::batch_run_procedure,

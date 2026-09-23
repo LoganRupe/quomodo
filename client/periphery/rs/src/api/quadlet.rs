@@ -17,34 +17,6 @@ use serde::{Deserialize, Serialize};
 
 //
 
-/// Pull or clone the stack repo and read the stack directory.
-/// Does not deploy anything.
-#[derive(Serialize, Deserialize, Debug, Clone, Resolve)]
-#[response(ReadStackResponse)]
-#[error(anyhow::Error)]
-pub struct ReadStack {
-  pub stack: Stack,
-  pub repo: Option<Repo>,
-  pub git_token: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ReadStackResponse {
-  pub logs: Vec<Log>,
-  /// Every regular file under the stack directory, secret references unresolved.
-  pub files: Vec<FileContents>,
-  /// Files which could not be read, with the error as contents.
-  pub errors: Vec<FileContents>,
-  /// The quadlet units parsed from `files`.
-  pub units: Vec<QuadletUnit>,
-  /// The latest commit hash
-  pub commit_hash: Option<String>,
-  /// The latest commit message
-  pub commit_message: Option<String>,
-}
-
-//
-
 /// Deploy the stack.
 ///
 /// Core resolves every `[[NAME]]` referenced in the stack files before calling this:

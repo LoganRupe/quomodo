@@ -2,7 +2,7 @@ use std::net::IpAddr;
 
 use axum::{Router, extract::Path, http::HeaderMap, routing::post};
 use komodo_client::entities::{
-  action::Action, build::Build, procedure::Procedure, repo::Repo,
+  action::Action, procedure::Procedure, repo::Repo,
   resource::Resource, stack::Stack, sync::ResourceSync,
 };
 use mogh_auth_server::request_ip::RequestIp;
@@ -18,16 +18,11 @@ use super::{
   CustomSecret, ExtractBranch, VerifySecret,
   resources::{
     RepoWebhookOption, StackWebhookOption, SyncWebhookOption,
-    handle_action_webhook, handle_build_webhook,
+    handle_action_webhook,
     handle_procedure_webhook, handle_repo_webhook,
     handle_stack_webhook, handle_sync_webhook,
   },
 };
-
-#[derive(Deserialize)]
-struct Id {
-  id: String,
-}
 
 #[derive(Deserialize)]
 struct IdAndOption<T> {
@@ -48,32 +43,6 @@ fn default_branch() -> String {
 
 pub fn router<P: VerifySecret + ExtractBranch>() -> Router {
   Router::new()
-  .route(
-    "/build/{id}",
-    post(
-      |Path(Id { id }), RequestIp(ip), headers: HeaderMap, body: String| async move {
-        let build =
-          auth_webhook::<P, Build>(&id, &headers, ip, &body).await?;
-        tokio::spawn(async move {
-          let span = info_span!("BuildWebhook", id);
-          async {
-            let res = handle_build_webhook::<P>(
-              build, body,
-            )
-            .await;
-            if let Err(e) = res {
-              warn!(
-                "Failed at running webhook for build {id} | {e:#}"
-              );
-            }
-          }
-          .instrument(span)
-          .await
-        });
-        mogh_error::Result::Ok(())
-      },
-    ),
-  )
   .route(
     "/repo/{id}/{option}",
     post(

@@ -4,21 +4,16 @@ use anyhow::Context;
 use indexmap::IndexMap;
 use komodo_client::entities::{
   action::Action,
-  alerter::Alerter,
-  build::Build,
-  builder::{Builder, PartialBuilderConfig},
-  deployment::{Deployment, DeploymentImage},
   procedure::Procedure,
   repo::Repo,
   resource::Resource,
   server::Server,
   stack::Stack,
-  swarm::Swarm,
   sync::ResourceSync,
   tag::Tag,
   toml::ResourceToml,
 };
-use partial_derive2::{MaybeNone, PartialDiff};
+use partial_derive2::PartialDiff;
 
 use crate::{
   resource::KomodoResource, sync::replace_ids::ReplaceIds,
@@ -154,29 +149,7 @@ pub fn convert_resource<R: KomodoResource>(
 
 impl ToToml for Server {}
 impl ToToml for Action {}
-impl ToToml for Alerter {}
 impl ToToml for ResourceSync {}
-
-impl ToToml for Swarm {
-  fn edit_config_object(
-    _resource: &ResourceToml<Self::PartialConfig>,
-    config: IndexMap<String, serde_json::Value>,
-  ) -> anyhow::Result<IndexMap<String, serde_json::Value>> {
-    config
-      .into_iter()
-      .map(|(key, value)| {
-        #[allow(clippy::single_match)]
-        match key.as_str() {
-          "server_ids" => {
-            return Ok((String::from("servers"), value));
-          }
-          _ => {}
-        }
-        Ok((key, value))
-      })
-      .collect()
-  }
-}
 
 impl ToToml for Stack {
   fn edit_config_object(
@@ -186,86 +159,11 @@ impl ToToml for Stack {
     config
       .into_iter()
       .map(|(key, value)| {
-        #[allow(clippy::single_match)]
-        match key.as_str() {
-          "swarm_id" => return Ok((String::from("swarm"), value)),
-          "server_id" => return Ok((String::from("server"), value)),
-          _ => {}
+        if key == "server_id" {
+          Ok((String::from("server"), value))
+        } else {
+          Ok((key, value))
         }
-        Ok((key, value))
-      })
-      .collect()
-  }
-}
-
-impl ToToml for Deployment {
-  fn edit_config_object(
-    resource: &ResourceToml<Self::PartialConfig>,
-    config: IndexMap<String, serde_json::Value>,
-  ) -> anyhow::Result<IndexMap<String, serde_json::Value>> {
-    config
-      .into_iter()
-      .map(|(key, mut value)| {
-        match key.as_str() {
-          "swarm_id" => return Ok((String::from("swarm"), value)),
-          "server_id" => return Ok((String::from("server"), value)),
-          "image" => {
-            if let Some(DeploymentImage::Build { version, .. }) =
-              &resource.config.image
-            {
-              let image = value
-                .get_mut("params")
-                .context("deployment image has no params")?
-                .as_object_mut()
-                .context("deployment image params is not object")?;
-              if let Some(build) = image.remove("build_id") {
-                image.insert(String::from("build"), build);
-              }
-              if version.is_none() {
-                image.remove("version");
-              } else {
-                image.insert(
-                  "version".to_string(),
-                  serde_json::Value::String(version.to_string()),
-                );
-              }
-            }
-          }
-          _ => {}
-        }
-        Ok((key, value))
-      })
-      .collect()
-  }
-}
-
-impl ToToml for Build {
-  fn edit_config_object(
-    resource: &ResourceToml<Self::PartialConfig>,
-    config: IndexMap<String, serde_json::Value>,
-  ) -> anyhow::Result<IndexMap<String, serde_json::Value>> {
-    config
-      .into_iter()
-      .map(|(key, value)| match key.as_str() {
-        "builder_id" => Ok((String::from("builder"), value)),
-        "version" => {
-          match (
-            &resource.config.version,
-            resource.config.auto_increment_version,
-          ) {
-            (None, _) => Ok((key, value)),
-            (_, Some(true)) | (_, None) => {
-              // The toml shouldn't have a version attached if auto incrementing.
-              // Empty string will be filtered out in final toml.
-              Ok((key, serde_json::Value::String(String::new())))
-            }
-            (Some(version), _) => Ok((
-              key,
-              serde_json::Value::String(version.to_string()),
-            )),
-          }
-        }
-        _ => Ok((key, value)),
       })
       .collect()
   }
@@ -287,59 +185,6 @@ impl ToToml for Repo {
           _ => {}
         }
         Ok((key, value))
-      })
-      .collect()
-  }
-}
-
-impl ToToml for Builder {
-  fn push_additional(
-    resource: ResourceToml<Self::PartialConfig>,
-    toml: &mut String,
-  ) {
-    let empty_params = match resource.config {
-      PartialBuilderConfig::Aws(config) => config.is_none(),
-      PartialBuilderConfig::Server(config) => config.is_none(),
-      PartialBuilderConfig::Url(config) => config.is_none(),
-    };
-    if empty_params {
-      // toml_pretty will remove empty map
-      // but in this case its needed to deserialize the enums.
-      toml.push_str("\nparams = {}");
-    }
-  }
-
-  fn edit_config_object(
-    _resource: &ResourceToml<Self::PartialConfig>,
-    config: IndexMap<String, serde_json::Value>,
-  ) -> anyhow::Result<IndexMap<String, serde_json::Value>> {
-    config
-      .into_iter()
-      .map(|(key, value)| {
-        #[allow(clippy::single_match)]
-        match key.as_str() {
-          "params" => match value {
-            serde_json::Value::Object(obj) => Ok((
-              key,
-              serde_json::Value::Object(
-                obj
-                  .into_iter()
-                  .map(|(key, value)| {
-                    match key.as_str() {
-                      "server_ids" => {
-                        return (String::from("servers"), value);
-                      }
-                      _ => {}
-                    }
-                    (key, value)
-                  })
-                  .collect(),
-              ),
-            )),
-            value => Ok((key, value)),
-          },
-          _ => Ok((key, value)),
-        }
       })
       .collect()
   }

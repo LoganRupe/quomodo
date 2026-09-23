@@ -1,11 +1,5 @@
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum UpdateCommand {
-  /// Update a Build's configuration. (alias: `bld`)
-  #[clap(alias = "bld")]
-  Build(UpdateResource),
-  /// Update a Deployments's configuration. (alias: `dep`)
-  #[clap(alias = "dep")]
-  Deployment(UpdateResource),
   /// Update a Repos's configuration.
   Repo(UpdateResource),
   /// Update a Servers's configuration. (alias: `srv`)

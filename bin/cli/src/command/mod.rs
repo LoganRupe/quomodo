@@ -14,13 +14,11 @@ use wildcard::Wildcard;
 
 use crate::config::cli_config;
 
-pub mod container;
 pub mod core_info;
 pub mod create;
 pub mod database;
 pub mod execute;
 pub mod list;
-pub mod terminal;
 pub mod update;
 
 async fn komodo_client() -> anyhow::Result<&'static KomodoClient> {
@@ -169,14 +167,6 @@ fn format_timetamp(ts: i64) -> anyhow::Result<String> {
     .format("%m/%d %H:%M:%S")
     .to_string();
   Ok(ts)
-}
-
-fn clamp_sha(maybe_sha: &str) -> String {
-  if maybe_sha.starts_with("sha256:") {
-    maybe_sha[0..20].to_string() + "..."
-  } else {
-    maybe_sha.to_string()
-  }
 }
 
 // fn text_link(link: &str, text: &str) -> String {

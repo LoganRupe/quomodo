@@ -32,7 +32,6 @@ impl Resolve<WriteArgs> for CreateOnboardingKey {
       expires = self.expires,
       tags = format!("{:?}", self.tags),
       copy_server = self.copy_server,
-      create_builder = self.create_builder,
     )
   )]
   async fn resolve(
@@ -81,7 +80,6 @@ impl Resolve<WriteArgs> for CreateOnboardingKey {
       tags,
       privileged: self.privileged,
       copy_server: self.copy_server,
-      create_builder: self.create_builder,
     };
     let db = db_client();
     // Create the key
@@ -181,10 +179,6 @@ impl Resolve<WriteArgs> for UpdateOnboardingKey {
 
     if let Some(copy_server) = self.copy_server {
       update.insert("copy_server", copy_server);
-    }
-
-    if let Some(create_builder) = self.create_builder {
-      update.insert("create_builder", create_builder);
     }
 
     db_client()

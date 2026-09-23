@@ -14,7 +14,7 @@ use komodo_client::entities::{
 };
 use mogh_auth_client::{
   api::login::LoginProvider,
-  config::{NamedOauthConfig, OidcConfig},
+  config::OidcConfig,
   passkey::Passkey,
 };
 use mogh_auth_server::{
@@ -34,7 +34,7 @@ use crate::{
   config::{core_config, core_keys},
   helpers::{
     query::{
-      find_github_user, find_google_user, find_oidc_user, get_user,
+      find_oidc_user, get_user,
     },
     validations::{
       validate_api_key_name, validate_password, validate_username,
@@ -452,186 +452,6 @@ impl AuthImpl for KomodoAuthImpl {
   }
 
   // ===============
-  // = GITHUB AUTH =
-  // ===============
-
-  fn github_config(&self) -> Option<&NamedOauthConfig> {
-    Some(&core_config().github_oauth)
-  }
-
-  fn find_user_with_github_id(
-    &self,
-    github_id: String,
-  ) -> mogh_auth_server::DynFuture<
-    mogh_error::Result<Option<BoxAuthUser>>,
-  > {
-    Box::pin(async move {
-      Ok(
-        find_github_user(&github_id)
-          .await?
-          .map(|user| Box::new(AuthUser(user)) as BoxAuthUser),
-      )
-    })
-  }
-
-  fn sign_up_github_user(
-    &self,
-    username: String,
-    github_id: String,
-    avatar_url: String,
-    no_users_exist: bool,
-  ) -> mogh_auth_server::DynFuture<mogh_error::Result<String>> {
-    Box::pin(async move {
-      let user = User::new(NewUserParams {
-        username,
-        enabled: no_users_exist || core_config().enable_new_users,
-        admin: no_users_exist,
-        super_admin: no_users_exist,
-        config: UserConfig::Github {
-          github_id,
-          avatar: avatar_url,
-        },
-        updated_at: komodo_timestamp(),
-      });
-
-      let user_id = db_client()
-        .users
-        .insert_one(user)
-        .await
-        .context("Failed to create user on mongo")?
-        .inserted_id
-        .as_object_id()
-        .context("inserted_id is not ObjectId")?
-        .to_string();
-
-      Ok(user_id)
-    })
-  }
-
-  fn link_github_login(
-    &self,
-    user_id: String,
-    github_id: String,
-    avatar_url: String,
-  ) -> mogh_auth_server::DynFuture<mogh_error::Result<()>> {
-    Box::pin(async move {
-      let user = get_user(&user_id).await?;
-
-      if let UserConfig::Github { .. } = &user.config {
-        return Err(anyhow!(
-          "User is primary Github user, cannot link another Github login."
-        ).status_code(StatusCode::UNAUTHORIZED));
-      }
-
-      let update = doc! {
-        "$set": {
-          "linked_logins.Github.type": "Github",
-          "linked_logins.Github.data.github_id": &github_id,
-          "linked_logins.Github.data.avatar": &avatar_url,
-        }
-      };
-
-      update_one_by_id(&db_client().users, &user_id, update, None)
-        .await
-        .context(
-          "Failed to link Github login to existing user on database",
-        )?;
-
-      Ok(())
-    })
-  }
-
-  // ===============
-  // = GOOGLE AUTH =
-  // ===============
-
-  fn google_config(&self) -> Option<&NamedOauthConfig> {
-    Some(&core_config().google_oauth)
-  }
-
-  fn find_user_with_google_id(
-    &self,
-    google_id: String,
-  ) -> mogh_auth_server::DynFuture<
-    mogh_error::Result<Option<BoxAuthUser>>,
-  > {
-    Box::pin(async move {
-      Ok(
-        find_google_user(&google_id)
-          .await?
-          .map(|user| Box::new(AuthUser(user)) as BoxAuthUser),
-      )
-    })
-  }
-
-  fn sign_up_google_user(
-    &self,
-    username: String,
-    google_id: String,
-    avatar_url: String,
-    no_users_exist: bool,
-  ) -> mogh_auth_server::DynFuture<mogh_error::Result<String>> {
-    Box::pin(async move {
-      let user = User::new(NewUserParams {
-        username,
-        enabled: no_users_exist || core_config().enable_new_users,
-        admin: no_users_exist,
-        super_admin: no_users_exist,
-        config: UserConfig::Google {
-          google_id,
-          avatar: avatar_url,
-        },
-        updated_at: komodo_timestamp(),
-      });
-
-      let user_id = db_client()
-        .users
-        .insert_one(user)
-        .await
-        .context("Failed to create user on mongo")?
-        .inserted_id
-        .as_object_id()
-        .context("inserted_id is not ObjectId")?
-        .to_string();
-
-      Ok(user_id)
-    })
-  }
-
-  fn link_google_login(
-    &self,
-    user_id: String,
-    google_id: String,
-    avatar_url: String,
-  ) -> mogh_auth_server::DynFuture<mogh_error::Result<()>> {
-    Box::pin(async move {
-      let user = get_user(&user_id).await?;
-
-      if let UserConfig::Google { .. } = &user.config {
-        return Err(anyhow!(
-          "User is primary Google user, cannot link another Google login."
-        ).status_code(StatusCode::UNAUTHORIZED));
-      }
-
-      let update = doc! {
-        "$set": {
-          "linked_logins.Google.type": "Google",
-          "linked_logins.Google.data.google_id": &google_id,
-          "linked_logins.Google.data.avatar": &avatar_url,
-        }
-      };
-
-      update_one_by_id(&db_client().users, &user_id, update, None)
-        .await
-        .context(
-          "Failed to link Google login to existing user on database",
-        )?;
-
-      Ok(())
-    })
-  }
-
-  // ==========
   // = UNLINK =
   // ==========
 

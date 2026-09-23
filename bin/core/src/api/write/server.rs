@@ -1,13 +1,12 @@
 use anyhow::Context;
-use formatting::{bold, format_serror};
+use formatting::bold;
 use komodo_client::{
   api::write::*,
   entities::{
     Operation,
     permission::PermissionLevel,
     server::{Server, ServerInfo},
-    to_docker_compatible_name,
-    update::{Update, UpdateStatus},
+    update::Update,
   },
 };
 use mogh_resolver::Resolve;
@@ -16,7 +15,7 @@ use periphery_client::api;
 use crate::{
   helpers::{
     periphery_client,
-    update::{add_update, make_update, update_update},
+    update::{add_update, make_update},
   },
   permission::get_check_permissions,
   resource::{self, update_server_public_key},
@@ -135,55 +134,6 @@ impl Resolve<WriteArgs> for RenameServer {
     WriteArgs { user }: &WriteArgs,
   ) -> mogh_error::Result<Update> {
     Ok(resource::rename::<Server>(&self.id, &self.name, user).await?)
-  }
-}
-
-impl Resolve<WriteArgs> for CreateNetwork {
-  #[instrument(
-    "CreateNetwork",
-    skip_all,
-    fields(
-      operator = user.id,
-      server = self.server,
-      network = self.name
-    )
-  )]
-  async fn resolve(
-    self,
-    WriteArgs { user }: &WriteArgs,
-  ) -> mogh_error::Result<Update> {
-    let server = get_check_permissions::<Server>(
-      &self.server,
-      user,
-      PermissionLevel::Write.into(),
-    )
-    .await?;
-
-    let periphery = periphery_client(&server).await?;
-
-    let mut update =
-      make_update(&server, Operation::CreateNetwork, user);
-    update.status = UpdateStatus::InProgress;
-    update.id = add_update(update.clone()).await?;
-
-    match periphery
-      .request(api::docker::CreateNetwork {
-        name: to_docker_compatible_name(&self.name),
-        driver: None,
-      })
-      .await
-    {
-      Ok(log) => update.logs.push(log),
-      Err(e) => update.push_error_log(
-        "create network",
-        format_serror(&e.context("Failed to create network").into()),
-      ),
-    };
-
-    update.finalize();
-    update_update(update.clone()).await?;
-
-    Ok(update)
   }
 }
 

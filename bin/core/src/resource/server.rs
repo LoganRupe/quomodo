@@ -49,7 +49,6 @@ impl super::KomodoResource for Server {
 
   fn creator_specific_permissions() -> IndexSet<SpecificPermission> {
     [
-      SpecificPermission::Terminal,
       SpecificPermission::Inspect,
       SpecificPermission::Attach,
       SpecificPermission::Logs,
@@ -82,17 +81,13 @@ impl super::KomodoResource for Server {
       version,
       public_key,
       public_ip,
-      terminals_disabled,
-      container_terminals_disabled,
     ) = match periphery_info {
       Some(info) => (
         Some(info.version.clone()),
         Some(info.public_key.clone()),
         info.public_ip.clone(),
-        info.terminals_disabled,
-        info.container_terminals_disabled,
       ),
-      None => (None, None, None, true, true),
+      None => (None, None, None),
     };
     ServerListItem {
       name: server.name,
@@ -109,7 +104,6 @@ impl super::KomodoResource for Server {
         logical_core_count: system_info
           .and_then(|i| i.logical_core_count),
         region: server.config.region,
-        address: optional_string(server.config.address),
         external_address: optional_string(
           server.config.external_address,
         ),
@@ -128,8 +122,6 @@ impl super::KomodoResource for Server {
           server.info.attempted_public_key,
         ),
         public_ip,
-        terminals_disabled,
-        container_terminals_disabled,
       },
     }
   }
@@ -211,22 +203,6 @@ impl super::KomodoResource for Server {
     let db = db_client();
 
     let id = &resource.id;
-
-    db.builders
-      .update_many(
-        doc! { "config.params.server_id": &id },
-        doc! { "$set": { "config.params.server_id": "" } },
-      )
-      .await
-      .context("failed to detach server from builders")?;
-
-    db.deployments
-      .update_many(
-        doc! { "config.server_id": &id },
-        doc! { "$set": { "config.server_id": "" } },
-      )
-      .await
-      .context("failed to detach server from deployments")?;
 
     db.stacks
       .update_many(

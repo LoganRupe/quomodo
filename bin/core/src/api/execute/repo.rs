@@ -1,20 +1,17 @@
-use std::{collections::HashSet, future::IntoFuture, time::Duration};
+use std::collections::HashSet;
+use interpolate::Interpolator;
 
 use anyhow::{Context, anyhow};
 use database::mungos::{
   by_id::update_one_by_id,
   mongodb::{
     bson::{doc, to_document},
-    options::FindOneOptions,
   },
 };
 use formatting::format_serror;
-use interpolate::Interpolator;
 use komodo_client::{
   api::{execute::*, write::RefreshRepoCache},
   entities::{
-    alert::{Alert, AlertData, SeverityLevel},
-    builder::{Builder, BuilderConfig},
     komodo_timestamp,
     permission::PermissionLevel,
     repo::Repo,
@@ -24,16 +21,11 @@ use komodo_client::{
 };
 use mogh_resolver::Resolve;
 use periphery_client::api;
-use tokio_util::sync::CancellationToken;
 
 use crate::{
-  alert::send_alerts,
   api::write::WriteArgs,
   helpers::{
-    builder::{cleanup_builder_instance, connect_builder_periphery},
-    channel::repo_cancel_channel,
-    git_token, periphery_client,
-    query::{VariablesAndSecrets, get_variables_and_secrets},
+    git_token, periphery_client, query::get_variables,
     update::update_update,
   },
   permission::get_check_permissions,
@@ -377,447 +369,7 @@ async fn update_last_pulled_time(repo_name: &str) {
   }
 }
 
-impl super::BatchExecute for BatchBuildRepo {
-  type Resource = Repo;
-  fn single_request(repo: String) -> ExecuteRequest {
-    ExecuteRequest::CloneRepo(CloneRepo { repo })
-  }
-}
-
-impl Resolve<ExecuteArgs> for BatchBuildRepo {
-  #[instrument(
-    "BatchBuildRepo",
-    skip_all,
-    fields(
-      task_id = task_id.to_string(),
-      operator = user.id,
-      pattern = self.pattern,
-      tags = self.tags.join(","),
-    )
-  )]
-  async fn resolve(
-    self,
-    ExecuteArgs { user, task_id, .. }: &ExecuteArgs,
-  ) -> mogh_error::Result<BatchExecutionResponse> {
-    Ok(
-      super::batch_execute::<BatchBuildRepo>(
-        &self.pattern,
-        self.tags,
-        user,
-      )
-      .await?,
-    )
-  }
-}
-
-impl Resolve<ExecuteArgs> for BuildRepo {
-  #[instrument(
-    "BuildRepo",
-    skip_all,
-    fields(
-      task_id = task_id.to_string(),
-      operator = user.id,
-      update_id = update.id,
-      repo = self.repo,
-    )
-  )]
-  async fn resolve(
-    self,
-    ExecuteArgs {
-      user,
-      update,
-      task_id,
-    }: &ExecuteArgs,
-  ) -> mogh_error::Result<Update> {
-    let mut repo = get_check_permissions::<Repo>(
-      &self.repo,
-      user,
-      PermissionLevel::Execute.into(),
-    )
-    .await?;
-
-    if repo.config.builder_id.is_empty() {
-      return Err(anyhow!("Must attach builder to BuildRepo").into());
-    }
-
-    // get the action state for the repo (or insert default).
-    let action_state =
-      action_states().repo.get_or_insert_default(&repo.id).await;
-
-    // This will set action state back to default when dropped.
-    // Will also check to ensure repo not already busy before updating.
-    let action_guard =
-      action_state.update(|state| state.building = true)?;
-
-    let mut update = update.clone();
-    update_update(update.clone()).await?;
-
-    let git_token = git_token(
-      &repo.config.git_provider,
-      &repo.config.git_account,
-      |https| repo.config.git_https = https,
-    )
-    .await
-    .with_context(
-      || format!("Failed to get git token in call to db. This is a database error, not a token exisitence error. Stopping run. | {} | {}", repo.config.git_provider, repo.config.git_account),
-    )?;
-
-    let cancel = CancellationToken::new();
-    let cancel_clone = cancel.clone();
-    let mut cancel_recv =
-      repo_cancel_channel().receiver.resubscribe();
-    let repo_id = repo.id.clone();
-
-    let builder =
-      resource::get::<Builder>(&repo.config.builder_id).await?;
-
-    let is_server_builder =
-      matches!(&builder.config, BuilderConfig::Server(_));
-
-    tokio::spawn(async move {
-      let poll = async {
-        loop {
-          let (incoming_repo_id, mut update) = tokio::select! {
-            _ = cancel_clone.cancelled() => return Ok(()),
-            id = cancel_recv.recv() => id?
-          };
-          if incoming_repo_id == repo_id {
-            if is_server_builder {
-              update.push_error_log("Cancel acknowledged", "Repo Build cancellation is not possible on server builders at this time. Use an AWS builder to enable this feature.");
-            } else {
-              update.push_simple_log("Cancel acknowledged", "The repo build cancellation has been queued, it may still take some time.");
-            }
-            update.finalize();
-            let id = update.id.clone();
-            if let Err(e) = update_update(update).await {
-              warn!("failed to modify Update {id} on db | {e:#}");
-            }
-            if !is_server_builder {
-              cancel_clone.cancel();
-            }
-            return Ok(());
-          }
-        }
-        #[allow(unreachable_code)]
-        anyhow::Ok(())
-      };
-      tokio::select! {
-        _ = cancel_clone.cancelled() => {}
-        _ = poll => {}
-      }
-    });
-
-    // GET BUILDER PERIPHERY
-
-    let (periphery, cleanup_data) = match connect_builder_periphery(
-      repo.name.clone(),
-      None,
-      builder,
-      Some(&mut update),
-    )
-    .await
-    {
-      Ok(builder) => builder,
-      Err(e) => {
-        warn!("failed to get builder for repo {} | {e:#}", repo.name);
-        update.logs.push(Log::error(
-          "get builder",
-          format_serror(&e.context("failed to get builder").into()),
-        ));
-        // Drop action guard before updating
-        // clients to requery action state
-        drop(action_guard);
-        return handle_builder_early_return(
-          update, repo.id, repo.name, false,
-        )
-        .await;
-      }
-    };
-
-    // CLONE REPO
-
-    // interpolate variables / secrets, returning the sanitizing replacers to send to
-    // periphery so it may sanitize the final command for safe logging (avoids exposing secret values)
-    let secret_replacers =
-      interpolate(&mut repo, &mut update).await?;
-
-    let res = tokio::select! {
-      res = periphery
-        .request(api::git::CloneRepo {
-          args: (&repo).into(),
-          git_token,
-          environment: repo.config.env_vars()?,
-          env_file_path: repo.config.env_file_path,
-          on_clone: repo.config.on_clone.into(),
-          on_pull: repo.config.on_pull.into(),
-          skip_secret_interp: repo.config.skip_secret_interp,
-          replacers: secret_replacers.into_iter().collect()
-        }) => res,
-      _ = cancel.cancelled() => {
-        debug!("build cancelled during clone, cleaning up builder");
-        update.push_error_log("build cancelled", String::from("user cancelled build during repo clone"));
-        cleanup_builder_instance(periphery, cleanup_data, &mut update)
-          .await;
-        info!("builder cleaned up");
-        // Drop action guard before updating
-        // clients to requery action state
-        drop(action_guard);
-        return handle_builder_early_return(update, repo.id, repo.name, true).await
-      },
-    };
-
-    let commit_message = match res {
-      Ok(res) => {
-        debug!("finished repo clone");
-        update.logs.extend(res.res.logs);
-        update.commit_hash = res.res.commit_hash.unwrap_or_default();
-
-        res.res.commit_message.unwrap_or_default()
-      }
-      Err(e) => {
-        update.push_error_log(
-          "Clone Repo",
-          format_serror(&e.context("Failed to clone repo").into()),
-        );
-        Default::default()
-      }
-    };
-
-    update.finalize();
-
-    let db = db_client();
-
-    if update.success {
-      let _ = db
-        .repos
-        .update_one(
-          doc! { "name": &repo.name },
-          doc! { "$set": {
-            "info.last_built_at": komodo_timestamp(),
-            "info.built_hash": &update.commit_hash,
-            "info.built_message": commit_message
-          }},
-        )
-        .await;
-    }
-
-    // stop the cancel listening task from going forever
-    cancel.cancel();
-
-    // If building on temporary cloud server (AWS),
-    // this will terminate the server.
-    cleanup_builder_instance(periphery, cleanup_data, &mut update)
-      .await;
-
-    // Drop action guard before updating
-    // clients to requery action state
-    drop(action_guard);
-
-    // Need to manually update the update before cache refresh,
-    // and before broadcast with add_update.
-    // The Err case of to_document should be unreachable,
-    // but will fail to update cache in that case.
-    if let Ok(update_doc) = to_document(&update) {
-      let _ = update_one_by_id(
-        &db.updates,
-        &update.id,
-        database::mungos::update::Update::Set(update_doc),
-        None,
-      )
-      .await;
-      refresh_repo_state_cache().await;
-    }
-
-    update_update(update.clone()).await?;
-
-    if !update.success {
-      let target = update.target.clone();
-      tokio::spawn(async move {
-        let alert = Alert {
-          id: Default::default(),
-          target,
-          ts: komodo_timestamp(),
-          resolved_ts: Some(komodo_timestamp()),
-          resolved: true,
-          level: SeverityLevel::Warning,
-          data: AlertData::RepoBuildFailed {
-            id: repo.id,
-            name: repo.name,
-          },
-        };
-        send_alerts(&[alert]).await
-      });
-    }
-
-    Ok(update)
-  }
-}
-
-#[instrument("HandleRepoBuildEarlyReturn", skip(update))]
-async fn handle_builder_early_return(
-  mut update: Update,
-  repo_id: String,
-  repo_name: String,
-  is_cancel: bool,
-) -> mogh_error::Result<Update> {
-  update.finalize();
-  // Need to manually update the update before cache refresh,
-  // and before broadcast with add_update.
-  // The Err case of to_document should be unreachable,
-  // but will fail to update cache in that case.
-  if let Ok(update_doc) = to_document(&update) {
-    let _ = update_one_by_id(
-      &db_client().updates,
-      &update.id,
-      database::mungos::update::Update::Set(update_doc),
-      None,
-    )
-    .await;
-    refresh_repo_state_cache().await;
-  }
-  update_update(update.clone()).await?;
-  if !update.success && !is_cancel {
-    let target = update.target.clone();
-    tokio::spawn(async move {
-      let alert = Alert {
-        id: Default::default(),
-        target,
-        ts: komodo_timestamp(),
-        resolved_ts: Some(komodo_timestamp()),
-        resolved: true,
-        level: SeverityLevel::Warning,
-        data: AlertData::RepoBuildFailed {
-          id: repo_id,
-          name: repo_name,
-        },
-      };
-      send_alerts(&[alert]).await
-    });
-  }
-  Ok(update)
-}
-
-pub async fn validate_cancel_repo_build(
-  request: &ExecuteRequest,
-) -> anyhow::Result<()> {
-  if let ExecuteRequest::CancelRepoBuild(req) = request {
-    let repo = resource::get::<Repo>(&req.repo).await?;
-
-    let db = db_client();
-
-    let (latest_build, latest_cancel) = tokio::try_join!(
-      db.updates
-        .find_one(doc! {
-          "operation": "BuildRepo",
-          "target.id": &repo.id,
-        },)
-        .with_options(
-          FindOneOptions::builder()
-            .sort(doc! { "start_ts": -1 })
-            .build()
-        )
-        .into_future(),
-      db.updates
-        .find_one(doc! {
-          "operation": "CancelRepoBuild",
-          "target.id": &repo.id,
-        },)
-        .with_options(
-          FindOneOptions::builder()
-            .sort(doc! { "start_ts": -1 })
-            .build()
-        )
-        .into_future()
-    )?;
-
-    match (latest_build, latest_cancel) {
-      (Some(build), Some(cancel))
-        if cancel.start_ts > build.start_ts =>
-      {
-        return Err(anyhow!("Repo build has already been cancelled"));
-      }
-
-      (None, _) => return Err(anyhow!("No repo build in progress")),
-      _ => {}
-    };
-  }
-  Ok(())
-}
-
-impl Resolve<ExecuteArgs> for CancelRepoBuild {
-  #[instrument(
-    "CancelRepoBuild",
-    skip_all,
-    fields(
-      task_id = task_id.to_string(),
-      operator = user.id,
-      update_id = update.id,
-      repo = self.repo,
-    )
-  )]
-  async fn resolve(
-    self,
-    ExecuteArgs {
-      user,
-      update,
-      task_id,
-    }: &ExecuteArgs,
-  ) -> mogh_error::Result<Update> {
-    let repo = get_check_permissions::<Repo>(
-      &self.repo,
-      user,
-      PermissionLevel::Execute.into(),
-    )
-    .await?;
-
-    // make sure the build is building
-    if !action_states()
-      .repo
-      .get(&repo.id)
-      .await
-      .and_then(|s| s.get().ok().map(|s| s.building))
-      .unwrap_or_default()
-    {
-      return Err(anyhow!("Repo is not building.").into());
-    }
-
-    let mut update = update.clone();
-
-    update.push_simple_log(
-      "cancel triggered",
-      "the repo build cancel has been triggered",
-    );
-    update_update(update.clone()).await?;
-
-    repo_cancel_channel()
-      .sender
-      .lock()
-      .await
-      .send((repo.id, update.clone()))?;
-
-    // Make sure cancel is set to complete after some time in case
-    // no reciever is there to do it. Prevents update stuck in InProgress.
-    let update_id = update.id.clone();
-    tokio::spawn(async move {
-      tokio::time::sleep(Duration::from_secs(60)).await;
-      if let Err(e) = update_one_by_id(
-        &db_client().updates,
-        &update_id,
-        doc! { "$set": { "status": "Complete" } },
-        None,
-      )
-      .await
-      {
-        warn!(
-          "failed to set CancelRepoBuild Update status Complete after timeout | {e:#}"
-        )
-      }
-    });
-
-    Ok(update)
-  }
-}
-
+/// Non-secret Variables into the repo environment and on_clone / on_pull commands.
 #[instrument(
   "Interpolate",
   skip_all,
@@ -830,16 +382,12 @@ async fn interpolate(
   update: &mut Update,
 ) -> anyhow::Result<HashSet<(String, String)>> {
   if !repo.config.skip_secret_interp {
-    let VariablesAndSecrets { variables, secrets } =
-      get_variables_and_secrets().await?;
-
-    let mut interpolator =
-      Interpolator::new(Some(&variables), &secrets);
-
+    let variables = get_variables().await?;
+    let empty = Default::default();
+    let mut interpolator = Interpolator::new(Some(&variables), &empty);
     interpolator
       .interpolate_repo(repo)?
       .push_logs(&mut update.logs);
-
     Ok(interpolator.secret_replacers)
   } else {
     Ok(Default::default())

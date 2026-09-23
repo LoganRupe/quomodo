@@ -85,18 +85,9 @@ pub enum ListCommand {
   /// List Servers (aliases: `server`, `sv`)
   #[clap(alias = "server", alias = "sv")]
   Servers(ResourceFilters),
-  /// List Swarms (aliases: `swarm`, `sw`)
-  #[clap(alias = "swarm", alias = "sw")]
-  Swarms(ResourceFilters),
   /// List Stacks (aliases: `stack`, `st`)
   #[clap(alias = "stack", alias = "st")]
   Stacks(ResourceFilters),
-  /// List Deployments (aliases: `deployment`, `dp`)
-  #[clap(alias = "deployment", alias = "dp")]
-  Deployments(ResourceFilters),
-  /// List Builds (aliases: `build`, `bd`)
-  #[clap(alias = "build", alias = "bd")]
-  Builds(ResourceFilters),
   /// List Repos (aliases: `repo`, `rp`)
   #[clap(alias = "repo", alias = "rp")]
   Repos(ResourceFilters),
@@ -112,12 +103,6 @@ pub enum ListCommand {
   /// List scheduled Procedures / Actions (aliases: `sched`, `sc`)
   #[clap(alias = "sched", alias = "sc")]
   Schedules(ResourceFilters),
-  /// List Builders (aliases: `builder`, `bldr`)
-  #[clap(alias = "builder", alias = "bldr")]
-  Builders(ResourceFilters),
-  /// List Alerters (aliases: `alerter`, `alrt`)
-  #[clap(alias = "alerter", alias = "alrt")]
-  Alerters(ResourceFilters),
 }
 
 #[derive(Debug, Clone, clap::Parser)]

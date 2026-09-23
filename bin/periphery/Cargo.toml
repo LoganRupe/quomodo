@@ -29,14 +29,12 @@ mogh_logger.workspace = true
 mogh_cache.workspace = true
 mogh_pki.workspace = true
 git.workspace = true
+quadlet.workspace = true
 # mogh
 async_timing_util.workspace = true
 mogh_resolver.workspace = true
 # external
-sha2.workspace = true
-hex.workspace = true
 chrono.workspace = true
-regex.workspace = true
 urlencoding.workspace = true
 hickory-resolver.workspace = true
 futures-util.workspace = true

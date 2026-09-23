@@ -1,6 +1,9 @@
 #[macro_use]
 extern crate tracing;
 
+// Vendored openssl is linked for the whole graph; keep the dependency live.
+use openssl_sys as _;
+
 use anyhow::Context;
 use colored::Colorize;
 use komodo_client::entities::config::cli::args;
@@ -46,12 +49,6 @@ async fn app() -> anyhow::Result<()> {
       Ok(())
     }
     args::Command::CoreInfo => command::core_info::handle().await,
-    args::Command::Container(container) => {
-      command::container::handle(container).await
-    }
-    args::Command::Inspect(inspect) => {
-      command::container::inspect_container(inspect).await
-    }
     args::Command::List(list) => command::list::handle(list).await,
     args::Command::Execute(args) => {
       command::execute::handle(&args.execution, args.yes).await
@@ -61,15 +58,6 @@ async fn app() -> anyhow::Result<()> {
     }
     args::Command::Update { command } => {
       command::update::handle(command).await
-    }
-    args::Command::Connect(connect) => {
-      command::terminal::handle_connect(connect).await
-    }
-    args::Command::Exec(exec) => {
-      command::terminal::handle_exec(exec).await
-    }
-    args::Command::Attach(attach) => {
-      command::terminal::handle_attach(attach).await
     }
     args::Command::Key { command } => {
       mogh_pki::cli::handle(command, mogh_pki::PkiKind::Mutual).await

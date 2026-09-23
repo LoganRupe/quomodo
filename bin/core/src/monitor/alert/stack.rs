@@ -8,14 +8,12 @@ use komodo_client::entities::{
 };
 
 use crate::{
-  alert::send_alerts,
   resource,
   state::{action_states, db_client, stack_status_cache},
 };
 
 pub async fn alert_stacks(
   ts: i64,
-  swarm_names: &HashMap<String, String>,
   server_names: &HashMap<String, String>,
 ) {
   let action_states = action_states();
@@ -64,8 +62,6 @@ pub async fn alert_stacks(
       let data = AlertData::StackStateChange {
         id: status.curr.id.clone(),
         name: stack.name,
-        swarm_name: swarm_names.get(&stack.config.swarm_id).cloned(),
-        swarm_id: optional_string(stack.config.swarm_id),
         server_name: server_names
           .get(&stack.config.server_id)
           .cloned(),
@@ -88,7 +84,6 @@ pub async fn alert_stacks(
   if alerts.is_empty() {
     return;
   }
-  send_alerts(&alerts).await;
   let res = db_client().alerts.insert_many(alerts).await;
   if let Err(e) = res {
     error!("failed to record stack status alerts to db | {e:#}");

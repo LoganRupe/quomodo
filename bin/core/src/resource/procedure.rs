@@ -5,15 +5,11 @@ use database::mungos::{
   find::find_collect,
   mongodb::{Collection, bson::doc, options::FindOneOptions},
 };
-use futures_util::{TryStreamExt, stream::FuturesUnordered};
 use komodo_client::{
   api::execute::Execution,
   entities::{
     Operation, ResourceTarget, ResourceTargetVariant,
     action::Action,
-    alerter::Alerter,
-    build::Build,
-    deployment::Deployment,
     permission::PermissionLevel,
     procedure::{
       PartialProcedureConfig, Procedure, ProcedureConfig,
@@ -24,7 +20,6 @@ use komodo_client::{
     resource::Resource,
     server::Server,
     stack::Stack,
-    swarm::Swarm,
     sync::ResourceSync,
     update::Update,
     user::User,
@@ -245,25 +240,6 @@ async fn validate_config(
               .await?;
               params.sync = sync.id;
             }
-            // Special: SendAlert checks a Vec of alerters
-            Execution::SendAlert(params) => {
-              params.alerters = params
-                .alerters
-                .iter()
-                .map(async |alerter| {
-                  let id = super::get_check_permissions::<Alerter>(
-                    alerter,
-                    user,
-                    PermissionLevel::Execute.into(),
-                  )
-                  .await?
-                  .id;
-                  anyhow::Ok(id)
-                })
-                .collect::<FuturesUnordered<_>>()
-                .try_collect::<Vec<_>>()
-                .await?;
-            }
             Execution::None(_) | Execution::Sleep(_) => {}
           }
         };
@@ -276,43 +252,12 @@ async fn validate_config(
           // Procedure
           (CancelProcedure, Procedure, procedure),
           // Build
-          (RunBuild, Build, build),
-          (CancelBuild, Build, build),
           // Deployment
-          (Deploy, Deployment, deployment),
-          (PullDeployment, Deployment, deployment),
-          (StartDeployment, Deployment, deployment),
-          (RestartDeployment, Deployment, deployment),
-          (PauseDeployment, Deployment, deployment),
-          (UnpauseDeployment, Deployment, deployment),
-          (StopDeployment, Deployment, deployment),
-          (DestroyDeployment, Deployment, deployment),
           // Repo
           (CloneRepo, Repo, repo),
           (PullRepo, Repo, repo),
-          (BuildRepo, Repo, repo),
-          (CancelRepoBuild, Repo, repo),
           // Server
-          (StartContainer, Server, server),
-          (RestartContainer, Server, server),
-          (PauseContainer, Server, server),
-          (UnpauseContainer, Server, server),
-          (StopContainer, Server, server),
-          (DestroyContainer, Server, server),
-          (StartAllContainers, Server, server),
-          (RestartAllContainers, Server, server),
-          (PauseAllContainers, Server, server),
-          (UnpauseAllContainers, Server, server),
-          (StopAllContainers, Server, server),
-          (PruneContainers, Server, server),
-          (DeleteNetwork, Server, server),
-          (PruneNetworks, Server, server),
-          (DeleteImage, Server, server),
           (PruneImages, Server, server),
-          (DeleteVolume, Server, server),
-          (PruneVolumes, Server, server),
-          (PruneDockerBuilders, Server, server),
-          (PruneBuildx, Server, server),
           (PruneSystem, Server, server),
           // Resource Sync
           (RunSync, ResourceSync, sync),
@@ -322,34 +267,16 @@ async fn validate_config(
           (PullStack, Stack, stack),
           (StartStack, Stack, stack),
           (RestartStack, Stack, stack),
-          (PauseStack, Stack, stack),
-          (UnpauseStack, Stack, stack),
           (StopStack, Stack, stack),
           (DestroyStack, Stack, stack),
-          (RunStackService, Stack, stack),
           // Alerter
-          (TestAlerter, Alerter, alerter),
           // Swarm
-          (RemoveSwarmNodes, Swarm, swarm),
-          (UpdateSwarmNode, Swarm, swarm),
-          (RemoveSwarmStacks, Swarm, swarm),
-          (RemoveSwarmServices, Swarm, swarm),
-          (CreateSwarmConfig, Swarm, swarm),
-          (RotateSwarmConfig, Swarm, swarm),
-          (RemoveSwarmConfigs, Swarm, swarm),
-          (CreateSwarmSecret, Swarm, swarm),
-          (RotateSwarmSecret, Swarm, swarm),
-          (RemoveSwarmSecrets, Swarm, swarm),
         ],
         batch_admin: [
           BatchRunProcedure,
           BatchRunAction,
-          BatchRunBuild,
-          BatchDeploy,
-          BatchDestroyDeployment,
           BatchCloneRepo,
           BatchPullRepo,
-          BatchBuildRepo,
           BatchDeployStack,
           BatchDeployStackIfChanged,
           BatchPullStack,
@@ -358,7 +285,6 @@ async fn validate_config(
         admin_only: [
           (ClearRepoCache, "Non admin user cannot clear repo cache"),
           (BackupCoreDatabase, "Non admin user cannot trigger core database backup"),
-          (GlobalAutoUpdate, "Non admin user cannot trigger global auto update"),
           (RotateAllServerKeys, "Non admin user cannot trigger rotate all server keys"),
           (RotateCoreKeys, "Non admin user cannot trigger rotate core keys"),
         ],

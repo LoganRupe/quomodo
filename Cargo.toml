@@ -27,6 +27,7 @@ database = { path = "lib/database" }
 encoding = { path = "lib/encoding" }
 command = { path = "lib/command" }
 git = { path = "lib/git" }
+quadlet = { path = "lib/quadlet" }
 
 # MOGH
 slack = { version = "2.0.0", package = "slack_client_rs", default-features = false, features = ["rustls"] }
@@ -49,6 +50,11 @@ mogh_cache = "1.1.2"
 mogh_pki = "1.1.3"
 mungos = "3.7.0"
 svi = "1.2.0"
+
+# SECRETS (Vaultwarden vault protocol)
+aws-lc-rs = "1.16"
+argon2 = "0.5"
+base64 = "0.22"
 
 # BUILD ENV
 # Vendored so release binaries do not depend on the host libssl version.

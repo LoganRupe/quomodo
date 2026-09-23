@@ -1,4 +1,4 @@
-use std::{str::FromStr, sync::OnceLock, time::Duration};
+use std::{str::FromStr, sync::OnceLock};
 
 use anyhow::{Context, anyhow};
 use komodo_client::{
@@ -7,7 +7,7 @@ use komodo_client::{
     write::{RefreshResourceSyncPending, RefreshStackCache},
   },
   entities::{
-    action::Action, build::Build, procedure::Procedure, repo::Repo,
+    action::Action, procedure::Procedure, repo::Repo,
     stack::Stack, sync::ResourceSync, user::git_webhook_user,
   },
 };
@@ -23,115 +23,9 @@ use crate::{
   },
   helpers::update::init_execution_update,
   resource,
-  state::action_states,
 };
 
 use super::{ANY_BRANCH, ListenerLockCache};
-
-// =======
-//  BUILD
-// =======
-
-impl super::CustomSecret for Build {
-  fn custom_secret(resource: &Self) -> &str {
-    &resource.config.webhook_secret
-  }
-}
-
-pub async fn handle_build_webhook<B: super::ExtractBranch>(
-  build: Build,
-  body: String,
-) -> anyhow::Result<()> {
-  if !build.config.webhook_enabled {
-    return Ok(());
-  }
-
-  // Use the correct target branch when using linked repo.
-  let branch = if build.config.linked_repo.is_empty() {
-    build.config.branch
-  } else {
-    resource::get::<Repo>(&build.config.linked_repo)
-      .await
-      .context("Failed to find 'linked_repo'")?
-      .config
-      .branch
-  };
-
-  if !B::branch_matches(&body, &branch)? {
-    return Ok(());
-  }
-
-  // Cancel if currently building
-  if action_states()
-    .build
-    .get(&build.id)
-    .await
-    .and_then(|states| {
-      states.get().ok().map(|states| states.building)
-    })
-    .unwrap_or_default()
-  {
-    let user = git_webhook_user().to_owned();
-    let cancel = ExecuteRequest::CancelBuild(CancelBuild {
-      build: build.id.clone(),
-    });
-    let update = init_execution_update(&cancel, &user).await?;
-    let ExecuteRequest::CancelBuild(cancel) = cancel else {
-      unreachable!()
-    };
-
-    cancel
-      .resolve(&ExecuteArgs {
-        user,
-        update,
-        task_id: Uuid::new_v4(),
-      })
-      .await
-      .ok();
-
-    poll_build_until_cancelled(&build.id).await?;
-  }
-
-  let user = git_webhook_user().to_owned();
-  let run = ExecuteRequest::RunBuild(RunBuild { build: build.id });
-  let update = init_execution_update(&run, &user).await?;
-  let ExecuteRequest::RunBuild(run) = run else {
-    unreachable!()
-  };
-
-  run
-    .resolve(&ExecuteArgs {
-      user,
-      update,
-      task_id: Uuid::new_v4(),
-    })
-    .await
-    .map_err(|e| e.error)?;
-
-  Ok(())
-}
-
-async fn poll_build_until_cancelled(
-  build_id: &String,
-) -> anyhow::Result<()> {
-  let action_states = action_states();
-  // Poll to ensure cancelled
-  for _ in 0..10 {
-    if !action_states
-      .build
-      .get(build_id)
-      .await
-      .and_then(|states| {
-        states.get().ok().map(|states| states.building)
-      })
-      .unwrap_or_default()
-    {
-      return Ok(());
-    }
-    tokio::time::sleep(Duration::from_secs(1)).await;
-  }
-  Err(anyhow!("Build still running after cancel"))
-}
 
 // ======
 //  REPO
@@ -200,36 +94,11 @@ impl RepoExecution for PullRepo {
   }
 }
 
-impl RepoExecution for BuildRepo {
-  async fn resolve(repo: Repo) -> anyhow::Result<()> {
-    let user = git_webhook_user().to_owned();
-    let req =
-      crate::api::execute::ExecuteRequest::BuildRepo(BuildRepo {
-        repo: repo.id,
-      });
-    let update = init_execution_update(&req, &user).await?;
-    let crate::api::execute::ExecuteRequest::BuildRepo(req) = req
-    else {
-      unreachable!()
-    };
-    req
-      .resolve(&ExecuteArgs {
-        user,
-        update,
-        task_id: Uuid::new_v4(),
-      })
-      .await
-      .map_err(|e| e.error)?;
-    Ok(())
-  }
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RepoWebhookOption {
   Clone,
   Pull,
-  Build,
 }
 
 pub async fn handle_repo_webhook<B: super::ExtractBranch>(
@@ -243,9 +112,6 @@ pub async fn handle_repo_webhook<B: super::ExtractBranch>(
     }
     RepoWebhookOption::Pull => {
       handle_repo_webhook_inner::<B, PullRepo>(repo, body).await
-    }
-    RepoWebhookOption::Build => {
-      handle_repo_webhook_inner::<B, BuildRepo>(repo, body).await
     }
   }
 }
@@ -311,7 +177,6 @@ impl StackExecution for DeployStack {
       let req = ExecuteRequest::DeployStack(DeployStack {
         stack: stack.id,
         services: Vec::new(),
-        stop_time: None,
       });
       let update = init_execution_update(&req, &user).await?;
       let ExecuteRequest::DeployStack(req) = req else {
@@ -329,7 +194,6 @@ impl StackExecution for DeployStack {
       let req =
         ExecuteRequest::DeployStackIfChanged(DeployStackIfChanged {
           stack: stack.id,
-          stop_time: None,
         });
       let update = init_execution_update(&req, &user).await?;
       let ExecuteRequest::DeployStackIfChanged(req) = req else {

@@ -5,7 +5,7 @@ use indexmap::IndexSet;
 use komodo_client::{
   api::write::RefreshStackCache,
   entities::{
-    Operation, ResourceTarget, ResourceTargetVariant, SwarmOrServer,
+    Operation, ResourceTarget, ResourceTargetVariant,
     permission::{PermissionLevel, SpecificPermission},
     repo::Repo,
     resource::Resource,
@@ -13,34 +13,28 @@ use komodo_client::{
     stack::{
       PartialStackConfig, Stack, StackConfig, StackConfigDiff,
       StackInfo, StackListItem, StackListItemInfo,
-      StackQuerySpecifics, StackServiceWithUpdate, StackState,
+      StackQuerySpecifics, StackState,
     },
-    swarm::Swarm,
     to_docker_compatible_name,
     update::Update,
     user::{User, stack_user},
   },
 };
 use mogh_resolver::Resolve;
-use periphery_client::api::{
-  compose::ComposeExecution, swarm::RemoveSwarmStacks,
-};
+use periphery_client::api::quadlet::DestroyStack;
 
 use crate::{
   api::write::WriteArgs,
   config::core_config,
   helpers::{
     periphery_client,
-    query::{
-      get_cached_stack_state, get_stack_state, get_swarm_or_server,
-    },
+    query::{get_cached_stack_state, get_stack_state},
     repo_link,
-    swarm::swarm_request,
   },
-  monitor::{refresh_server_cache, refresh_swarm_cache},
+  monitor::refresh_server_cache,
+  stack::{stack_server, units_of_stack},
   state::{
-    action_states, all_resources_cache, db_client,
-    server_status_cache, stack_status_cache,
+    action_states, all_resources_cache, db_client, stack_status_cache,
   },
 };
 
@@ -67,21 +61,15 @@ impl super::KomodoResource for Stack {
   }
 
   fn creator_specific_permissions() -> IndexSet<SpecificPermission> {
-    [
-      SpecificPermission::Inspect,
-      SpecificPermission::Logs,
-      SpecificPermission::Terminal,
-    ]
-    .into_iter()
-    .collect()
+    [SpecificPermission::Inspect, SpecificPermission::Logs]
+      .into_iter()
+      .collect()
   }
 
   fn inherit_specific_permissions_from(
     _self: &Resource<Self::Config, Self::Info>,
   ) -> Option<ResourceTarget> {
-    if !_self.config.swarm_id.is_empty() {
-      Some(ResourceTarget::Swarm(_self.config.swarm_id.clone()))
-    } else if !_self.config.server_id.is_empty() {
+    if !_self.config.server_id.is_empty() {
       Some(ResourceTarget::Server(_self.config.server_id.clone()))
     } else {
       None
@@ -96,54 +84,8 @@ impl super::KomodoResource for Stack {
   async fn to_list_item(
     stack: Resource<Self::Config, Self::Info>,
   ) -> Self::ListItem {
-    let status = stack_status_cache().get(&stack.id).await;
     let state = get_cached_stack_state(&stack.id).await;
-    let project_name = stack.project_name(false);
-    let services = status
-      .as_ref()
-      .map(|s| {
-        s.curr
-          .services
-          .iter()
-          .map(|current_service| {
-            let latest_service = stack
-              .info
-              .latest_services
-              .iter()
-              .find(|latest_service| {
-                current_service.service == latest_service.service_name
-              });
-            let latest_image = if let Some(latest_image) =
-              latest_service.as_ref().map(|s| &s.image)
-              && latest_image != &current_service.image
-            {
-              Some(latest_image.to_string())
-            } else {
-              None
-            };
-            let update_available = current_service
-              .image_digests
-              .as_ref()
-              .and_then(|current_digests| {
-                latest_service.as_ref().and_then(|latest_service| {
-                  latest_service
-                    .image_digest
-                    .as_ref()?
-                    .update_available(current_digests)
-                    .into()
-                })
-              })
-              .unwrap_or_default();
-            StackServiceWithUpdate {
-              service: current_service.service.clone(),
-              image: current_service.image.clone(),
-              latest_image,
-              update_available,
-            }
-          })
-          .collect::<Vec<_>>()
-      })
-      .unwrap_or_default();
+    let units = units_of_stack(&stack);
 
     let default_git = || {
       (
@@ -174,46 +116,36 @@ impl super::KomodoResource for Stack {
           .unwrap_or_else(default_git)
       };
 
-    // This is only true if it is KNOWN to be true. so other cases are false.
-    let (project_missing, status) =
-      if matches!(state, StackState::Down | StackState::Unknown) {
-        (false, None)
-      } else if stack.config.swarm_id.is_empty()
-        && !stack.config.server_id.is_empty()
-        && let Some(status) = server_status_cache()
-          .get(&stack.config.server_id)
-          .await
-          .as_ref()
-      {
-        if let Some(docker) = &status.docker {
-          if let Some(project) = docker
-            .projects
-            .iter()
-            .find(|project| project.name == project_name)
-          {
-            (false, project.status.clone())
-          } else {
-            // The project doesn't exist
-            (true, None)
-          }
-        } else {
-          (false, None)
-        }
-      } else {
-        (false, None)
-      };
+    let status = match state {
+      StackState::Down | StackState::Unknown => None,
+      _ => stack_status_cache().get(&stack.id).await.map(|s| {
+        let running = s
+          .curr
+          .services
+          .iter()
+          .filter(|s| {
+            s.state
+              == komodo_client::entities::stack::StackServiceState::Running
+          })
+          .count();
+        format!("{running}/{} units running", s.curr.services.len())
+      }),
+    };
 
-    let all = all_resources_cache().load();
-    let server_name = all
+    let server_name = all_resources_cache()
+      .load()
       .servers
       .get(&stack.config.server_id)
       .map(|server| server.name.clone())
       .unwrap_or_default();
-    let swarm_name = all
-      .swarms
-      .get(&stack.config.swarm_id)
-      .map(|swarm| swarm.name.clone())
-      .unwrap_or_default();
+
+    let missing_units = stack.info.latest_units.is_empty()
+      && stack
+        .info
+        .remote_errors
+        .as_ref()
+        .map(|e| !e.is_empty())
+        .unwrap_or(false);
 
     StackListItem {
       name: stack.name,
@@ -224,17 +156,12 @@ impl super::KomodoResource for Stack {
       info: StackListItemInfo {
         state,
         status,
-        services,
-        project_missing,
-        file_contents: !stack.config.file_contents.is_empty(),
-        swarm_id: stack.config.swarm_id,
-        swarm_name,
+        units,
+        missing_units,
         server_id: stack.config.server_id,
         server_name,
         linked_repo: stack.config.linked_repo,
         linked_repo_name,
-        missing_files: stack.info.missing_files,
-        files_on_host: stack.config.files_on_host,
         repo_link: repo_link(
           &git_provider,
           &repo,
@@ -246,9 +173,6 @@ impl super::KomodoResource for Stack {
         branch,
         latest_hash: stack.info.latest_hash,
         deployed_hash: stack.info.deployed_hash,
-        auto_update_all_services: stack
-          .config
-          .auto_update_all_services,
       },
     }
   }
@@ -296,32 +220,16 @@ impl super::KomodoResource for Stack {
         format_serror(&e.error.context("The stack cache has failed to refresh. This may be due to a misconfiguration of the Stack").into())
       );
     };
-    if created.config.swarm_id.is_empty()
-      && created.config.server_id.is_empty()
-    {
+    if created.config.server_id.is_empty() {
       return Ok(());
     }
-    let Ok(swarm_or_server) = get_swarm_or_server(
-      &created.config.swarm_id,
-      &created.config.server_id,
-    )
-    .await
-    .inspect_err(|e| {
+    if let Ok(server) = stack_server(created).await.inspect_err(|e| {
       warn!(
-        "Failed to get Swarm or Server for Stack {} | {e:#}",
+        "Failed to get Server for Stack {} | {e:#}",
         created.name
       )
-    }) else {
-      return Ok(());
-    };
-    match swarm_or_server {
-      SwarmOrServer::Swarm(swarm) => {
-        refresh_swarm_cache(&swarm, true).await;
-      }
-      SwarmOrServer::Server(server) => {
-        refresh_server_cache(&server, true).await;
-      }
-      SwarmOrServer::None => {}
+    }) {
+      refresh_server_cache(&server, true).await;
     }
     Ok(())
   }
@@ -370,97 +278,55 @@ impl super::KomodoResource for Stack {
     if matches!(state, StackState::Down | StackState::Unknown) {
       return Ok(());
     }
-    // stack needs to be destroyed
-    let swarm_or_server = match get_swarm_or_server(
-      &stack.config.swarm_id,
-      &stack.config.server_id,
-    )
-    .await
-    {
-      Ok(res) => res,
+    let server = match stack_server(stack).await {
+      Ok(server) => server,
       Err(e) => {
         update.push_error_log(
           "Destroy Stack",
           format_serror(
-            &e.context(
-              "Failed to retrieve Swarm or Server from database.",
-            )
-            .into(),
+            &e.context("Failed to retrieve Server from database.")
+              .into(),
           ),
         );
         return Ok(());
       }
     };
-
-    match swarm_or_server {
-      SwarmOrServer::None => {}
-      SwarmOrServer::Swarm(swarm) => {
-        match swarm_request(
-          &swarm.config.server_ids,
-          RemoveSwarmStacks {
-            stacks: vec![stack.project_name(false)],
-            detach: true,
-          },
-        )
-        .await
-        {
-          Ok(log) => update.logs.push(log),
-          Err(e) => update.push_simple_log(
-            "Failed to destroy stack",
-            format_serror(
-              &e.context(
-                "Failed to destroy Stack on Swarm before delete",
-              )
-              .into(),
-            ),
-          ),
-        }
-      }
-      SwarmOrServer::Server(server) => {
-        if !server.config.enabled {
-          update.push_simple_log(
-            "Destroy Stack",
-            "Skipping stack destroy, Server is disabled.",
-          );
-          return Ok(());
-        }
-
-        let periphery = match periphery_client(&server).await {
-          Ok(periphery) => periphery,
-          Err(e) => {
-            // This case won't ever happen, as periphery_client only fallible if the server is disabled.
-            // Leaving it for completeness sake
-            update.push_error_log(
-              "Destroy Stack",
-              format_serror(
-                &e.context("Failed to get periphery client").into(),
-              ),
-            );
-            return Ok(());
-          }
-        };
-
-        match periphery
-          .request(ComposeExecution {
-            project: stack.project_name(false),
-            command: String::from("down --remove-orphans"),
-          })
-          .await
-        {
-          Ok(log) => update.logs.push(log),
-          Err(e) => update.push_simple_log(
-            "Failed to destroy stack",
-            format_serror(
-              &e.context(
-                "failed to destroy stack on periphery server before delete",
-              )
-              .into(),
-            ),
-          ),
-        };
-      }
+    if !server.config.enabled {
+      update.push_simple_log(
+        "Destroy Stack",
+        "Skipping stack destroy, Server is disabled.",
+      );
+      return Ok(());
     }
-
+    let periphery = match periphery_client(&server).await {
+      Ok(periphery) => periphery,
+      Err(e) => {
+        update.push_error_log(
+          "Destroy Stack",
+          format_serror(
+            &e.context("Failed to get periphery client").into(),
+          ),
+        );
+        return Ok(());
+      }
+    };
+    match periphery
+      .request(DestroyStack {
+        stack: stack.name.clone(),
+      })
+      .await
+    {
+      Ok(log) => update.logs.push(log),
+      Err(e) => update.push_simple_log(
+        "Failed to destroy stack",
+        format_serror(
+          &e.context(
+            "failed to destroy stack on periphery server before delete",
+          )
+          .into(),
+        ),
+      ),
+    };
     Ok(())
   }
 
@@ -478,18 +344,6 @@ async fn validate_config(
   config: &mut PartialStackConfig,
   user: &User,
 ) -> anyhow::Result<()> {
-  if let Some(swarm_id) = &config.swarm_id
-    && !swarm_id.is_empty()
-  {
-    let swarm = get_check_permissions::<Swarm>(
-      swarm_id,
-      user,
-      PermissionLevel::Read.attach(),
-    )
-    .await
-    .context("Cannot attach Stack to this Swarm")?;
-    config.swarm_id = Some(swarm.id);
-  }
   if let Some(server_id) = &config.server_id
     && !server_id.is_empty()
   {

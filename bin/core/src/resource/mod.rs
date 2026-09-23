@@ -6,7 +6,6 @@ use std::{
 
 use anyhow::{Context, anyhow};
 use database::{
-  bson::to_bson,
   mungos::{
     by_id::{delete_one_by_id, update_one_by_id},
     find::find_collect,
@@ -55,26 +54,16 @@ use crate::{
 };
 
 mod action;
-mod alerter;
-mod build;
-mod builder;
-mod deployment;
 mod procedure;
 mod refresh;
 mod repo;
 mod server;
 mod stack;
-mod swarm;
 mod sync;
 
 pub use action::{
   refresh_action_state_cache, spawn_action_state_refresh_loop,
 };
-pub use build::{
-  get_build_state, refresh_build_state_cache,
-  spawn_build_state_refresh_loop,
-};
-pub use deployment::setup_deployment_execution;
 pub use procedure::{
   refresh_procedure_state_cache, spawn_procedure_state_refresh_loop,
 };
@@ -825,21 +814,14 @@ pub async fn update<T: KomodoResource>(
 fn resource_target<T: KomodoResource>(id: String) -> ResourceTarget {
   match T::resource_type() {
     ResourceTargetVariant::System => ResourceTarget::System(id),
-    ResourceTargetVariant::Swarm => ResourceTarget::Swarm(id),
     ResourceTargetVariant::Server => ResourceTarget::Server(id),
     ResourceTargetVariant::Stack => ResourceTarget::Stack(id),
-    ResourceTargetVariant::Deployment => {
-      ResourceTarget::Deployment(id)
-    }
-    ResourceTargetVariant::Build => ResourceTarget::Build(id),
     ResourceTargetVariant::Repo => ResourceTarget::Repo(id),
     ResourceTargetVariant::Procedure => ResourceTarget::Procedure(id),
     ResourceTargetVariant::Action => ResourceTarget::Action(id),
     ResourceTargetVariant::ResourceSync => {
       ResourceTarget::ResourceSync(id)
     }
-    ResourceTargetVariant::Builder => ResourceTarget::Builder(id),
-    ResourceTargetVariant::Alerter => ResourceTarget::Alerter(id),
   }
 }
 
@@ -900,22 +882,6 @@ pub async fn update_meta<T: KomodoResource>(
     .update_one(id_or_name_filter(id_or_name), doc! { "$set": set })
     .await?;
   refresh_all_resources_cache().await;
-  Ok(())
-}
-
-pub async fn update_info<T: KomodoResource>(
-  id_or_name: &str,
-  info: &T::Info,
-) -> anyhow::Result<()> {
-  let info = to_bson(info)
-    .context("Failed to serialize resource info to BSON")?;
-  T::coll()
-    .update_one(
-      id_or_name_filter(id_or_name),
-      doc! { "$set": { "info": info } },
-    )
-    .await
-    .context("Failed to update resource info on database")?;
   Ok(())
 }
 
@@ -1043,7 +1009,6 @@ pub async fn delete<T: KomodoResource>(
           .push_error_log("Post delete", format_serror(&e.into()));
       }
     },
-    delete_from_alerters::<T>(&resource.id)
   );
 
   refresh_all_resources_cache().await;
@@ -1054,25 +1019,6 @@ pub async fn delete<T: KomodoResource>(
   Ok(resource)
 }
 
-async fn delete_from_alerters<T: KomodoResource>(id: &str) {
-  let target_bson = doc! {
-    "type": T::resource_type().as_ref(),
-    "id": id,
-  };
-  if let Err(e) = db_client()
-    .alerters
-    .update_many(Document::new(), doc! {
-      "$pull": {
-        "config.resources": &target_bson,
-        "config.except_resources": target_bson,
-      }
-    })
-    .await
-    .context("Failed to clear deleted resource from alerter whitelist / blacklist")
-  {
-    warn!("{e:#}");
-  }
-}
 
 // =======
 
@@ -1124,17 +1070,12 @@ where
 {
   let resource: ResourceTarget = resource.into();
   let (recent_field, id) = match resource {
-    ResourceTarget::Swarm(id) => ("recents.Swarm", id),
     ResourceTarget::Server(id) => ("recents.Server", id),
     ResourceTarget::Stack(id) => ("recents.Stack", id),
-    ResourceTarget::Deployment(id) => ("recents.Deployment", id),
-    ResourceTarget::Build(id) => ("recents.Build", id),
     ResourceTarget::Repo(id) => ("recents.Repo", id),
     ResourceTarget::Procedure(id) => ("recents.Procedure", id),
     ResourceTarget::Action(id) => ("recents.Action", id),
     ResourceTarget::ResourceSync(id) => ("recents.ResourceSync", id),
-    ResourceTarget::Builder(id) => ("recents.Builder", id),
-    ResourceTarget::Alerter(id) => ("recents.Alerter", id),
     ResourceTarget::System(_) => return,
   };
   if let Err(e) = db_client()

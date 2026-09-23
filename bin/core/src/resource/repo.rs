@@ -8,7 +8,6 @@ use database::mungos::{
 use formatting::format_serror;
 use komodo_client::entities::{
   Operation, ResourceTarget, ResourceTargetVariant,
-  builder::Builder,
   permission::PermissionLevel,
   repo::{
     PartialRepoConfig, Repo, RepoConfig, RepoConfigDiff, RepoInfo,
@@ -79,9 +78,7 @@ impl super::KomodoResource for Repo {
       info: RepoListItemInfo {
         server_id: repo.config.server_id,
         server_name,
-        builder_id: repo.config.builder_id,
         last_pulled_at: repo.info.last_pulled_at,
-        last_built_at: repo.info.last_built_at,
         repo_link: repo_link(
           &repo.config.git_provider,
           &repo.config.repo,
@@ -95,7 +92,6 @@ impl super::KomodoResource for Repo {
         cloned_hash: status.latest_hash.clone(),
         cloned_message: status.latest_message.clone(),
         latest_hash: repo.info.latest_hash,
-        built_hash: repo.info.built_hash,
       },
     }
   }
@@ -256,18 +252,6 @@ async fn validate_config(
     .context("Cannot attach Repo to this Server")?;
     config.server_id = Some(server.id);
   }
-  if let Some(builder_id) = &config.builder_id
-    && !builder_id.is_empty()
-  {
-    let builder = super::get_check_permissions::<Builder>(
-      builder_id,
-      user,
-      PermissionLevel::Read.attach(),
-    )
-    .await
-    .context("Cannot attach Repo to this Builder")?;
-    config.builder_id = Some(builder.id);
-  }
   Ok(())
 }
 
@@ -285,8 +269,6 @@ pub async fn get_repo_state(id: &String) -> RepoState {
             Some(RepoState::Cloning)
           } else if s.pulling {
             Some(RepoState::Pulling)
-          } else if s.building {
-            Some(RepoState::Building)
           } else {
             None
           }

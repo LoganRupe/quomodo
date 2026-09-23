@@ -52,8 +52,6 @@ pub struct ServerListItemInfo {
   pub logical_core_count: Option<u32>,
   /// Region of the server.
   pub region: String,
-  /// Address of the server, or null if empty.
-  pub address: Option<String>,
   /// External address of the server (reachable by users).
   /// Used with links.
   pub external_address: Option<String>,
@@ -108,23 +106,7 @@ pub type _PartialServerConfig = PartialServerConfig;
 #[diff_derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[partial(skip_serializing_none, from, diff)]
 pub struct ServerConfig {
-  /// The ws/s address of the periphery client.
-  /// If unset, Server expects Periphery -> Core connection.
-  #[serde(default)]
-  #[builder(default)]
-  pub address: String,
-
-  /// Only relevant for Core -> Periphery connections.
-  /// Whether to skip Periphery tls certificate validation.
-  /// This defaults to true because Periphery generates self-signed certificates by default,
-  /// but if you use valid certs you can switch this to false.
-  #[serde(default = "default_insecure_tls")]
-  #[builder(default = "default_insecure_tls()")]
-  #[partial_default(default_insecure_tls())]
-  pub insecure_tls: bool,
-
   /// The address to use with links for containers on the server.
-  /// If empty, will use the 'address' for links.
   #[serde(default)]
   #[builder(default)]
   pub external_address: String,
@@ -150,14 +132,6 @@ pub struct ServerConfig {
   #[builder(default = "default_auto_rotate_keys()")]
   #[partial_default(default_auto_rotate_keys())]
   pub auto_rotate_keys: bool,
-
-  /// Deprecated. Use private / public keys instead.
-  /// An optional override passkey to use
-  /// to authenticate with periphery agent.
-  /// If this is empty, will use passkey in core config.
-  #[serde(default)]
-  #[builder(default)]
-  pub passkey: String,
 
   /// Sometimes the system stats reports a mount path that is not desired.
   /// Use this field to filter it out from the report.
@@ -270,11 +244,6 @@ impl ServerConfig {
   }
 }
 
-fn default_insecure_tls() -> bool {
-  // Peripheries use self signed certs by default
-  true
-}
-
 fn default_enabled() -> bool {
   false
 }
@@ -322,8 +291,6 @@ fn default_disk_critical() -> f64 {
 impl Default for ServerConfig {
   fn default() -> Self {
     Self {
-      address: Default::default(),
-      insecure_tls: default_insecure_tls(),
       external_address: Default::default(),
       enabled: default_enabled(),
       auto_rotate_keys: default_auto_rotate_keys(),
@@ -337,7 +304,6 @@ impl Default for ServerConfig {
       send_disk_alerts: default_send_alerts(),
       send_version_mismatch_alerts: default_send_alerts(),
       region: Default::default(),
-      passkey: Default::default(),
       cpu_warning: default_cpu_warning(),
       cpu_critical: default_cpu_critical(),
       mem_warning: default_mem_warning(),

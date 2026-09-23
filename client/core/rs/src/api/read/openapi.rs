@@ -8,7 +8,6 @@ use crate::api::read;
     // misc
     read::get_version,
     read::get_core_info,
-    read::list_secrets,
     read::list_onboarding_keys,
     read::list_schedules,
     // git / registry providers

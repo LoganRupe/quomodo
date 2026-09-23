@@ -4,10 +4,8 @@ use anyhow::{Context, anyhow};
 use database::mongo_indexed::Document;
 use database::mungos::mongodb::bson::{Bson, doc};
 use indexmap::IndexSet;
-use komodo_client::entities::SwarmOrServer;
 use komodo_client::entities::{
   ResourceTarget,
-  build::Build,
   permission::{
     Permission, PermissionLevel, SpecificPermission, UserTarget,
   },
@@ -16,11 +14,6 @@ use komodo_client::entities::{
   stack::Stack,
   user::User,
 };
-use mogh_resolver::HasResponse;
-use serde::Serialize;
-use serde::de::DeserializeOwned;
-
-use crate::helpers::swarm::swarm_request;
 use crate::{
   config::core_config, connection::PeripheryConnectionArgs,
   periphery::PeripheryClient, state::db_client,
@@ -28,30 +21,14 @@ use crate::{
 
 pub mod action_state;
 pub mod all_resources;
-pub mod builder;
 pub mod channel;
-pub mod image_digest;
 pub mod maintenance;
 pub mod matcher;
 pub mod procedure;
 pub mod prune;
 pub mod query;
-pub mod swarm;
-pub mod terminal;
 pub mod update;
 pub mod validations;
-
-pub fn empty_or_only_spaces(word: &str) -> bool {
-  if word.is_empty() {
-    return true;
-  }
-  for char in word.chars() {
-    if char != ' ' {
-      return false;
-    }
-  }
-  true
-}
 
 /// First checks db for token, then checks core config.
 /// Only errors if db call errors.
@@ -121,38 +98,6 @@ pub async fn stack_git_token(
   })
 }
 
-pub async fn build_git_token(
-  build: &mut Build,
-  repo: Option<&mut Repo>,
-) -> anyhow::Result<Option<String>> {
-  if let Some(repo) = repo {
-    return git_token(
-      &repo.config.git_provider,
-      &repo.config.git_account,
-      |https| repo.config.git_https = https,
-    )
-    .await
-    .with_context(|| {
-      format!(
-        "Failed to get git token. Stopping run. | {} | {}",
-        repo.config.git_provider, repo.config.git_account
-      )
-    });
-  }
-  git_token(
-    &build.config.git_provider,
-    &build.config.git_account,
-    |https| build.config.git_https = https,
-  )
-  .await
-  .with_context(|| {
-    format!(
-      "Failed to get git token. Stopping run. | {} | {}",
-      build.config.git_provider, build.config.git_account
-    )
-  })
-}
-
 /// First checks db for token, then checks core config.
 /// Only errors if db call errors.
 pub async fn registry_token(
@@ -190,11 +135,8 @@ pub async fn periphery_client(
   if !server.config.enabled {
     return Err(anyhow!("server not enabled"));
   }
-  PeripheryClient::new(
-    PeripheryConnectionArgs::from_server(server),
-    server.config.insecure_tls,
-  )
-  .await
+  PeripheryClient::new(PeripheryConnectionArgs::from_server(server))
+    .await
 }
 
 #[instrument(
@@ -269,25 +211,4 @@ pub fn repo_link(
     let _ = write!(&mut res, "/tree/{branch}");
   }
   res
-}
-
-pub async fn swarm_or_server_request<T>(
-  swarm_or_server: &SwarmOrServer,
-  request: T,
-) -> anyhow::Result<T::Response>
-where
-  T: std::fmt::Debug + Clone + Serialize + HasResponse,
-  T::Response: DeserializeOwned,
-{
-  match swarm_or_server {
-    SwarmOrServer::Swarm(swarm) => {
-      swarm_request(&swarm.config.server_ids, request).await
-    }
-    SwarmOrServer::Server(server) => {
-      periphery_client(server).await?.request(request).await
-    }
-    SwarmOrServer::None => {
-      Err(anyhow!("Resource has neither swarm nor server attached."))
-    }
-  }
 }

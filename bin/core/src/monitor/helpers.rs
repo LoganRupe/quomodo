@@ -1,7 +1,6 @@
 use komodo_client::entities::{
   alert::SeverityLevel,
-  deployment::{Deployment, DeploymentState},
-  docker::DockerLists,
+  docker::container::ContainerListItem,
   repo::Repo,
   server::{
     PeripheryInformation, Server, ServerConfig, ServerHealth,
@@ -13,8 +12,7 @@ use komodo_client::entities::{
 use mogh_error::Serror;
 
 use crate::state::{
-  CachedDeploymentStatus, CachedRepoStatus, CachedServerStatus,
-  CachedStackStatus, History, deployment_status_cache,
+  CachedRepoStatus, CachedServerStatus, CachedStackStatus, History,
   repo_status_cache, server_status_cache, stack_status_cache,
 };
 
@@ -24,7 +22,7 @@ pub async fn insert_server_status(
   periphery_info: Option<PeripheryInformation>,
   system_info: Option<SystemInformation>,
   system_stats: Option<SystemStats>,
-  docker: Option<DockerLists>,
+  containers: Option<Vec<ContainerListItem>>,
   err: impl Into<Option<Serror>>,
 ) {
   let health =
@@ -39,7 +37,7 @@ pub async fn insert_server_status(
         system_info,
         system_stats,
         health,
-        docker,
+        containers,
         err: err.into(),
       }
       .into(),
@@ -60,32 +58,6 @@ pub async fn insert_stacks_status_unknown(stacks: Vec<Stack>) {
             id: stack.id,
             state: StackState::Unknown,
             services: Vec::new(),
-          },
-          prev,
-        }
-        .into(),
-      )
-      .await;
-  }
-}
-
-pub async fn insert_deployments_status_unknown(
-  deployments: Vec<Deployment>,
-) {
-  let status_cache = deployment_status_cache();
-  for deployment in deployments {
-    let prev =
-      status_cache.get(&deployment.id).await.map(|s| s.curr.state);
-    status_cache
-      .insert(
-        deployment.id.clone(),
-        History {
-          curr: CachedDeploymentStatus {
-            id: deployment.id,
-            state: DeploymentState::Unknown,
-            container: None,
-            service: None,
-            image_digests: None,
           },
           prev,
         }

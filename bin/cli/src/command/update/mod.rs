@@ -1,7 +1,6 @@
 use komodo_client::entities::{
-  build::PartialBuildConfig,
   config::cli::args::update::UpdateCommand,
-  deployment::PartialDeploymentConfig, repo::PartialRepoConfig,
+  repo::PartialRepoConfig,
   server::PartialServerConfig, stack::PartialStackConfig,
   sync::PartialResourceSyncConfig,
 };
@@ -12,12 +11,6 @@ mod variable;
 
 pub async fn handle(command: &UpdateCommand) -> anyhow::Result<()> {
   match command {
-    UpdateCommand::Build(update) => {
-      resource::update::<PartialBuildConfig>(update).await
-    }
-    UpdateCommand::Deployment(update) => {
-      resource::update::<PartialDeploymentConfig>(update).await
-    }
     UpdateCommand::Repo(update) => {
       resource::update::<PartialRepoConfig>(update).await
     }

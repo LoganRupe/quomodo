@@ -12,11 +12,7 @@ use encoding::{
   CastBytes as _, Decode as _, EncodedJsonMessage, EncodedResponse,
   WithChannel,
 };
-use komodo_client::entities::{
-  builder::{AwsBuilderConfig, UrlBuilderConfig},
-  optional_str,
-  server::Server,
-};
+use komodo_client::entities::{optional_str, server::Server};
 use mogh_cache::CloneCache;
 use mogh_error::serror_into_anyhow_error;
 use periphery_client::transport::{
@@ -42,7 +38,6 @@ use crate::{
   state::db_client,
 };
 
-pub mod client;
 pub mod server;
 
 #[derive(Default)]
@@ -100,11 +95,7 @@ impl PeripheryConnections {
 pub struct PeripheryConnectionArgs<'a> {
   /// Usually the server id
   pub id: &'a str,
-  pub address: Option<&'a str>,
   periphery_public_key: Option<&'a str>,
-  /// V1 legacy support.
-  /// Only possible for Core -> Periphery.
-  passkey: Option<&'a str>,
 }
 
 impl PublicKeyValidator for PeripheryConnectionArgs<'_> {
@@ -125,18 +116,14 @@ impl PublicKeyValidator for PeripheryConnectionArgs<'_> {
         )
         .context("Core failed to validate Periphery public key")
     };
-    let core_to_periphery = self.address.is_some();
-    match (self.periphery_public_key, core_to_periphery) {
+    match self.periphery_public_key {
       // The key matches expected.
-      (Some(expected), _) if public_key == expected => Ok(public_key),
+      Some(expected) if public_key == expected => Ok(public_key),
       // Explicit auth failed.
-      (Some(_), _) => Err(invalid_error()),
-      // Core -> Periphery connections with no explicit
-      // Periphery public key are not validated.
-      (None, true) => Ok(public_key),
-      // Periphery -> Core connections with no explicit
-      // Periphery public key can fall back to Core config `periphery_public_keys` if defined.
-      (None, false) => {
+      Some(_) => Err(invalid_error()),
+      // Connections with no explicit Periphery public key
+      // can fall back to Core config `periphery_public_keys` if defined.
+      None => {
         let expected =
           periphery_public_keys().ok_or_else(invalid_error)?;
         if expected
@@ -156,49 +143,16 @@ impl<'a> PeripheryConnectionArgs<'a> {
   pub fn from_server(server: &'a Server) -> Self {
     Self {
       id: &server.id,
-      address: optional_str(&server.config.address),
       periphery_public_key: optional_str(&server.info.public_key),
-      passkey: optional_str(&server.config.passkey),
-    }
-  }
-
-  pub fn from_url_builder(
-    id: &'a str,
-    config: &'a UrlBuilderConfig,
-  ) -> Self {
-    Self {
-      id,
-      address: optional_str(&config.address),
-      periphery_public_key: optional_str(
-        &config.periphery_public_key,
-      ),
-      passkey: optional_str(&config.passkey),
-    }
-  }
-
-  pub fn from_aws_builder(
-    id: &'a str,
-    address: &'a str,
-    config: &'a AwsBuilderConfig,
-  ) -> Self {
-    Self {
-      id,
-      address: Some(address),
-      periphery_public_key: optional_str(
-        &config.periphery_public_key,
-      ),
-      passkey: None,
     }
   }
 
   pub fn to_owned(self) -> OwnedPeripheryConnectionArgs {
     OwnedPeripheryConnectionArgs {
       id: self.id.to_string(),
-      address: self.address.map(str::to_string),
       periphery_public_key: self
         .periphery_public_key
         .map(str::to_string),
-      passkey: self.passkey.map(str::to_string),
     }
   }
 
@@ -214,25 +168,17 @@ impl<'a> PeripheryConnectionArgs<'a> {
 pub struct OwnedPeripheryConnectionArgs {
   /// Usually the Server id.
   pub id: String,
-  /// Specify outbound connection address.
-  /// Inbound connections have this as None
-  pub address: Option<String>,
   /// The public key to expect Periphery to have.
   /// If None, must have 'periphery_public_keys' set
   /// in Core config, or will error
   pub periphery_public_key: Option<String>,
-  /// V1 legacy support.
-  /// Only possible for Core -> Periphery connection.
-  pub passkey: Option<String>,
 }
 
 impl OwnedPeripheryConnectionArgs {
   pub fn borrow(&self) -> PeripheryConnectionArgs<'_> {
     PeripheryConnectionArgs {
       id: &self.id,
-      address: self.address.as_deref(),
       periphery_public_key: self.periphery_public_key.as_deref(),
-      passkey: self.passkey.as_deref(),
     }
   }
 }
@@ -257,9 +203,6 @@ impl<'a> From<&'a OwnedPeripheryConnectionArgs>
 pub type ResponseChannels =
   CloneCache<Uuid, Sender<EncodedResponse<EncodedJsonMessage>>>;
 
-pub type TerminalChannels =
-  CloneCache<Uuid, Sender<anyhow::Result<Vec<u8>>>>;
-
 #[derive(Debug)]
 pub struct PeripheryConnection {
   /// The connection args
@@ -276,8 +219,6 @@ pub struct PeripheryConnection {
   pub error: Arc<RwLock<Option<mogh_error::Serror>>>,
   /// Forward bytes from Periphery to response channel handlers.
   pub responses: Arc<ResponseChannels>,
-  /// Forward bytes from Periphery to terminal channel handlers.
-  pub terminals: Arc<TerminalChannels>,
 }
 
 impl PeripheryConnection {
@@ -296,7 +237,6 @@ impl PeripheryConnection {
         connected: AtomicBool::new(false),
         error: Default::default(),
         responses: Default::default(),
-        terminals: Default::default(),
       }
       .into(),
       receiever,
@@ -321,7 +261,6 @@ impl PeripheryConnection {
         connected: AtomicBool::new(false),
         error: self.error.clone(),
         responses: self.responses.clone(),
-        terminals: self.terminals.clone(),
       }
       .into(),
       receiever,
@@ -445,28 +384,6 @@ impl PeripheryConnection {
           }
         }
       }
-      TransportMessage::Terminal(data) => match data.decode() {
-        Ok(WithChannel {
-          channel: channel_id,
-          data,
-        }) => {
-          let Some(channel) = self.terminals.get(&channel_id).await
-          else {
-            warn!(
-              "Failed to forward Terminal message | No terminal channel found at {channel_id}"
-            );
-            return;
-          };
-          if let Err(e) = channel.send(data).await {
-            warn!(
-              "Failed to forward Terminal message | Channel failure at {channel_id} | {e:#}"
-            );
-          }
-        }
-        Err(e) => {
-          warn!("Failed to read Terminal message | {e:#}");
-        }
-      },
       //
       other => {
         warn!("Received unexpected transport message | {other:?}");

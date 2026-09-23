@@ -5,18 +5,13 @@ use database::mungos::{
   find::find_collect,
   mongodb::{
     bson::{Document, doc, oid::ObjectId},
-    options::FindOneOptions,
   },
 };
 use komodo_client::{
   busy::Busy,
   entities::{
-    Operation, ResourceTarget, ResourceTargetVariant, SwarmOrServer,
+    ResourceTarget,
     action::{Action, ActionState},
-    alerter::Alerter,
-    build::Build,
-    builder::Builder,
-    deployment::{Deployment, DeploymentState},
     docker::container::{
       ContainerListItem, ContainerStateStatusEnum,
     },
@@ -24,11 +19,9 @@ use komodo_client::{
     procedure::{Procedure, ProcedureState},
     repo::Repo,
     server::{Server, ServerState},
-    stack::{Stack, StackServiceNames, StackState},
-    swarm::Swarm,
+    stack::{QuadletKind, QuadletUnit, Stack, StackState},
     sync::ResourceSync,
     tag::Tag,
-    update::Update,
     user::{User, admin_service_user},
     user_group::UserGroup,
     variable::Variable,
@@ -38,14 +31,11 @@ use mogh_auth_server::provider::oidc::SubjectIdentifier;
 
 use crate::{
   config::core_config,
-  helpers::swarm::swarm_request,
   permission::get_user_permission_on_resource,
   resource::{self, KomodoResource},
-  stack::compose_container_match_regex,
   state::{
     action_state_cache, action_states, db_client,
-    deployment_status_cache, procedure_state_cache,
-    server_status_cache, stack_status_cache,
+    procedure_state_cache, server_status_cache, stack_status_cache,
   },
 };
 
@@ -60,17 +50,6 @@ pub async fn get_user(user: &str) -> anyhow::Result<User> {
     .await
     .context("Failed to query mongo for user")?
     .with_context(|| format!("No user found matching '{user}'"))
-}
-
-pub async fn get_swarm_reachability(
-  swarm: &Swarm,
-) -> anyhow::Result<()> {
-  swarm_request(
-    &swarm.config.server_ids,
-    periphery_client::api::GetVersion {},
-  )
-  .await
-  .map(|_| ())
 }
 
 pub async fn get_server_with_state(
@@ -129,96 +108,60 @@ pub async fn get_cached_stack_state(id: &String) -> StackState {
     .unwrap_or_default()
 }
 
-pub async fn get_deployment_state(
-  id: &String,
-) -> anyhow::Result<DeploymentState> {
-  if action_states()
-    .deployment
-    .get(id)
-    .await
-    .map(|s| s.get().map(|s| s.deploying))
-    .transpose()
-    .ok()
-    .flatten()
-    .unwrap_or_default()
-  {
-    return Ok(DeploymentState::Deploying);
-  }
-  let state = deployment_status_cache()
-    .get(id)
-    .await
-    .unwrap_or_default()
-    .curr
-    .state;
-  Ok(state)
-}
-
-/// Can pass all the containers from the same server
+/// Pass all the containers from the same server.
+/// Runnable units (container / kube / pod) count; a pod counts through its member containers.
 pub fn get_stack_state_from_containers(
-  ignore_services: &[String],
-  services: &[StackServiceNames],
+  ignore_units: &[String],
+  units: &[QuadletUnit],
   containers: &[ContainerListItem],
 ) -> StackState {
-  // first filter the containers to only ones which match the service
-  let services = services
+  let units = units
     .iter()
-    .filter(|service| {
-      !ignore_services.contains(&service.service_name)
+    .filter(|unit| {
+      unit.kind == QuadletKind::Container
+        && !ignore_units.contains(&unit.file)
     })
     .collect::<Vec<_>>();
-  let containers = containers.iter().filter(|container| {
-    services.iter().any(|StackServiceNames { service_name, container_name, .. }| {
-      match compose_container_match_regex(container_name)
-        .with_context(|| format!("failed to construct container name matching regex for service {service_name}")) 
-      {
-        Ok(regex) => regex,
-        Err(e) => {
-          warn!("{e:#}");
-          return false
-        }
-      }.is_match(&container.name)
+  if units.is_empty() {
+    return StackState::Down;
+  }
+  let containers = containers
+    .iter()
+    .filter(|container| {
+      units.iter().any(|unit| {
+        container.unit.as_deref() == Some(unit.service.as_str())
+          || container.name == unit.name
+      })
     })
-  }).collect::<Vec<_>>();
+    .collect::<Vec<_>>();
   if containers.is_empty() {
     return StackState::Down;
   }
-  if services.len() > containers.len() {
+  if units.len() > containers.len() {
     return StackState::Unhealthy;
   }
-  let running = containers.iter().all(|container| {
-    container.state == ContainerStateStatusEnum::Running
-  });
-  if running {
+  let all = |state: ContainerStateStatusEnum| {
+    containers.iter().all(|container| container.state == state)
+  };
+  if all(ContainerStateStatusEnum::Running) {
     return StackState::Running;
   }
-  let paused = containers.iter().all(|container| {
-    container.state == ContainerStateStatusEnum::Paused
-  });
-  if paused {
+  if all(ContainerStateStatusEnum::Paused) {
     return StackState::Paused;
   }
-  let stopped = containers.iter().all(|container| {
-    container.state == ContainerStateStatusEnum::Exited
-  });
-  if stopped {
+  if all(ContainerStateStatusEnum::Exited) {
     return StackState::Stopped;
   }
-  let restarting = containers.iter().all(|container| {
-    container.state == ContainerStateStatusEnum::Restarting
-  });
-  if restarting {
+  if all(ContainerStateStatusEnum::Created) {
+    return StackState::Created;
+  }
+  if all(ContainerStateStatusEnum::Restarting) {
     return StackState::Restarting;
   }
-  let dead = containers.iter().all(|container| {
-    container.state == ContainerStateStatusEnum::Dead
-  });
-  if dead {
+  if all(ContainerStateStatusEnum::Dead) {
     return StackState::Dead;
   }
-  let removing = containers.iter().all(|container| {
-    container.state == ContainerStateStatusEnum::Removing
-  });
-  if removing {
+  if all(ContainerStateStatusEnum::Removing) {
     return StackState::Removing;
   }
   StackState::Unhealthy
@@ -227,9 +170,7 @@ pub fn get_stack_state_from_containers(
 pub async fn get_stack_state(
   stack: &Stack,
 ) -> anyhow::Result<StackState> {
-  if stack.config.swarm_id.is_empty()
-    && stack.config.server_id.is_empty()
-  {
+  if stack.config.server_id.is_empty() {
     return Ok(StackState::Down);
   }
   let state = stack_status_cache()
@@ -335,20 +276,11 @@ pub async fn get_user_permission_on_target(
 ) -> anyhow::Result<PermissionLevelAndSpecifics> {
   match target {
     ResourceTarget::System(_) => Ok(PermissionLevel::None.into()),
-    ResourceTarget::Swarm(id) => {
-      get_user_permission_on_resource::<Swarm>(user, id).await
-    }
     ResourceTarget::Server(id) => {
       get_user_permission_on_resource::<Server>(user, id).await
     }
     ResourceTarget::Stack(id) => {
       get_user_permission_on_resource::<Stack>(user, id).await
-    }
-    ResourceTarget::Deployment(id) => {
-      get_user_permission_on_resource::<Deployment>(user, id).await
-    }
-    ResourceTarget::Build(id) => {
-      get_user_permission_on_resource::<Build>(user, id).await
     }
     ResourceTarget::Repo(id) => {
       get_user_permission_on_resource::<Repo>(user, id).await
@@ -361,12 +293,6 @@ pub async fn get_user_permission_on_target(
     }
     ResourceTarget::ResourceSync(id) => {
       get_user_permission_on_resource::<ResourceSync>(user, id).await
-    }
-    ResourceTarget::Builder(id) => {
-      get_user_permission_on_resource::<Builder>(user, id).await
-    }
-    ResourceTarget::Alerter(id) => {
-      get_user_permission_on_resource::<Alerter>(user, id).await
     }
   }
 }
@@ -396,54 +322,20 @@ pub async fn get_variable(name: &str) -> anyhow::Result<Variable> {
     })
 }
 
-pub async fn get_latest_update(
-  resource_type: ResourceTargetVariant,
-  id: &str,
-  operation: Operation,
-) -> anyhow::Result<Option<Update>> {
-  db_client()
-    .updates
-    .find_one(doc! {
-      "target.type": resource_type.as_ref(),
-      "target.id": id,
-      "operation": operation.as_ref()
-    })
-    .with_options(
-      FindOneOptions::builder()
-        .sort(doc! { "start_ts": -1 })
-        .build(),
-    )
-    .await
-    .context("failed to query db for latest update")
-}
-
-pub struct VariablesAndSecrets {
-  pub variables: HashMap<String, String>,
-  pub secrets: HashMap<String, String>,
-}
-
-pub async fn get_variables_and_secrets()
--> anyhow::Result<VariablesAndSecrets> {
+/// Non-secret Variables by name. Secrets come from the secret store
+/// at deploy time and are never read from the database.
+pub async fn get_variables() -> anyhow::Result<HashMap<String, String>>
+{
   let variables = find_collect(&db_client().variables, None, None)
     .await
     .context("failed to get all variables from db")?;
-  let mut secrets = core_config().secrets.clone();
-
-  // extend secrets with secret variables
-  secrets.extend(
-    variables.iter().filter(|variable| variable.is_secret).map(
-      |variable| (variable.name.clone(), variable.value.clone()),
-    ),
-  );
-
-  // collect non secret variables
-  let variables = variables
-    .into_iter()
-    .filter(|variable| !variable.is_secret)
-    .map(|variable| (variable.name, variable.value))
-    .collect();
-
-  Ok(VariablesAndSecrets { variables, secrets })
+  Ok(
+    variables
+      .into_iter()
+      .filter(|variable| !variable.is_secret)
+      .map(|variable| (variable.name, variable.value))
+      .collect(),
+  )
 }
 
 /// Get last time procedure / action was run using Update query.
@@ -497,103 +389,6 @@ pub async fn get_procedure_state(id: &String) -> ProcedureState {
     return ProcedureState::Running;
   }
   procedure_state_cache().get(id).await.unwrap_or_default()
-}
-
-/// Get's a resource's assigned swarm or server, with swarm taking precedence.
-/// Makes sure the target is reachable before passing along for commands.
-pub async fn get_swarm_or_server(
-  swarm_id: &str,
-  server_id: &str,
-) -> anyhow::Result<SwarmOrServer> {
-  if !swarm_id.is_empty() {
-    let swarm = resource::get::<Swarm>(swarm_id).await?;
-
-    // Errors if not reachable, and returns the error
-    get_swarm_reachability(&swarm).await?;
-
-    return Ok(SwarmOrServer::Swarm(swarm));
-  }
-
-  if server_id.is_empty() {
-    return Ok(SwarmOrServer::None);
-  }
-
-  let (server, state) = get_server_with_state(server_id).await?;
-
-  if state != ServerState::Ok {
-    return Err(anyhow!(
-      "Cannot send command when Server is unreachable or disabled"
-    ));
-  }
-
-  Ok(SwarmOrServer::Server(server))
-}
-
-pub fn find_swarm_or_server(
-  swarm_id: &str,
-  swarms: &[Swarm],
-  server_id: &str,
-  servers: &[Server],
-) -> anyhow::Result<SwarmOrServer> {
-  if !swarm_id.is_empty() {
-    let swarm = swarms
-      .iter()
-      .find(|swarm| swarm.id == swarm_id)
-      .cloned()
-      .with_context(|| {
-        format!("Could not find swarm matching id {swarm_id}")
-      })?;
-    return Ok(SwarmOrServer::Swarm(swarm));
-  }
-
-  if server_id.is_empty() {
-    return Ok(SwarmOrServer::None);
-  }
-
-  let server = servers
-    .iter()
-    .find(|server| server.id == server_id)
-    .cloned()
-    .with_context(|| {
-      format!("Could not find server matching id {server_id}")
-    })?;
-  Ok(SwarmOrServer::Server(server))
-}
-
-pub async fn find_github_user(
-  github_id: &str,
-) -> anyhow::Result<Option<User>> {
-  db_client()
-    .users
-    .find_one(doc! {
-      // Find either primary or linked Github user
-      "$or": [
-        // User is primary Github user
-        { "config.data.github_id": &github_id },
-        // User has linked this Github login
-        { "linked_logins.Github.data.github_id": &github_id }
-      ]
-    })
-    .await
-    .context("Failed at find user query from database")
-}
-
-pub async fn find_google_user(
-  google_id: &str,
-) -> anyhow::Result<Option<User>> {
-  db_client()
-    .users
-    .find_one(doc! {
-      // Find either primary or linked Google user
-      "$or": [
-        // User is primary Google user
-        { "config.data.google_id": &google_id },
-        // User has linked this Google login
-        { "linked_logins.Google.data.google_id": &google_id }
-      ]
-    })
-    .await
-    .context("Failed at find user query from database")
 }
 
 pub async fn find_oidc_user(

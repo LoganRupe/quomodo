@@ -24,9 +24,7 @@ mogh_logger.workspace = true
 # external
 futures-util.workspace = true
 comfy-table.workspace = true
-tokio-util.workspace = true
 serde_json.workspace = true
-crossterm.workspace = true
 serde_qs.workspace = true
 wildcard.workspace = true
 tracing.workspace = true

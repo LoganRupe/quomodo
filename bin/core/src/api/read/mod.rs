@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use anyhow::{Context, anyhow};
 use axum::{
   Extension, Router, extract::Path, middleware, routing::post,
@@ -8,8 +6,6 @@ use komodo_client::{
   api::read::*,
   entities::{
     ResourceTarget,
-    build::Build,
-    builder::{Builder, BuilderConfig},
     config::{GitProvider, ImageRegistry},
     permission::PermissionLevel,
     repo::Repo,
@@ -40,11 +36,7 @@ use super::Variant;
 
 mod action;
 mod alert;
-mod alerter;
-mod build;
-mod builder;
-mod deployment;
-mod docker;
+mod container;
 mod onboarding_key;
 mod permission;
 mod procedure;
@@ -53,10 +45,8 @@ mod repo;
 mod schedule;
 mod server;
 mod stack;
-mod swarm;
 mod sync;
 mod tag;
-mod terminal;
 mod toml;
 mod update;
 mod user;
@@ -85,33 +75,11 @@ fn list_limit(limit: Option<u64>) -> u64 {
 enum ReadRequest {
   GetVersion(GetVersion),
   GetCoreInfo(GetCoreInfo),
-  ListSecrets(ListSecrets),
   ListGitProvidersFromConfig(ListGitProvidersFromConfig),
   #[serde(alias = "ListDockerRegistriesFromConfig")]
   ListImageRegistriesFromConfig(ListImageRegistriesFromConfig),
 
   // ==== SWARM ====
-  GetSwarmsSummary(GetSwarmsSummary),
-  GetSwarm(GetSwarm),
-  GetSwarmActionState(GetSwarmActionState),
-  ListSwarms(ListSwarms),
-  InspectSwarm(InspectSwarm),
-  ListFullSwarms(ListFullSwarms),
-  ListSwarmNodes(ListSwarmNodes),
-  InspectSwarmNode(InspectSwarmNode),
-  ListSwarmConfigs(ListSwarmConfigs),
-  InspectSwarmConfig(InspectSwarmConfig),
-  ListSwarmSecrets(ListSwarmSecrets),
-  InspectSwarmSecret(InspectSwarmSecret),
-  ListSwarmStacks(ListSwarmStacks),
-  InspectSwarmStack(InspectSwarmStack),
-  ListSwarmTasks(ListSwarmTasks),
-  InspectSwarmTask(InspectSwarmTask),
-  ListSwarmServices(ListSwarmServices),
-  InspectSwarmService(InspectSwarmService),
-  GetSwarmServiceLog(GetSwarmServiceLog),
-  SearchSwarmServiceLog(SearchSwarmServiceLog),
-  ListSwarmNetworks(ListSwarmNetworks),
 
   // ==== SERVER ====
   GetServersSummary(GetServersSummary),
@@ -123,7 +91,6 @@ enum ReadRequest {
   ListFullServers(ListFullServers),
 
   // ==== TERMINAL ====
-  ListTerminals(ListTerminals),
 
   // ==== CONTAINER ====
   #[serde(alias = "GetDockerContainersSummary")]
@@ -132,26 +99,9 @@ enum ReadRequest {
   ListAllContainers(ListAllContainers),
   #[serde(alias = "ListDockerContainers")]
   ListContainers(ListContainers),
-  #[serde(alias = "InspectDockerContainer")]
-  InspectContainer(InspectContainer),
   GetResourceMatchingContainer(GetResourceMatchingContainer),
   GetContainerLog(GetContainerLog),
   SearchContainerLog(SearchContainerLog),
-  ListComposeProjects(ListComposeProjects),
-  #[serde(alias = "ListDockerNetworks")]
-  ListNetworks(ListNetworks),
-  #[serde(alias = "InspectDockerNetwork")]
-  InspectNetwork(InspectNetwork),
-  #[serde(alias = "ListDockerImages")]
-  ListImages(ListImages),
-  #[serde(alias = "InspectDockerImage")]
-  InspectImage(InspectImage),
-  #[serde(alias = "ListDockerImageHistory")]
-  ListImageHistory(ListImageHistory),
-  #[serde(alias = "ListDockerVolumes")]
-  ListVolumes(ListVolumes),
-  #[serde(alias = "InspectDockerVolume")]
-  InspectVolume(InspectVolume),
 
   // ==== SERVER STATS ====
   GetSystemInformation(GetSystemInformation),
@@ -165,38 +115,14 @@ enum ReadRequest {
   GetStackActionState(GetStackActionState),
   GetStackLog(GetStackLog),
   SearchStackLog(SearchStackLog),
-  InspectStackContainer(InspectStackContainer),
-  InspectStackSwarmService(InspectStackSwarmService),
   ListStacks(ListStacks),
   ListFullStacks(ListFullStacks),
   ListStackServices(ListStackServices),
   ListAllStackServices(ListAllStackServices),
-  ListCommonStackExtraArgs(ListCommonStackExtraArgs),
-  ListCommonStackBuildExtraArgs(ListCommonStackBuildExtraArgs),
 
   // ==== DEPLOYMENT ====
-  GetDeploymentsSummary(GetDeploymentsSummary),
-  GetDeployment(GetDeployment),
-  GetDeploymentContainer(GetDeploymentContainer),
-  GetDeploymentActionState(GetDeploymentActionState),
-  GetDeploymentStats(GetDeploymentStats),
-  GetDeploymentLog(GetDeploymentLog),
-  SearchDeploymentLog(SearchDeploymentLog),
-  InspectDeploymentContainer(InspectDeploymentContainer),
-  InspectDeploymentSwarmService(InspectDeploymentSwarmService),
-  ListDeployments(ListDeployments),
-  ListFullDeployments(ListFullDeployments),
-  ListCommonDeploymentExtraArgs(ListCommonDeploymentExtraArgs),
 
   // ==== BUILD ====
-  GetBuildsSummary(GetBuildsSummary),
-  GetBuild(GetBuild),
-  GetBuildActionState(GetBuildActionState),
-  GetBuildMonthlyStats(GetBuildMonthlyStats),
-  ListBuildVersions(ListBuildVersions),
-  ListBuilds(ListBuilds),
-  ListFullBuilds(ListFullBuilds),
-  ListCommonBuildExtraArgs(ListCommonBuildExtraArgs),
 
   // ==== REPO ====
   GetReposSummary(GetReposSummary),
@@ -230,16 +156,8 @@ enum ReadRequest {
   ListFullResourceSyncs(ListFullResourceSyncs),
 
   // ==== BUILDER ====
-  GetBuildersSummary(GetBuildersSummary),
-  GetBuilder(GetBuilder),
-  ListBuilders(ListBuilders),
-  ListFullBuilders(ListFullBuilders),
 
   // ==== ALERTER ====
-  GetAlertersSummary(GetAlertersSummary),
-  GetAlerter(GetAlerter),
-  ListAlerters(ListAlerters),
-  ListFullAlerters(ListFullAlerters),
 
   // ==== TOML ====
   ExportAllResourcesToToml(ExportAllResourcesToToml),
@@ -385,64 +303,6 @@ impl Resolve<ReadArgs> for GetCoreInfo {
 
 //
 
-impl Resolve<ReadArgs> for ListSecrets {
-  async fn resolve(
-    self,
-    _: &ReadArgs,
-  ) -> mogh_error::Result<ListSecretsResponse> {
-    let mut secrets = core_config()
-      .secrets
-      .keys()
-      .cloned()
-      .collect::<HashSet<_>>();
-
-    if let Some(target) = self.target {
-      let server_id = match target {
-        ResourceTarget::Server(id) => Some(id),
-        ResourceTarget::Builder(id) => {
-          match resource::get::<Builder>(&id).await?.config {
-            BuilderConfig::Url(_) => None,
-            BuilderConfig::Server(config) => {
-              config.server_ids.first().cloned()
-            }
-            BuilderConfig::Aws(config) => {
-              secrets.extend(config.secrets);
-              None
-            }
-          }
-        }
-        _ => {
-          return Err(
-            anyhow!("target must be `Server` or `Builder`")
-              .status_code(StatusCode::BAD_REQUEST),
-          );
-        }
-      };
-      if let Some(id) = server_id {
-        let server = resource::get::<Server>(&id).await?;
-        let more = periphery_client(&server)
-          .await?
-          .request(periphery_client::api::ListSecrets {})
-          .await
-          .with_context(|| {
-            format!(
-              "failed to get secrets from server {}",
-              server.name
-            )
-          })?;
-        secrets.extend(more);
-      }
-    }
-
-    let mut secrets = secrets.into_iter().collect::<Vec<_>>();
-    secrets.sort();
-
-    Ok(secrets)
-  }
-}
-
-//
-
 impl Resolve<ReadArgs> for ListGitProvidersFromConfig {
   async fn resolve(
     self,
@@ -455,44 +315,16 @@ impl Resolve<ReadArgs> for ListGitProvidersFromConfig {
         ResourceTarget::Server(id) => {
           merge_git_providers_for_server(&mut providers, &id).await?;
         }
-        ResourceTarget::Builder(id) => {
-          match resource::get::<Builder>(&id).await?.config {
-            BuilderConfig::Url(_) => {}
-            BuilderConfig::Server(config) => {
-              if let Some(server_id) = config.server_ids.first() {
-                merge_git_providers_for_server(
-                  &mut providers,
-                  server_id,
-                )
-                .await?;
-              }
-            }
-            BuilderConfig::Aws(config) => {
-              merge_git_providers(
-                &mut providers,
-                config.git_providers,
-              );
-            }
-          }
-        }
         _ => {
           return Err(
-            anyhow!("target must be `Server` or `Builder`")
+            anyhow!("target must be `Server`")
               .status_code(StatusCode::BAD_REQUEST),
           );
         }
       }
     }
 
-    let (builds, repos, syncs) = tokio::try_join!(
-      resource::list_full_for_user::<Build>(
-        Default::default(),
-        None,
-        None,
-        user,
-        PermissionLevel::Read.into(),
-        &[]
-      ),
+    let (repos, syncs) = tokio::try_join!(
       resource::list_full_for_user::<Repo>(
         Default::default(),
         None,
@@ -511,18 +343,6 @@ impl Resolve<ReadArgs> for ListGitProvidersFromConfig {
       ),
     )?;
 
-    for build in builds {
-      if !providers
-        .iter()
-        .any(|provider| provider.domain == build.config.git_provider)
-      {
-        providers.push(GitProvider {
-          domain: build.config.git_provider,
-          https: build.config.git_https,
-          accounts: Default::default(),
-        });
-      }
-    }
     for repo in repos {
       if !providers
         .iter()
@@ -569,30 +389,8 @@ impl Resolve<ReadArgs> for ListImageRegistriesFromConfig {
           merge_image_registries_for_server(&mut registries, &id)
             .await?;
         }
-        ResourceTarget::Builder(id) => {
-          match resource::get::<Builder>(&id).await?.config {
-            BuilderConfig::Url(_) => {}
-            BuilderConfig::Server(config) => {
-              if let Some(server_id) = config.server_ids.first() {
-                merge_image_registries_for_server(
-                  &mut registries,
-                  server_id,
-                )
-                .await?;
-              }
-            }
-            BuilderConfig::Aws(config) => {
-              merge_image_registries(
-                &mut registries,
-                config.image_registries,
-              );
-            }
-          }
-        }
         _ => {
-          return Err(
-            anyhow!("target must be `Server` or `Builder`").into(),
-          );
+          return Err(anyhow!("target must be `Server`").into());
         }
       }
     }

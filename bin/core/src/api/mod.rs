@@ -15,7 +15,6 @@ pub mod write;
 
 mod listener;
 mod openapi;
-mod terminal;
 mod ws;
 
 #[derive(serde::Deserialize)]
@@ -33,7 +32,6 @@ pub fn app() -> Router {
     .nest("/read", read::router())
     .nest("/write", write::router())
     .nest("/execute", execute::router())
-    .nest("/terminal", terminal::router())
     .nest("/listener", listener::router())
     .nest("/ws", ws::router())
     .nest("/client", ts_client::router())

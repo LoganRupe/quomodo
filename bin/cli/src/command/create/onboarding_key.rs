@@ -11,7 +11,6 @@ pub async fn create(
     tags,
     privileged,
     copy_server,
-    create_builder,
   }: &CreateOnboardingKey,
 ) -> anyhow::Result<()> {
   let expires = if let Some(expires_days) = expires {
@@ -32,7 +31,6 @@ pub async fn create(
       tags: tags.clone(),
       privileged: *privileged,
       copy_server: copy_server.clone().unwrap_or_default(),
-      create_builder: *create_builder,
     })
     .await?;
 

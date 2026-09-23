@@ -10,11 +10,10 @@ use komodo_client::{
     ListUserGroups,
   },
   entities::{
-    ResourceTarget, action::Action, alerter::Alerter, build::Build,
-    builder::Builder, deployment::Deployment,
+    ResourceTarget, action::Action,
     permission::PermissionLevel, procedure::Procedure, repo::Repo,
     resource::ResourceQuery, server::Server, stack::Stack,
-    swarm::Swarm, sync::ResourceSync, toml::ResourcesToml,
+    sync::ResourceSync, toml::ResourcesToml,
     user::User,
   },
 };
@@ -70,13 +69,8 @@ async fn get_all_targets(
   }
 
   extend_targets!(
-    Alerter,
-    Builder,
     Server,
-    Swarm,
     Stack,
-    Deployment,
-    Build,
     Repo,
     Procedure,
     Action,
@@ -166,17 +160,8 @@ impl Resolve<ReadArgs> for ExportResourcesToToml {
         ResourceTarget::Server(id) => {
           convert_target!(id, Server, servers)
         }
-        ResourceTarget::Swarm(id) => {
-          convert_target!(id, Swarm, swarms)
-        }
         ResourceTarget::Stack(id) => {
           convert_target!(id, Stack, stacks)
-        }
-        ResourceTarget::Deployment(id) => {
-          convert_target!(id, Deployment, deployments)
-        }
-        ResourceTarget::Build(id) => {
-          convert_target!(id, Build, builds)
         }
         ResourceTarget::Repo(id) => convert_target!(id, Repo, repos),
         ResourceTarget::Procedure(id) => {
@@ -184,12 +169,6 @@ impl Resolve<ReadArgs> for ExportResourcesToToml {
         }
         ResourceTarget::Action(id) => {
           convert_target!(id, Action, actions)
-        }
-        ResourceTarget::Builder(id) => {
-          convert_target!(id, Builder, builders)
-        }
-        ResourceTarget::Alerter(id) => {
-          convert_target!(id, Alerter, alerters)
         }
         ResourceTarget::ResourceSync(id) => {
           let mut sync = get_check_permissions::<ResourceSync>(
@@ -285,15 +264,10 @@ fn serialize_resources_toml(
   }
   serialize_resources!(
     (Server, servers, "server"),
-    (Swarm, swarms, "swarm"),
     (Stack, stacks, "stack"),
-    (Deployment, deployments, "deployment"),
-    (Build, builds, "build"),
     (Repo, repos, "repo"),
     (Procedure, procedures, "procedure"),
     (Action, actions, "action"),
-    (Alerter, alerters, "alerter"),
-    (Builder, builders, "builder"),
     (ResourceSync, resource_syncs, "resource_sync"),
   );
 

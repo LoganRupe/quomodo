@@ -15,18 +15,13 @@ use komodo_client::{
     self, Operation, RepoExecutionArgs, ResourceTarget,
     action::Action,
     alert::{Alert, AlertData, SeverityLevel},
-    alerter::Alerter,
     all_logs_success,
-    build::Build,
-    builder::Builder,
-    deployment::Deployment,
     komodo_timestamp,
     permission::PermissionLevel,
     procedure::Procedure,
     repo::Repo,
     server::Server,
     stack::Stack,
-    swarm::Swarm,
     sync::{ResourceSync, ResourceSyncInfo},
     to_path_compatible_name,
     update::{Log, Update},
@@ -37,7 +32,6 @@ use mogh_resolver::Resolve;
 use tracing::Instrument;
 
 use crate::{
-  alert::send_alerts,
   api::read::ReadArgs,
   config::core_config,
   helpers::{
@@ -759,13 +753,6 @@ impl Resolve<WriteArgs> for RefreshResourceSyncPending {
         if sync.config.include_resources {
           let id_to_tags = get_id_to_tags(None).await?;
 
-          let deployments_by_name = all_resources
-            .deployments
-            .values()
-            .map(|deployment| {
-              (deployment.name.clone(), deployment.clone())
-            })
-            .collect::<HashMap<_, _>>();
           let stacks_by_name = all_resources
             .stacks
             .values()
@@ -775,8 +762,6 @@ impl Resolve<WriteArgs> for RefreshResourceSyncPending {
           let deploy_updates =
             crate::sync::deploy::get_updates_for_view(
               SyncDeployParams {
-                deployments: &resources.deployments,
-                deployment_map: &deployments_by_name,
                 stacks: &resources.stacks,
                 stack_map: &stacks_by_name,
               },
@@ -804,15 +789,10 @@ impl Resolve<WriteArgs> for RefreshResourceSyncPending {
           // New resource types need to be added here manually.
           push_updates!(
             (Server, servers),
-            (Swarm, swarms),
             (Stack, stacks),
-            (Deployment, deployments),
-            (Build, builds),
             (Repo, repos),
             (Procedure, procedures),
             (Action, actions),
-            (Builder, builders),
-            (Alerter, alerters),
             (ResourceSync, resource_syncs),
           );
 
@@ -936,9 +916,6 @@ impl Resolve<WriteArgs> for RefreshResourceSyncPending {
             .context("failed to open existing pending resource sync updates alert")
             .inspect_err(|e| warn!("{e:#}"))
             .ok();
-          if sync.config.pending_alert {
-            send_alerts(&[alert]).await;
-          }
         }
         // CLOSE ALERT
         (Some(existing), false) => {

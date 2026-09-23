@@ -11,7 +11,7 @@
 
 use std::path::PathBuf;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
   deserializers::option_string_list_deserializer,
@@ -226,6 +226,23 @@ pub struct Env {
   /// Override `database.db_name`
   #[serde(alias = "komodo_mongo_db_name")]
   pub komodo_database_db_name: Option<String>,
+
+  /// Override `secrets.provider`
+  pub komodo_secrets_provider: Option<SecretsProvider>,
+  /// Override `secrets.vaultwarden.url`
+  pub komodo_vaultwarden_url: Option<String>,
+  /// Override `secrets.vaultwarden.client_id`
+  pub komodo_vaultwarden_client_id: Option<String>,
+  /// Override `secrets.vaultwarden.client_id` with file
+  pub komodo_vaultwarden_client_id_file: Option<PathBuf>,
+  /// Override `secrets.vaultwarden.client_secret`
+  pub komodo_vaultwarden_client_secret: Option<String>,
+  /// Override `secrets.vaultwarden.client_secret` with file
+  pub komodo_vaultwarden_client_secret_file: Option<PathBuf>,
+  /// Override `secrets.vaultwarden.master_password`
+  pub komodo_vaultwarden_master_password: Option<String>,
+  /// Override `secrets.vaultwarden.master_password` with file
+  pub komodo_vaultwarden_master_password_file: Option<PathBuf>,
 
   /// Override `logging.level`
   pub komodo_logging_level: Option<LogLevel>,
@@ -691,6 +708,14 @@ pub struct CoreConfig {
   )]
   pub image_registries: Vec<ImageRegistry>,
 
+  // ===========
+  // = Secrets =
+  // ===========
+  /// The secret store Stacks resolve `[[NAME]]` references from at deploy time.
+  /// Secret values are never stored in the database.
+  #[serde(default)]
+  pub secrets: SecretsConfig,
+
   // =======
   // = SSL =
   // =======
@@ -924,6 +949,7 @@ impl Default for CoreConfig {
       resource_poll_interval: default_poll_interval(),
       monitoring_interval: default_monitoring_interval(),
       git_providers: Default::default(),
+      secrets: Default::default(),
       image_registries: Default::default(),
       ssl_enabled: Default::default(),
       ssl_key_file: default_ssl_key_file(),
@@ -1020,6 +1046,7 @@ impl CoreConfig {
       webhook_secret: empty_or_redacted(&config.webhook_secret),
       webhook_base_url: config.webhook_base_url,
       database: config.database.sanitized(),
+      secrets: config.secrets.sanitized(),
       git_providers: config
         .git_providers
         .into_iter()
@@ -1065,6 +1092,66 @@ impl CoreConfig {
       && !self.oidc_provider.is_empty()
       && !self.oidc_client_id.is_empty()
   }
+}
+
+/// Which secret store to use.
+#[derive(
+  Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum SecretsProvider {
+  /// No store. Any secret reference fails the deploy.
+  #[default]
+  None,
+  /// Vaultwarden, over the Bitwarden vault protocol.
+  Vaultwarden,
+}
+
+/// Secret store configuration.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SecretsConfig {
+  /// The provider. Default: none
+  #[serde(default)]
+  pub provider: SecretsProvider,
+  /// Vaultwarden settings, used when `provider = "vaultwarden"`.
+  #[serde(default)]
+  pub vaultwarden: VaultwardenConfig,
+}
+
+impl SecretsConfig {
+  pub fn sanitized(&self) -> SecretsConfig {
+    SecretsConfig {
+      provider: self.provider,
+      vaultwarden: VaultwardenConfig {
+        url: self.vaultwarden.url.clone(),
+        client_id: empty_or_redacted(&self.vaultwarden.client_id),
+        client_secret: empty_or_redacted(
+          &self.vaultwarden.client_secret,
+        ),
+        master_password: empty_or_redacted(
+          &self.vaultwarden.master_password,
+        ),
+      },
+    }
+  }
+}
+
+/// Vaultwarden service account. Only the vault protocol is available:
+/// API key login plus the master password to decrypt items client-side.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct VaultwardenConfig {
+  /// Base url, eg `https://vault.example.com`
+  #[serde(default)]
+  pub url: String,
+  /// The user API key client id (`user.<uuid>`).
+  #[serde(default)]
+  pub client_id: String,
+  /// The user API key client secret.
+  #[serde(default)]
+  pub client_secret: String,
+  /// The master password, needed to decrypt the vault.
+  #[serde(default)]
+  pub master_password: String,
 }
 
 impl mogh_server::ServerConfig for &CoreConfig {

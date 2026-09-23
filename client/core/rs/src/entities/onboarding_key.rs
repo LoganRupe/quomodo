@@ -60,7 +60,4 @@ pub struct OnboardingKey {
   #[serde(default)]
   pub copy_server: String,
 
-  /// Also create a Builder for the Server.
-  #[serde(default)]
-  pub create_builder: bool,
 }

@@ -11,18 +11,14 @@ use futures_util::future::join_all;
 use komodo_client::{
   api::{
     execute::{
-      BackupCoreDatabase, Execution, GlobalAutoUpdate,
-      RotateAllServerKeys, RunAction,
+      BackupCoreDatabase, Execution, RotateAllServerKeys, RunAction,
     },
     write::{
-      CreateBuilder, CreateProcedure, CreateServer, CreateTag,
-      UpdateResourceMeta,
+      CreateProcedure, CreateServer, CreateTag, UpdateResourceMeta,
     },
   },
   entities::{
     ResourceTarget,
-    builder::{PartialBuilderConfig, PartialServerBuilderConfig},
-    deployment::DeploymentInfo,
     komodo_timestamp,
     procedure::{EnabledExecution, ProcedureConfig, ProcedureStage},
     server::{PartialServerConfig, Server, ServerInfo},
@@ -120,7 +116,7 @@ pub async fn on_startup() {
     in_progress_update_cleanup(),
     open_alert_cleanup(),
     action_api_key_cleanup(),
-    ensure_first_server_and_builder(),
+    ensure_first_server(),
     ensure_init_user_and_resources(),
   );
 }
@@ -230,7 +226,7 @@ async fn action_api_key_cleanup() {
 }
 
 /// Ensures a default server / builder exists with the defined address
-async fn ensure_first_server_and_builder() {
+async fn ensure_first_server() {
   let config = core_config();
   if config.first_server_name.is_none()
     && config.first_server_address.is_none()
@@ -238,7 +234,7 @@ async fn ensure_first_server_and_builder() {
     // If neither defined, early return
     return;
   }
-  // Maybe create first Server / Builder
+  // Maybe create first Server
   let db = db_client();
   // If any Server exists, exit early.
   let Ok(None) =
@@ -250,12 +246,10 @@ async fn ensure_first_server_and_builder() {
   else {
     return;
   };
-  // Use the same name for Server and Builder
   let name = config.first_server_name.as_deref().unwrap_or("Local");
-  let server = match (CreateServer {
+  if let Err(e) = (CreateServer {
     name: name.to_string(),
     config: PartialServerConfig {
-      address: config.first_server_address.clone(),
       enabled: Some(true),
       ..Default::default()
     },
@@ -266,37 +260,8 @@ async fn ensure_first_server_and_builder() {
   })
   .await
   {
-    Ok(server) => server,
-    Err(e) => {
-      error!(
-        "Failed to initialize first Server. Failed to CreateServer. {:#}",
-        e.error
-      );
-      return;
-    }
-  };
-  // If any builder exists, exit early.
-  let Ok(None) = db.builders
-    .find_one(Document::new()).await
-    .inspect_err(|e| error!("Failed to initialize 'first_builder' | Failed to query db | {e:?}")) else {
-      return;
-    };
-  if let Err(e) = (CreateBuilder {
-    // Same name as Server
-    name: name.to_string(),
-    config: PartialBuilderConfig::Server(
-      PartialServerBuilderConfig {
-        server_ids: Some(vec![server.id]),
-      },
-    ),
-  })
-  .resolve(&WriteArgs {
-    user: system_user().to_owned(),
-  })
-  .await
-  {
     error!(
-      "Failed to initialize 'first_builder' | Failed to CreateBuilder | {:#}",
+      "Failed to initialize first Server. Failed to CreateServer. {:#}",
       e.error
     );
   }
@@ -421,58 +386,6 @@ async fn ensure_init_user_and_resources() {
     }
   }.await;
 
-  // GlobalAutoUpdate
-  async {
-    let Ok(config) = ProcedureConfig::builder()
-      .stages(vec![ProcedureStage {
-        name: String::from("Stage 1"),
-        enabled: true,
-        executions: vec![
-          EnabledExecution {
-            execution: Execution::GlobalAutoUpdate(GlobalAutoUpdate { skip_auto_update: false }),
-            enabled: true
-          }
-        ]
-      }])
-      .schedule(String::from("Every day at 03:00"))
-      .build()
-      .inspect_err(|e| error!("Failed to initialize global auto update procedure | Failed to build Procedure | {e:?}")) else {
-      return;
-    };
-    let procedure = match (CreateProcedure {
-      name: String::from("Global Auto Update"),
-      config: config.into(),
-    })
-    .resolve(&write_args)
-    .await
-    {
-      Ok(procedure) => procedure,
-      Err(e) => {
-        error!(
-          "Failed to initialize global auto update Procedure | Failed to create Procedure | {:#}",
-          e.error
-        );
-        return;
-      }
-    };
-    if let Err(e) = (UpdateResourceMeta {
-      target: ResourceTarget::Procedure(procedure.id),
-      tags: Some(default_tags.clone()),
-      description: Some(String::from(
-        "Pulls and auto updates Stacks and Deployments using 'poll_for_updates' or 'auto_update'.",
-      )),
-      template: None,
-    })
-    .resolve(&write_args)
-    .await
-    {
-      warn!(
-        "Failed to update global auto update Procedure tags / description | {:#}",
-        e.error
-      );
-    }
-  }.await;
-
   // RotateAllServerKeys
   async {
     let Ok(config) = ProcedureConfig::builder()
@@ -586,7 +499,7 @@ async fn clean_up_server_templates() {
   );
 }
 
-/// v2 adds ServerInfo to ServerSchema and DeploymentInfo to DeploymentSchema.
+/// v2 adds ServerInfo to ServerSchema.
 /// Need to ensure it is initialized from null to avoid de/serialization issues.
 async fn v2_init_missing_resource_info() {
   let default_server_info = match to_bson(&ServerInfo::default()) {
@@ -605,23 +518,5 @@ async fn v2_init_missing_resource_info() {
     .await
   {
     error!("Failed to migrate ServerInfo to v2 | {e:?}");
-  }
-  let default_deployment_info =
-    match to_bson(&DeploymentInfo::default()) {
-      Ok(info) => info,
-      Err(e) => {
-        error!("Failed to serialize DeploymentInfo to bson | {e:?}");
-        return;
-      }
-    };
-  if let Err(e) = db_client()
-    .deployments
-    .update_many(
-      doc! { "info": null },
-      doc! { "$set": { "info": default_deployment_info } },
-    )
-    .await
-  {
-    error!("Failed to migrate DeploymentInfo to v2 | {e:?}");
   }
 }

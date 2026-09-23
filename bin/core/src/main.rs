@@ -3,15 +3,16 @@
 #[macro_use]
 extern crate tracing;
 
+// Vendored openssl is linked for the whole graph; keep the dependency live.
+use openssl_sys as _;
+
 use mogh_server::axum_server::Handle;
 use tracing::Instrument;
 
 use crate::config::{core_config, core_keys};
 
-mod alert;
 mod api;
 mod auth;
-mod cloud;
 mod config;
 mod connection;
 mod helpers;
@@ -22,6 +23,7 @@ mod permission;
 mod report;
 mod resource;
 mod schedule;
+mod secrets;
 mod stack;
 mod startup;
 mod state;
@@ -66,7 +68,6 @@ async fn app() -> anyhow::Result<()> {
     monitor::spawn_monitoring_loops();
     resource::spawn_resource_refresh_loop();
     resource::spawn_all_resources_cache_refresh_loop();
-    resource::spawn_build_state_refresh_loop();
     resource::spawn_repo_state_refresh_loop();
     resource::spawn_procedure_state_refresh_loop();
     resource::spawn_action_state_refresh_loop();

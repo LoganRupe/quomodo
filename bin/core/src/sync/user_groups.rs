@@ -323,13 +323,6 @@ pub async fn get_updates_for_execution(
       // replace the ids with names
       match &mut p.resource_target {
         ResourceTarget::System(_) => {}
-        ResourceTarget::Swarm(id) => {
-          *id = all_resources
-            .swarms
-            .get(id)
-            .map(|b| b.name.clone())
-            .unwrap_or_default()
-        }
         ResourceTarget::Server(id) => {
           *id = all_resources
             .servers
@@ -340,20 +333,6 @@ pub async fn get_updates_for_execution(
         ResourceTarget::Stack(id) => {
           *id = all_resources
             .stacks
-            .get(id)
-            .map(|b| b.name.clone())
-            .unwrap_or_default()
-        }
-        ResourceTarget::Deployment(id) => {
-          *id = all_resources
-            .deployments
-            .get(id)
-            .map(|b| b.name.clone())
-            .unwrap_or_default()
-        }
-        ResourceTarget::Build(id) => {
-          *id = all_resources
-            .builds
             .get(id)
             .map(|b| b.name.clone())
             .unwrap_or_default()
@@ -382,20 +361,6 @@ pub async fn get_updates_for_execution(
         ResourceTarget::ResourceSync(id) => {
           *id = all_resources
             .syncs
-            .get(id)
-            .map(|b| b.name.clone())
-            .unwrap_or_default()
-        }
-        ResourceTarget::Builder(id) => {
-          *id = all_resources
-            .builders
-            .get(id)
-            .map(|b| b.name.clone())
-            .unwrap_or_default()
-        }
-        ResourceTarget::Alerter(id) => {
-          *id = all_resources
-            .alerters
             .get(id)
             .map(|b| b.name.clone())
             .unwrap_or_default()
@@ -803,18 +768,6 @@ async fn expand_user_group_permissions(
     }
     let matcher = Matcher::new(id)?;
     match variant {
-      ResourceTargetVariant::Swarm => {
-        let permissions = all_resources
-          .swarms
-          .values()
-          .filter(|resource| matcher.is_match(&resource.name))
-          .map(|resource| PermissionToml {
-            target: ResourceTarget::Swarm(resource.name.clone()),
-            level: permission.level,
-            specific: permission.specific.clone(),
-          });
-        expanded.extend(permissions);
-      }
       ResourceTargetVariant::Server => {
         let permissions = all_resources
           .servers
@@ -834,30 +787,6 @@ async fn expand_user_group_permissions(
           .filter(|resource| matcher.is_match(&resource.name))
           .map(|resource| PermissionToml {
             target: ResourceTarget::Stack(resource.name.clone()),
-            level: permission.level,
-            specific: permission.specific.clone(),
-          });
-        expanded.extend(permissions);
-      }
-      ResourceTargetVariant::Deployment => {
-        let permissions = all_resources
-          .deployments
-          .values()
-          .filter(|resource| matcher.is_match(&resource.name))
-          .map(|resource| PermissionToml {
-            target: ResourceTarget::Deployment(resource.name.clone()),
-            level: permission.level,
-            specific: permission.specific.clone(),
-          });
-        expanded.extend(permissions);
-      }
-      ResourceTargetVariant::Build => {
-        let permissions = all_resources
-          .builds
-          .values()
-          .filter(|resource| matcher.is_match(&resource.name))
-          .map(|resource| PermissionToml {
-            target: ResourceTarget::Build(resource.name.clone()),
             level: permission.level,
             specific: permission.specific.clone(),
           });
@@ -908,30 +837,6 @@ async fn expand_user_group_permissions(
             target: ResourceTarget::ResourceSync(
               resource.name.clone(),
             ),
-            level: permission.level,
-            specific: permission.specific.clone(),
-          });
-        expanded.extend(permissions);
-      }
-      ResourceTargetVariant::Builder => {
-        let permissions = all_resources
-          .builders
-          .values()
-          .filter(|resource| matcher.is_match(&resource.name))
-          .map(|resource| PermissionToml {
-            target: ResourceTarget::Builder(resource.name.clone()),
-            level: permission.level,
-            specific: permission.specific.clone(),
-          });
-        expanded.extend(permissions);
-      }
-      ResourceTargetVariant::Alerter => {
-        let permissions = all_resources
-          .alerters
-          .values()
-          .filter(|resource| matcher.is_match(&resource.name))
-          .map(|resource| PermissionToml {
-            target: ResourceTarget::Alerter(resource.name.clone()),
             level: permission.level,
             specific: permission.specific.clone(),
           });
@@ -1059,13 +964,6 @@ pub async fn convert_user_groups(
     .filter(|permission| permission.level > PermissionLevel::None)
     .map(|mut permission| {
       match &mut permission.resource_target {
-        ResourceTarget::Swarm(id) => {
-          *id = all
-            .swarms
-            .get(id)
-            .map(|r| r.name.clone())
-            .unwrap_or_default()
-        }
         ResourceTarget::Server(id) => {
           *id = all
             .servers
@@ -1076,20 +974,6 @@ pub async fn convert_user_groups(
         ResourceTarget::Stack(id) => {
           *id = all
             .stacks
-            .get(id)
-            .map(|r| r.name.clone())
-            .unwrap_or_default()
-        }
-        ResourceTarget::Deployment(id) => {
-          *id = all
-            .deployments
-            .get(id)
-            .map(|r| r.name.clone())
-            .unwrap_or_default()
-        }
-        ResourceTarget::Build(id) => {
-          *id = all
-            .builds
             .get(id)
             .map(|r| r.name.clone())
             .unwrap_or_default()
@@ -1118,20 +1002,6 @@ pub async fn convert_user_groups(
         ResourceTarget::ResourceSync(id) => {
           *id = all
             .syncs
-            .get(id)
-            .map(|r| r.name.clone())
-            .unwrap_or_default()
-        }
-        ResourceTarget::Builder(id) => {
-          *id = all
-            .builders
-            .get(id)
-            .map(|r| r.name.clone())
-            .unwrap_or_default()
-        }
-        ResourceTarget::Alerter(id) => {
-          *id = all
-            .alerters
             .get(id)
             .map(|r| r.name.clone())
             .unwrap_or_default()

@@ -5,13 +5,11 @@ use database::mungos::{find::find_collect, mongodb::bson::doc};
 use futures_util::future::join_all;
 use helpers::insert_stacks_status_unknown;
 use komodo_client::entities::{
-  deployment::Deployment,
   komodo_timestamp, optional_string,
   repo::Repo,
   server::{Server, ServerState},
   stack::Stack,
   stats::SystemStats,
-  swarm::Swarm,
 };
 use mogh_cache::CloneCache;
 use mogh_error::Serror;
@@ -25,29 +23,23 @@ use crate::{
   helpers::periphery_client,
   monitor::{alert::check_alerts, record::record_server_stats},
   state::{
-    CachedRepoStatus, db_client, deployment_status_cache,
-    periphery_connections, repo_status_cache,
+    CachedRepoStatus, db_client, periphery_connections,
+    repo_status_cache,
   },
 };
 
-use self::helpers::{
-  insert_deployments_status_unknown, insert_repos_status_unknown,
-  insert_server_status,
-};
+use self::helpers::{insert_repos_status_unknown, insert_server_status};
 
 mod alert;
 mod helpers;
 mod record;
 mod resources;
-mod swarm;
 
-pub use swarm::refresh_swarm_cache;
 
 const ADDITIONAL_MS: u128 = 500;
 
 pub fn spawn_monitoring_loops() {
   spawn_server_monitoring_loop();
-  swarm::spawn_swarm_monitoring_loop();
 }
 
 fn spawn_server_monitoring_loop() {
@@ -166,11 +158,11 @@ pub fn refresh_server_cache(
       periphery_info,
       system_info,
       system_stats,
-      mut docker,
+      mut containers,
     } = match periphery
       .request(api::poll::PollStatus {
         include_stats: server.config.stats_monitoring,
-        include_docker: true,
+        include_containers: true,
       })
       .await
     {
@@ -191,34 +183,18 @@ pub fn refresh_server_cache(
       }
     };
 
-    if let Some(docker) = &mut docker {
-      docker.containers.iter_mut().for_each(|container| {
+    if let Some(containers) = &mut containers {
+      containers.iter_mut().for_each(|container| {
         container.server_id = Some(server.id.clone());
         container.server_name = Some(server.name.clone());
       });
     }
 
-    let containers = docker
-      .as_ref()
-      .map(|docker| docker.containers.as_slice())
-      .unwrap_or(&[]);
-    let images = docker
-      .as_ref()
-      .map(|docker| docker.images.as_slice())
-      .unwrap_or(&[]);
-
-    tokio::join!(
-      resources::update_server_stack_cache(
-        resources.stacks,
-        containers,
-        images
-      ),
-      resources::update_server_deployment_cache(
-        resources.deployments,
-        containers,
-        images,
-      ),
-    );
+    resources::update_server_stack_cache(
+      resources.stacks,
+      containers.as_deref().unwrap_or(&[]),
+    )
+    .await;
 
     insert_server_status(
       server,
@@ -226,7 +202,7 @@ pub fn refresh_server_cache(
       Some(periphery_info),
       Some(system_info),
       system_stats.map(|stats| filter_volumes(server, stats)),
-      docker,
+      containers,
       None,
     )
     .await;
@@ -259,20 +235,14 @@ pub fn refresh_server_cache(
 
 struct RefreshCacheResources {
   stacks: Vec<Stack>,
-  deployments: Vec<Deployment>,
   repos: Vec<Repo>,
 }
 
 impl RefreshCacheResources {
   pub async fn load_server(server: &Server) -> Self {
-    let (stacks, deployments, repos) = tokio::join!(
+    let (stacks, repos) = tokio::join!(
       find_collect(
         &db_client().stacks,
-        doc! { "config.server_id": &server.id },
-        None,
-      ),
-      find_collect(
-        &db_client().deployments,
         doc! { "config.server_id": &server.id },
         None,
       ),
@@ -284,43 +254,13 @@ impl RefreshCacheResources {
     );
 
     let stacks = stacks.inspect_err(|e|  error!("Failed to get stacks list from db (update server status cache) | server: {} | {e:#}", server.name)).unwrap_or_default();
-    let deployments =  deployments.inspect_err(|e| error!("Failed to get deployments list from db (update server status cache) | server : {} | {e:#}", server.name)).unwrap_or_default();
     let repos = repos.inspect_err(|e|  error!("Failed to get repos list from db (update server status cache) | server: {} | {e:#}", server.name)).unwrap_or_default();
 
-    Self {
-      stacks,
-      deployments,
-      repos,
-    }
-  }
-
-  pub async fn load_swarm(swarm: &Swarm) -> Self {
-    let (stacks, deployments) = tokio::join!(
-      find_collect(
-        &db_client().stacks,
-        doc! { "config.swarm_id": &swarm.id },
-        None,
-      ),
-      find_collect(
-        &db_client().deployments,
-        doc! { "config.swarm_id": &swarm.id },
-        None,
-      ),
-    );
-
-    let stacks = stacks.inspect_err(|e|  error!("Failed to get stacks list from db (update swarm status cache) | swarm: {} | {e:#}", swarm.name)).unwrap_or_default();
-    let deployments =  deployments.inspect_err(|e| error!("Failed to get deployments list from db (update swarm status cache) | swarm : {} | {e:#}", swarm.name)).unwrap_or_default();
-
-    Self {
-      stacks,
-      deployments,
-      repos: Default::default(),
-    }
+    Self { stacks, repos }
   }
 
   pub async fn insert_status_unknown(self) {
     insert_stacks_status_unknown(self.stacks).await;
-    insert_deployments_status_unknown(self.deployments).await;
     insert_repos_status_unknown(self.repos).await;
   }
 }
@@ -331,7 +271,7 @@ fn filter_volumes(
 ) -> SystemStats {
   stats.disks.retain(|disk| {
     // Always filter out volume mounts
-    !disk.mount.starts_with("/var/lib/docker/volumes")
+    !disk.mount.starts_with("/var/lib/containers/storage")
     // Filter out any that were declared to ignore in server config
       && !server
         .config

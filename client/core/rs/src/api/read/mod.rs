@@ -215,36 +215,3 @@ pub struct ListImageRegistriesFromConfig {
 
 #[typeshare]
 pub type ListImageRegistriesFromConfigResponse = Vec<ImageRegistry>;
-
-//
-
-#[cfg(feature = "utoipa")]
-#[utoipa::path(
-  post,
-  path = "/ListSecrets",
-  description = "List the secret keys (not values) in the core configuration file.",
-  request_body(content = ListSecrets),
-  responses(
-    (status = 200, description = "The available secret keys", body = ListSecretsResponse),
-    (status = 400, description = "Target must be `Server` or `Builder`", body = mogh_error::Serror),
-    (status = 500, description = "Failed", body = mogh_error::Serror),
-  ),
-)]
-pub fn list_secrets() {}
-
-/// List the secret keys (not values) in the core configuration file.
-/// Response: [ListSecretsResponse].
-#[typeshare]
-#[derive(Serialize, Deserialize, Debug, Clone, Resolve)]
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[empty_traits(KomodoReadRequest)]
-#[response(ListSecretsResponse)]
-#[error(mogh_error::Error)]
-pub struct ListSecrets {
-  /// Accepts an optional Server or Builder target to expand the core list with
-  /// providers available on that specific resource.
-  pub target: Option<ResourceTarget>,
-}
-
-#[typeshare]
-pub type ListSecretsResponse = Vec<String>;

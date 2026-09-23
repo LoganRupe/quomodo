@@ -63,7 +63,6 @@ pub enum PeripheryRequest {
   GetContainerLogSearch(GetContainerLogSearch),
 
   // Stack (Read)
-  ReadStack(ReadStack),
   GetStackLog(GetStackLog),
   GetStackLogSearch(GetStackLogSearch),
 

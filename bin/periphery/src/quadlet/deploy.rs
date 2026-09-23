@@ -11,10 +11,8 @@ use komodo_client::entities::{
   stack::QuadletKind, update::Log,
 };
 
-use super::{
-  prepare::Prepared, sha256_hex, state::StackState,
-  unit::base_name,
-};
+use super::{sha256_hex, state::StackState, unit::base_name};
+use quadlet::prepare::Prepared;
 use crate::{podman, systemd};
 
 /// What the deploy will do to systemd units.

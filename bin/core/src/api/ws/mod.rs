@@ -21,7 +21,6 @@ use crate::{
   helpers::query::get_user,
 };
 
-mod terminal;
 mod update;
 
 pub(super) const WS_KEEP_ALIVE_INTERVAL: std::time::Duration =
@@ -33,7 +32,6 @@ pub fn router() -> Router {
     .route("/periphery", get(crate::connection::server::handler))
     // User facing
     .route("/update", get(update::handler))
-    .route("/terminal", get(terminal::handler))
 }
 
 async fn user_ws_login(

@@ -176,10 +176,6 @@ pub enum AlertData {
     server_id: Option<String>,
     /// The server name
     server_name: Option<String>,
-    /// The swarm id of swarm that the stack is on
-    swarm_id: Option<String>,
-    /// The swarm name
-    swarm_name: Option<String>,
     /// The previous stack state
     from: StackState,
     /// The current stack state

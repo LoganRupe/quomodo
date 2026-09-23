@@ -3,7 +3,6 @@ use std::{sync::Arc, time::Duration};
 use anyhow::{Context, anyhow};
 use encoding::Decode as _;
 use mogh_resolver::HasResponse;
-use periphery_client::api;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::json;
 use transport::channel::channel;
@@ -11,12 +10,11 @@ use uuid::Uuid;
 
 use crate::{
   connection::{
-    PeripheryConnection, PeripheryConnectionArgs, ResponseChannels,
+    PeripheryConnectionArgs, ResponseChannels,
   },
   state::periphery_connections,
 };
 
-pub mod terminal;
 
 #[derive(Debug)]
 pub struct PeripheryClient {
@@ -26,22 +24,16 @@ pub struct PeripheryClient {
 }
 
 impl PeripheryClient {
+  /// The agent always dials in to Core, so the connection must already exist.
   pub async fn new(
     args: PeripheryConnectionArgs<'_>,
-    insecure_tls: bool,
   ) -> anyhow::Result<PeripheryClient> {
     let connections = periphery_connections();
 
     let id = args.id.to_string();
 
-    // Spawn client side connection if one doesn't exist.
     let Some(connection) = connections.get(&id).await else {
-      if args.address.is_none() {
-        return Err(anyhow!("Server {id} is not connected"));
-      }
-      return args
-        .spawn_client_connection(id.clone(), insecure_tls)
-        .await;
+      return Err(anyhow!("Server {id} is not connected"));
     };
 
     // Ensure the connection args are unchanged.
@@ -52,33 +44,18 @@ impl PeripheryClient {
       });
     }
 
-    // The args have changed.
-    if args.address.is_none() {
-      // Periphery -> Core connection
-      // Remove this connection, wait and see if client reconnects
-      connections.remove(&id).await;
-      tokio::time::sleep(Duration::from_millis(500)).await;
-      let connection = connections
-        .get(&id)
-        .await
-        .with_context(|| format!("Server {id} is not connected"))?;
-      Ok(PeripheryClient {
-        id,
-        responses: connection.responses.clone(),
-      })
-    } else {
-      // Core -> Periphery connection
-      args.spawn_client_connection(id.clone(), insecure_tls).await
-    }
-  }
-
-  pub async fn cleanup(self) -> Option<Arc<PeripheryConnection>> {
-    periphery_connections().remove(&self.id).await
-  }
-
-  pub async fn health_check(&self) -> anyhow::Result<()> {
-    self.request(api::GetHealth {}).await?;
-    Ok(())
+    // The args have changed (eg the expected public key).
+    // Remove this connection, wait and see if the agent reconnects.
+    connections.remove(&id).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let connection = connections
+      .get(&id)
+      .await
+      .with_context(|| format!("Server {id} is not connected"))?;
+    Ok(PeripheryClient {
+      id,
+      responses: connection.responses.clone(),
+    })
   }
 
   pub async fn request<T>(

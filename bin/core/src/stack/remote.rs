@@ -1,32 +1,37 @@
-use std::{fs, path::PathBuf};
+//! Read a Stack's files out of Core's own clone of its repo.
+
+use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use formatting::format_serror;
 use komodo_client::entities::{
   FileContents, RepoExecutionArgs,
   repo::Repo,
-  stack::{Stack, StackRemoteFileContents},
+  stack::{QuadletUnit, Stack},
   update::Log,
 };
 
 use crate::{config::core_config, helpers::git_token};
 
+/// Largest file read out of a stack directory.
+const MAX_FILE_BYTES: u64 = 1024 * 1024;
+
 #[derive(Default)]
-pub struct RemoteComposeContents {
-  pub successful: Vec<StackRemoteFileContents>,
-  pub errored: Vec<FileContents>,
+pub struct RemoteStackContents {
+  /// Every regular file under the run directory, relative paths with `/`.
+  pub files: Vec<FileContents>,
+  /// Files which could not be read, with the error as contents.
+  pub errors: Vec<FileContents>,
+  /// The quadlet units parsed from `files`.
+  pub units: Vec<QuadletUnit>,
   pub hash: Option<String>,
   pub message: Option<String>,
-  // pub logs: Vec<Log>,
 }
 
-/// Returns Result<(read paths, error paths, logs, short hash, commit message)>
-pub async fn get_repo_compose_contents(
+pub async fn get_repo_stack_contents(
   stack: &Stack,
   repo: Option<&Repo>,
-  // Collect any files which are missing in the repo.
-  mut missing_files: Option<&mut Vec<String>>,
-) -> anyhow::Result<RemoteComposeContents> {
+) -> anyhow::Result<RemoteStackContents> {
   let clone_args: RepoExecutionArgs =
     repo.map(Into::into).unwrap_or(stack.into());
   let (repo_path, logs, hash, message) =
@@ -35,10 +40,10 @@ pub async fn get_repo_compose_contents(
       .context("Failed to clone stack repo")?;
 
   // Ensure clone / pull successful,
-  // propogate error log -> 'errored' and return.
+  // propogate error log -> 'errors' and return.
   if let Some(failure) = logs.iter().find(|log| !log.success) {
-    return Ok(RemoteComposeContents {
-      errored: vec![FileContents {
+    return Ok(RemoteStackContents {
+      errors: vec![FileContents {
         path: format!("Failed at: {}", failure.stage),
         contents: failure.combined(),
       }],
@@ -46,43 +51,109 @@ pub async fn get_repo_compose_contents(
     });
   }
 
-  let run_directory = repo_path.join(&stack.config.run_directory);
-  // This will remove any intermediate '/./' which can be a problem for some OS.
-  let run_directory = run_directory.components().collect::<PathBuf>();
+  let run_directory = repo_path
+    .join(&stack.config.run_directory)
+    .components()
+    .collect::<PathBuf>();
 
-  let mut successful = Vec::new();
-  let mut errored = Vec::new();
-
-  for file in stack.all_file_dependencies() {
-    let file_path = run_directory.join(&file.path);
-    if !file_path.exists()
-      && let Some(missing_files) = &mut missing_files
-    {
-      missing_files.push(file.path.clone());
+  let (files, errors) = match read_stack_files(&run_directory) {
+    Ok(res) => res,
+    Err(e) => {
+      return Ok(RemoteStackContents {
+        errors: vec![FileContents {
+          path: stack.config.run_directory.clone(),
+          contents: format_serror(&e.into()),
+        }],
+        hash,
+        message,
+        ..Default::default()
+      });
     }
-    // If file does not exist, will show up in err case so the log is handled
-    match fs::read_to_string(&file_path).with_context(|| {
-      format!("Failed to read file contents from {file_path:?}")
-    }) {
-      Ok(contents) => successful.push(StackRemoteFileContents {
-        path: file.path,
-        contents,
-        services: file.services,
-        requires: file.requires,
-      }),
-      Err(e) => errored.push(FileContents {
-        path: file.path,
-        contents: format_serror(&e.into()),
-      }),
-    }
-  }
+  };
 
-  Ok(RemoteComposeContents {
-    successful,
-    errored,
+  let units = quadlet::units_only(&quadlet::parse_units(&files));
+
+  Ok(RemoteStackContents {
+    files,
+    errors,
+    units,
     hash,
     message,
   })
+}
+
+/// Read every regular file under the run directory, skipping `.git`.
+fn read_stack_files(
+  run_directory: &Path,
+) -> anyhow::Result<(Vec<FileContents>, Vec<FileContents>)> {
+  let run_directory = run_directory.canonicalize().with_context(|| {
+    format!(
+      "Stack run directory does not exist in repo: {}",
+      run_directory.display()
+    )
+  })?;
+  let mut files = Vec::new();
+  let mut errors = Vec::new();
+  let mut dirs = vec![run_directory.clone()];
+  while let Some(dir) = dirs.pop() {
+    let entries = match std::fs::read_dir(&dir) {
+      Ok(entries) => entries,
+      Err(e) => {
+        errors.push(FileContents {
+          path: rel(&run_directory, &dir),
+          contents: format!("Failed to read directory: {e}"),
+        });
+        continue;
+      }
+    };
+    for entry in entries.flatten() {
+      let path = entry.path();
+      if entry.file_name() == ".git" {
+        continue;
+      }
+      let Ok(meta) = entry.metadata() else { continue };
+      if meta.is_dir() {
+        dirs.push(path);
+        continue;
+      }
+      if !meta.is_file() {
+        continue;
+      }
+      let rel_path = rel(&run_directory, &path);
+      if meta.len() > MAX_FILE_BYTES {
+        errors.push(FileContents {
+          path: rel_path,
+          contents: format!(
+            "File is larger than {MAX_FILE_BYTES} bytes, not read"
+          ),
+        });
+        continue;
+      }
+      match std::fs::read_to_string(&path) {
+        Ok(contents) => files.push(FileContents {
+          path: rel_path,
+          contents,
+        }),
+        Err(e) => errors.push(FileContents {
+          path: rel_path,
+          contents: format!("Failed to read file: {e}"),
+        }),
+      }
+    }
+  }
+  files.sort_by(|a, b| a.path.cmp(&b.path));
+  errors.sort_by(|a, b| a.path.cmp(&b.path));
+  Ok((files, errors))
+}
+
+fn rel(root: &Path, path: &Path) -> String {
+  path
+    .strip_prefix(root)
+    .unwrap_or(path)
+    .components()
+    .map(|c| c.as_os_str().to_string_lossy().to_string())
+    .collect::<Vec<_>>()
+    .join("/")
 }
 
 /// Returns (destination, logs, hash, message)

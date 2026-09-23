@@ -32,12 +32,8 @@ pub struct RepoListItemInfo {
   /// The name of the server that repo sits on.
   #[serde(default)]
   pub server_name: String,
-  /// The builder that builds the repo.
-  pub builder_id: String,
   /// Repo last cloned / pulled timestamp in ms.
   pub last_pulled_at: I64,
-  /// Repo last built timestamp in ms.
-  pub last_built_at: I64,
   /// The git provider domain
   pub git_provider: String,
   /// The configured repo
@@ -52,8 +48,6 @@ pub struct RepoListItemInfo {
   pub cloned_hash: Option<String>,
   /// If the repo is cloned, will be the cloned commit message.
   pub cloned_message: Option<String>,
-  /// If the repo is built, will be the latest built short commit hash.
-  pub built_hash: Option<String>,
   /// Will be the latest remote short commit hash.
   pub latest_hash: Option<String>,
 }
@@ -104,13 +98,6 @@ pub struct RepoInfo {
   /// When repo was last pulled
   #[serde(default)]
   pub last_pulled_at: I64,
-  /// When repo was last built
-  #[serde(default)]
-  pub last_built_at: I64,
-  /// Latest built short commit hash, or null.
-  pub built_hash: Option<String>,
-  /// Latest built commit message, or null. Only for repo based stacks
-  pub built_message: Option<String>,
   /// Latest remote short commit hash, or null.
   pub latest_hash: Option<String>,
   /// Latest remote commit message, or null
@@ -140,16 +127,6 @@ pub struct RepoConfig {
   )]
   #[builder(default)]
   pub server_id: String,
-
-  /// Attach a builder to 'build' the repo.
-  #[serde(default, alias = "builder")]
-  #[partial_attr(serde(alias = "builder"))]
-  #[cfg_attr(
-    feature = "schemars",
-    partial_attr(schemars(rename = "builder"))
-  )]
-  #[builder(default)]
-  pub builder_id: String,
 
   /// The git provider domain. Default: github.com
   #[serde(default = "default_git_provider")]
@@ -294,7 +271,6 @@ impl Default for RepoConfig {
   fn default() -> Self {
     Self {
       server_id: Default::default(),
-      builder_id: Default::default(),
       git_provider: default_git_provider(),
       git_https: default_git_https(),
       repo: Default::default(),

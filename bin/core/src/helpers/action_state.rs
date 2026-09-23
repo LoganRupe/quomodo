@@ -17,23 +17,17 @@ use anyhow::anyhow;
 use komodo_client::{
   busy::Busy,
   entities::{
-    action::ActionActionState, build::BuildActionState,
-    deployment::DeploymentActionState,
-    procedure::ProcedureActionState, repo::RepoActionState,
-    server::ServerActionState, stack::StackActionState,
-    swarm::SwarmActionState, sync::ResourceSyncActionState,
+    action::ActionActionState, procedure::ProcedureActionState,
+    repo::RepoActionState, server::ServerActionState,
+    stack::StackActionState, sync::ResourceSyncActionState,
   },
 };
 use mogh_cache::CloneCache;
 
 #[derive(Default)]
 pub struct ActionStates {
-  pub swarm: CloneCache<String, Arc<ActionState<SwarmActionState>>>,
   pub server: CloneCache<String, Arc<ActionState<ServerActionState>>>,
   pub stack: CloneCache<String, Arc<ActionState<StackActionState>>>,
-  pub deployment:
-    CloneCache<String, Arc<ActionState<DeploymentActionState>>>,
-  pub build: CloneCache<String, Arc<ActionState<BuildActionState>>>,
   pub repo: CloneCache<String, Arc<ActionState<RepoActionState>>>,
   pub procedure:
     CloneCache<String, Arc<ActionState<ProcedureActionState>>>,

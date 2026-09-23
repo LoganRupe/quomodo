@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use anyhow::Context;
 use database::mungos::{
   by_id::{find_one_by_id, update_one_by_id},
@@ -8,17 +6,13 @@ use database::mungos::{
 use komodo_client::entities::{
   Operation, ResourceTarget,
   action::Action,
-  alerter::Alerter,
-  build::Build,
-  deployment::Deployment,
   komodo_timestamp,
   procedure::Procedure,
   repo::Repo,
   server::Server,
   stack::Stack,
-  swarm::Swarm,
   sync::ResourceSync,
-  update::{Update, UpdateListItem, UpdateStatus},
+  update::{Update, UpdateListItem},
   user::User,
 };
 
@@ -127,7 +121,7 @@ pub async fn init_execution_update(
     (
       resource: [$(($Variant:ident, $ResType:ident, $field:ident)),* $(,)?],
       batch: [$($BatchVariant:ident),* $(,)?],
-      stack_service: [$(($StackVariant:ident, $ServiceOp:ident)),* $(,)?],
+      stack: [$($StackVariant:ident),* $(,)?],
       system: [$($SysVariant:ident),* $(,)?],
     ) => {
       match &request {
@@ -146,11 +140,7 @@ pub async fn init_execution_update(
         )*
         $(
           ExecuteRequest::$StackVariant(data) => (
-            if !data.services.is_empty() {
-              Operation::$ServiceOp
-            } else {
-              Operation::$StackVariant
-            },
+            Operation::$StackVariant,
             ResourceTarget::Stack(
               resource::get::<Stack>(&data.stack).await?.id,
             ),
@@ -174,56 +164,12 @@ pub async fn init_execution_update(
 
   let (operation, target) = init_execution_match!(
     resource: [
-      // Swarm
-      (RemoveSwarmNodes, Swarm, swarm),
-      (UpdateSwarmNode, Swarm, swarm),
-      (RemoveSwarmStacks, Swarm, swarm),
-      (RemoveSwarmServices, Swarm, swarm),
-      (CreateSwarmConfig, Swarm, swarm),
-      (RotateSwarmConfig, Swarm, swarm),
-      (RemoveSwarmConfigs, Swarm, swarm),
-      (CreateSwarmSecret, Swarm, swarm),
-      (RotateSwarmSecret, Swarm, swarm),
-      (RemoveSwarmSecrets, Swarm, swarm),
       // Server
-      (StartContainer, Server, server),
-      (RestartContainer, Server, server),
-      (PauseContainer, Server, server),
-      (UnpauseContainer, Server, server),
-      (StopContainer, Server, server),
-      (DestroyContainer, Server, server),
-      (StartAllContainers, Server, server),
-      (RestartAllContainers, Server, server),
-      (PauseAllContainers, Server, server),
-      (UnpauseAllContainers, Server, server),
-      (StopAllContainers, Server, server),
-      (PruneContainers, Server, server),
-      (DeleteNetwork, Server, server),
-      (PruneNetworks, Server, server),
-      (DeleteImage, Server, server),
       (PruneImages, Server, server),
-      (DeleteVolume, Server, server),
-      (PruneVolumes, Server, server),
-      (PruneDockerBuilders, Server, server),
-      (PruneBuildx, Server, server),
       (PruneSystem, Server, server),
-      // Deployment
-      (Deploy, Deployment, deployment),
-      (PullDeployment, Deployment, deployment),
-      (StartDeployment, Deployment, deployment),
-      (RestartDeployment, Deployment, deployment),
-      (PauseDeployment, Deployment, deployment),
-      (UnpauseDeployment, Deployment, deployment),
-      (StopDeployment, Deployment, deployment),
-      (DestroyDeployment, Deployment, deployment),
-      // Build
-      (RunBuild, Build, build),
-      (CancelBuild, Build, build),
       // Repo
       (CloneRepo, Repo, repo),
       (PullRepo, Repo, repo),
-      (BuildRepo, Repo, repo),
-      (CancelRepoBuild, Repo, repo),
       // Procedure
       (RunProcedure, Procedure, procedure),
       (CancelProcedure, Procedure, procedure),
@@ -233,17 +179,10 @@ pub async fn init_execution_update(
       // Resource Sync
       (RunSync, ResourceSync, sync),
       // Stack (simple)
-      (RunStackService, Stack, stack),
-      // Alerter
-      (TestAlerter, Alerter, alerter),
     ],
     batch: [
-      BatchDeploy,
-      BatchDestroyDeployment,
-      BatchRunBuild,
       BatchCloneRepo,
       BatchPullRepo,
-      BatchBuildRepo,
       BatchRunProcedure,
       BatchRunAction,
       BatchDeployStack,
@@ -251,21 +190,17 @@ pub async fn init_execution_update(
       BatchPullStack,
       BatchDestroyStack,
     ],
-    stack_service: [
-      (DeployStack, DeployStackService),
-      (PullStack, PullStackService),
-      (StartStack, StartStackService),
-      (RestartStack, RestartStackService),
-      (PauseStack, PauseStackService),
-      (UnpauseStack, UnpauseStackService),
-      (StopStack, StopStackService),
-      (DestroyStack, DestroyStackService),
+    stack: [
+      DeployStack,
+      PullStack,
+      StartStack,
+      RestartStack,
+      StopStack,
+      DestroyStack,
     ],
     system: [
-      SendAlert,
       ClearRepoCache,
       BackupCoreDatabase,
-      GlobalAutoUpdate,
       RotateAllServerKeys,
       RotateCoreKeys,
     ],
@@ -283,16 +218,3 @@ pub async fn init_execution_update(
   Ok(update)
 }
 
-pub async fn poll_update_until_complete(
-  update_id: &str,
-) -> anyhow::Result<Update> {
-  loop {
-    tokio::time::sleep(Duration::from_secs(1)).await;
-    let update = find_one_by_id(&db_client().updates, update_id)
-      .await?
-      .context("No update found at given ID")?;
-    if matches!(update.status, UpdateStatus::Complete) {
-      return Ok(update);
-    }
-  }
-}

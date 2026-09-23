@@ -17,7 +17,6 @@ use komodo_client::entities::{
 };
 
 use crate::{
-  alert::send_alerts,
   helpers::maintenance::is_in_maintenance,
   monitor::alert::AlertBuffer,
   state::{db_client, server_status_cache},
@@ -637,29 +636,9 @@ async fn open_new_alerts(alerts: &[(Alert, SendAlerts)]) {
     anyhow::Ok(ids)
   };
 
-  let ids_to_send = match open().await {
-    Ok(ids) => ids,
-    Err(e) => {
-      error!("failed to open alerts on db | {e:?}");
-      return;
-    }
-  };
-
-  let alerts = match find_collect(
-    &db.alerts,
-    doc! { "_id": { "$in": ids_to_send } },
-    None,
-  )
-  .await
-  {
-    Ok(alerts) => alerts,
-    Err(e) => {
-      error!("failed to pull created alerts from mongo | {e:?}");
-      return;
-    }
-  };
-
-  send_alerts(&alerts).await
+  if let Err(e) = open().await {
+    error!("failed to open alerts on db | {e:?}");
+  }
 }
 
 async fn update_alerts(alerts: &[(Alert, SendAlerts)]) {
@@ -695,14 +674,7 @@ async fn update_alerts(alerts: &[(Alert, SendAlerts)]) {
     anyhow::Ok(())
   };
 
-  let alerts = alerts
-    .iter()
-    .filter(|(_, send)| *send)
-    .map(|(alert, _)| alert)
-    .cloned()
-    .collect::<Vec<_>>();
-
-  let (res, _) = tokio::join!(open(), send_alerts(&alerts));
+  let res = open().await;
 
   if let Err(e) = res {
     error!("failed to create alerts on db | {e:#}");
@@ -739,23 +711,6 @@ async fn resolve_alerts(alerts: &[(Alert, SendAlerts)]) {
       .inspect_err(|e| warn!("{e:#}"))
       .ok();
 
-    let ts = komodo_timestamp();
-
-    let closed = alerts
-      .iter()
-      .filter(|(_, send)| *send)
-      .map(|(alert, _)| {
-        let mut alert = alert.clone();
-
-        alert.resolved = true;
-        alert.resolved_ts = Some(ts);
-        alert.level = SeverityLevel::Ok;
-
-        alert
-      })
-      .collect::<Vec<_>>();
-
-    send_alerts(&closed).await;
 
     anyhow::Ok(())
   };

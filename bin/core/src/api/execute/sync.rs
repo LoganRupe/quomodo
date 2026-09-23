@@ -11,17 +11,12 @@ use komodo_client::{
   entities::{
     self, ResourceTargetVariant,
     action::Action,
-    alerter::Alerter,
-    build::Build,
-    builder::Builder,
-    deployment::Deployment,
     komodo_timestamp,
     permission::PermissionLevel,
     procedure::Procedure,
     repo::Repo,
     server::Server,
     stack::Stack,
-    swarm::Swarm,
     sync::ResourceSync,
     update::{Log, Update},
     user::sync_user,
@@ -158,37 +153,16 @@ impl Resolve<ExecuteArgs> for RunSync {
           // New resource types need to be added here manually.
           resolve_id_to_name!(
             (Server, servers),
-            (Swarm, swarms),
             (Stack, stacks),
-            (Deployment, deployments),
-            (Build, builds),
             (Repo, repos),
             (Procedure, procedures),
             (Action, actions),
             (ResourceSync, syncs),
-            (Builder, builders),
-            (Alerter, alerters),
           )
         })
         .collect::<Vec<_>>()
     });
 
-    let deployments_by_name = all_resources
-      .deployments
-      .values()
-      .filter(|deployment| {
-        Deployment::include_resource(
-          &deployment.name,
-          &deployment.config,
-          match_resource_type,
-          match_resources.as_deref(),
-          &deployment.tags,
-          &id_to_tags,
-          &sync.config.match_tags,
-        )
-      })
-      .map(|deployment| (deployment.name.clone(), deployment.clone()))
-      .collect::<HashMap<_, _>>();
     let stacks_by_name = all_resources
       .stacks
       .values()
@@ -207,8 +181,6 @@ impl Resolve<ExecuteArgs> for RunSync {
       .collect::<HashMap<_, _>>();
 
     let deploy_cache = build_deploy_cache(SyncDeployParams {
-      deployments: &resources.deployments,
-      deployment_map: &deployments_by_name,
       stacks: &resources.stacks,
       stack_map: &stacks_by_name,
     })
@@ -238,15 +210,10 @@ impl Resolve<ExecuteArgs> for RunSync {
     // New resource types need to be added here manually.
     get_deltas!(
       (server_deltas, Server, servers),
-      (swarm_deltas, Swarm, swarms),
       (stack_deltas, Stack, stacks),
-      (deployment_deltas, Deployment, deployments),
-      (build_deltas, Build, builds),
       (repo_deltas, Repo, repos),
       (procedure_deltas, Procedure, procedures),
       (action_deltas, Action, actions),
-      (builder_deltas, Builder, builders),
-      (alerter_deltas, Alerter, alerters),
       (resource_sync_deltas, ResourceSync, resource_syncs),
     );
 
@@ -287,12 +254,7 @@ impl Resolve<ExecuteArgs> for RunSync {
     if deploy_cache.is_empty()
       && resource_sync_deltas.no_changes()
       && server_deltas.no_changes()
-      && swarm_deltas.no_changes()
-      && deployment_deltas.no_changes()
       && stack_deltas.no_changes()
-      && build_deltas.no_changes()
-      && builder_deltas.no_changes()
-      && alerter_deltas.no_changes()
       && repo_deltas.no_changes()
       && procedure_deltas.no_changes()
       && action_deltas.no_changes()
@@ -351,23 +313,11 @@ impl Resolve<ExecuteArgs> for RunSync {
     );
     maybe_extend(
       &mut update.logs,
-      Alerter::execute_sync_updates(alerter_deltas).await,
-    );
-    maybe_extend(
-      &mut update.logs,
       Action::execute_sync_updates(action_deltas).await,
     );
 
     // Depends on server
-    maybe_extend(
-      &mut update.logs,
-      Swarm::execute_sync_updates(swarm_deltas).await,
-    );
     // Depends on server
-    maybe_extend(
-      &mut update.logs,
-      Builder::execute_sync_updates(builder_deltas).await,
-    );
     // Depends on server / builder
     maybe_extend(
       &mut update.logs,
@@ -375,10 +325,6 @@ impl Resolve<ExecuteArgs> for RunSync {
     );
 
     // Depends on builder / repo
-    maybe_extend(
-      &mut update.logs,
-      Build::execute_sync_updates(build_deltas).await,
-    );
     // Depends on server / repo
     maybe_extend(
       &mut update.logs,
@@ -390,10 +336,6 @@ impl Resolve<ExecuteArgs> for RunSync {
       ResourceSync::execute_sync_updates(resource_sync_deltas).await,
     );
     // Depends on server / build
-    maybe_extend(
-      &mut update.logs,
-      Deployment::execute_sync_updates(deployment_deltas).await,
-    );
     // Depends on everything
     maybe_extend(
       &mut update.logs,

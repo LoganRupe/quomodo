@@ -9,11 +9,10 @@ use axum::{
 use database::mungos::mongodb::bson::{doc, oid::ObjectId};
 use komodo_client::{
   api::write::{
-    CreateBuilder, CreateServer, UpdateResourceMeta, UpdateServer,
+    CreateServer, UpdateResourceMeta, UpdateServer,
     UpdateServerPublicKey,
   },
   entities::{
-    builder::{PartialBuilderConfig, PartialServerBuilderConfig},
     komodo_timestamp,
     onboarding_key::OnboardingKey,
     server::{PartialServerConfig, Server},
@@ -86,7 +85,7 @@ pub async fn handler(
         );
       }
 
-      if server.config.enabled && server.config.address.is_empty() {
+      if server.config.enabled {
         existing_server_handler(server_query, server, identifiers, ws)
           .await
       } else {
@@ -302,18 +301,6 @@ async fn fix_server(
     } else {
       None
     },
-    address: if !server.config.address.is_empty() {
-      Some(String::new())
-    } else {
-      None
-    },
-    // Move address to external_address if not set.
-    // This helps preserve container port link behavior.
-    external_address: if !server.config.external_address.is_empty() {
-      Some(server.config.address)
-    } else {
-      None
-    },
     ..Default::default()
   };
   if !config.is_none() {
@@ -321,7 +308,6 @@ async fn fix_server(
       id: server.id,
       config: PartialServerConfig {
         enabled: Some(true),
-        address: Some(String::default()),
         ..Default::default()
       },
     }
@@ -380,12 +366,11 @@ async fn onboard_new_server_handler(
       }
     };
 
-    let server_id = match create_server_maybe_builder(
+    let server_id = match create_server(
       server_query,
       public_key.into_inner(),
       onboarding_key.copy_server,
       onboarding_key.tags,
-      onboarding_key.create_builder
     ).await {
       Ok(server_id) => server_id,
       Err(e) => {
@@ -428,12 +413,11 @@ async fn onboard_new_server_handler(
   }))
 }
 
-async fn create_server_maybe_builder(
+async fn create_server(
   server_query: String,
   public_key: String,
   copy_server: String,
   tags: Vec<String>,
-  create_builder: bool,
 ) -> anyhow::Result<String> {
   let config = if copy_server.is_empty() {
     PartialServerConfig {
@@ -463,7 +447,6 @@ async fn create_server_maybe_builder(
     };
     PartialServerConfig {
       enabled: Some(true),
-      address: None,
       ..config.into()
     }
   };
@@ -497,24 +480,6 @@ async fn create_server_maybe_builder(
     warn!("{e:#}");
   };
 
-  if create_builder {
-    // Don't need to fail, only warn on this
-    if let Err(e) = (CreateBuilder {
-      name: server_query,
-      config: PartialBuilderConfig::Server(
-        PartialServerBuilderConfig {
-          server_ids: Some(vec![server.id.clone()]),
-        },
-      ),
-    })
-    .resolve(&args)
-    .await
-    .map_err(|e| e.error)
-    .context("Server onboarding flow failed at Builder creation")
-    {
-      warn!("{e:#}");
-    };
-  }
 
   Ok(server.id)
 }

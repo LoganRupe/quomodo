@@ -2,10 +2,9 @@ use std::collections::HashMap;
 
 use formatting::{Color, bold, colored, muted};
 use komodo_client::entities::{
-  ResourceTargetVariant, action::Action, alerter::Alerter,
-  build::Build, builder::Builder, deployment::Deployment,
-  procedure::Procedure, repo::Repo, server::Server, stack::Stack,
-  swarm::Swarm, sync::ResourceSync, tag::Tag, update::Log,
+  ResourceTargetVariant, action::Action, procedure::Procedure,
+  repo::Repo, server::Server, stack::Stack, sync::ResourceSync,
+  tag::Tag, update::Log,
   user::sync_user,
 };
 use partial_derive2::MaybeNone;
@@ -24,37 +23,11 @@ use super::{
 impl ResourceSyncTrait for Server {}
 impl ExecuteResourceSync for Server {}
 
-impl ResourceSyncTrait for Swarm {}
-impl ExecuteResourceSync for Swarm {}
-
-impl ResourceSyncTrait for Deployment {}
-impl ExecuteResourceSync for Deployment {}
-
 impl ResourceSyncTrait for Stack {}
 impl ExecuteResourceSync for Stack {}
 
-impl ResourceSyncTrait for Build {
-  fn validate_diff(diff: &mut Self::ConfigDiff) {
-    if let Some((_, to)) = &diff.version {
-      // When setting a build back to "latest" version,
-      // Don't actually set version to None.
-      // You can do this on the db, or set it to 0.0.1
-      if to.is_none() {
-        diff.version = None;
-      }
-    }
-  }
-}
-impl ExecuteResourceSync for Build {}
-
 impl ResourceSyncTrait for Repo {}
 impl ExecuteResourceSync for Repo {}
-
-impl ResourceSyncTrait for Alerter {}
-impl ExecuteResourceSync for Alerter {}
-
-impl ResourceSyncTrait for Builder {}
-impl ExecuteResourceSync for Builder {}
 
 impl ResourceSyncTrait for Action {}
 impl ExecuteResourceSync for Action {}

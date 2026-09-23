@@ -24,7 +24,6 @@ use mogh_resolver::Resolve;
 use uuid::Uuid;
 
 use crate::{
-  alert::send_alerts,
   api::execute::{ExecuteArgs, ExecuteRequest},
   config::core_config,
   helpers::update::init_execution_update,
@@ -77,7 +76,11 @@ pub fn spawn_schedule_executor() {
                         name: action.name.clone(),
                       },
                     };
-                    send_alerts(&[alert]).await
+                    if let Err(e) =
+                      db_client().alerts.insert_one(&alert).await
+                    {
+                      error!("Failed to record schedule alert | {e:#}");
+                    }
                   }
 
                   let request =
@@ -150,7 +153,11 @@ pub fn spawn_schedule_executor() {
                         name: procedure.name.clone(),
                       },
                     };
-                    send_alerts(&[alert]).await
+                    if let Err(e) =
+                      db_client().alerts.insert_one(&alert).await
+                    {
+                      error!("Failed to record schedule alert | {e:#}");
+                    }
                   }
 
                   let request =

@@ -4,7 +4,7 @@ use std::{
   sync::OnceLock,
 };
 
-use anyhow::Context as _;
+use anyhow::{Context as _, anyhow};
 use command::{CommandOptions, run_komodo_standard_command};
 use database::{
   bson::doc,
@@ -40,12 +40,11 @@ use tokio::fs;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-  alert::send_alerts,
   api::execute::ExecuteRequest,
   auth::KomodoAuthImpl,
   config::core_config,
   helpers::{
-    query::{VariablesAndSecrets, get_variables_and_secrets},
+    query::get_variables,
     update::update_update,
   },
   permission::get_check_permissions,
@@ -286,7 +285,9 @@ impl Resolve<ExecuteArgs> for RunAction {
             name: action.name,
           },
         };
-        send_alerts(&[alert]).await
+        if let Err(e) = db_client().alerts.insert_one(&alert).await {
+          error!("Failed to record action failure alert | {e:#}");
+        }
       });
     }
 
@@ -301,11 +302,10 @@ async fn interpolate(
   key: String,
   secret: String,
 ) -> mogh_error::Result<HashSet<(String, String)>> {
-  let VariablesAndSecrets {
-    variables,
-    mut secrets,
-  } = get_variables_and_secrets().await?;
+  let variables = get_variables().await?;
 
+  // The action api key pair is the only secret interpolated into Actions.
+  let mut secrets = std::collections::HashMap::new();
   secrets.insert(String::from("ACTION_API_KEY"), key);
   secrets.insert(String::from("ACTION_API_SECRET"), secret);
 
@@ -474,8 +474,9 @@ fn parse_action_arguments(
     }
     FileFormat::Toml => toml::from_str(args)
       .context("Failed to parse Toml to Action args"),
-    FileFormat::Yaml => serde_yaml_ng::from_str(args)
-      .context("Failed to parse Yaml to action args"),
+    FileFormat::Yaml => Err(anyhow!(
+      "YAML action args are not supported, use TOML or JSON"
+    )),
     FileFormat::Json => serde_json::from_str(args)
       .context("Failed to parse Json to action args"),
   }

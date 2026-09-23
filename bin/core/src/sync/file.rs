@@ -253,15 +253,10 @@ pub fn extend_resources(
   // New resource types need to be added here manually.
   extend_filtered!(
     servers,
-    swarms,
     stacks,
-    deployments,
-    builds,
     repos,
     procedures,
     actions,
-    alerters,
-    builders,
     resource_syncs,
   );
   resources.user_groups.extend(more.user_groups);

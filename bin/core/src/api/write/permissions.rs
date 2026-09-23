@@ -337,20 +337,6 @@ async fn extract_resource_target_with_validation(
       let res = resource_target.extract_variant_id();
       Ok((res.0, res.1.clone()))
     }
-    ResourceTarget::Swarm(ident) => {
-      let filter = match ObjectId::from_str(ident) {
-        Ok(id) => doc! { "_id": id },
-        Err(_) => doc! { "name": ident },
-      };
-      let id = db_client()
-        .swarms
-        .find_one(filter)
-        .await
-        .context("Failed to query db for swarms")?
-        .context("No matching swarm found")?
-        .id;
-      Ok((ResourceTargetVariant::Swarm, id))
-    }
     ResourceTarget::Server(ident) => {
       let filter = match ObjectId::from_str(ident) {
         Ok(id) => doc! { "_id": id },
@@ -378,34 +364,6 @@ async fn extract_resource_target_with_validation(
         .context("No matching stack found")?
         .id;
       Ok((ResourceTargetVariant::Stack, id))
-    }
-    ResourceTarget::Deployment(ident) => {
-      let filter = match ObjectId::from_str(ident) {
-        Ok(id) => doc! { "_id": id },
-        Err(_) => doc! { "name": ident },
-      };
-      let id = db_client()
-        .deployments
-        .find_one(filter)
-        .await
-        .context("Failed to query db for deployments")?
-        .context("No matching deployment found")?
-        .id;
-      Ok((ResourceTargetVariant::Deployment, id))
-    }
-    ResourceTarget::Build(ident) => {
-      let filter = match ObjectId::from_str(ident) {
-        Ok(id) => doc! { "_id": id },
-        Err(_) => doc! { "name": ident },
-      };
-      let id = db_client()
-        .builds
-        .find_one(filter)
-        .await
-        .context("Failed to query db for builds")?
-        .context("No matching build found")?
-        .id;
-      Ok((ResourceTargetVariant::Build, id))
     }
     ResourceTarget::Repo(ident) => {
       let filter = match ObjectId::from_str(ident) {
@@ -462,34 +420,6 @@ async fn extract_resource_target_with_validation(
         .context("No matching resource sync found")?
         .id;
       Ok((ResourceTargetVariant::ResourceSync, id))
-    }
-    ResourceTarget::Builder(ident) => {
-      let filter = match ObjectId::from_str(ident) {
-        Ok(id) => doc! { "_id": id },
-        Err(_) => doc! { "name": ident },
-      };
-      let id = db_client()
-        .builders
-        .find_one(filter)
-        .await
-        .context("Failed to query db for builders")?
-        .context("No matching builder found")?
-        .id;
-      Ok((ResourceTargetVariant::Builder, id))
-    }
-    ResourceTarget::Alerter(ident) => {
-      let filter = match ObjectId::from_str(ident) {
-        Ok(id) => doc! { "_id": id },
-        Err(_) => doc! { "name": ident },
-      };
-      let id = db_client()
-        .alerters
-        .find_one(filter)
-        .await
-        .context("Failed to query db for alerters")?
-        .context("No matching alerter found")?
-        .id;
-      Ok((ResourceTargetVariant::Alerter, id))
     }
   }
 }

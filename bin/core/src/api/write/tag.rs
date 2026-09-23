@@ -8,9 +8,8 @@ use database::mungos::{
 use komodo_client::{
   api::write::{CreateTag, DeleteTag, RenameTag, UpdateTagColor},
   entities::{
-    action::Action, alerter::Alerter, build::Build, builder::Builder,
-    deployment::Deployment, procedure::Procedure, repo::Repo,
-    server::Server, stack::Stack, sync::ResourceSync, tag::Tag,
+    action::Action, procedure::Procedure, repo::Repo, server::Server,
+    stack::Stack, sync::ResourceSync, tag::Tag,
   },
 };
 use mogh_error::AddStatusCodeError;
@@ -155,14 +154,10 @@ impl Resolve<WriteArgs> for DeleteTag {
     tokio::try_join!(
       resource::remove_tag_from_all::<Server>(&self.id),
       resource::remove_tag_from_all::<Stack>(&self.id),
-      resource::remove_tag_from_all::<Deployment>(&self.id),
-      resource::remove_tag_from_all::<Build>(&self.id),
       resource::remove_tag_from_all::<Repo>(&self.id),
       resource::remove_tag_from_all::<Procedure>(&self.id),
       resource::remove_tag_from_all::<Action>(&self.id),
       resource::remove_tag_from_all::<ResourceSync>(&self.id),
-      resource::remove_tag_from_all::<Builder>(&self.id),
-      resource::remove_tag_from_all::<Alerter>(&self.id),
     )?;
 
     delete_one_by_id(&db_client().tags, &self.id, None).await?;

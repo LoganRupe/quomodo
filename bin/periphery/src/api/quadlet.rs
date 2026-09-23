@@ -7,7 +7,7 @@ use command::{
 };
 use formatting::format_serror;
 use komodo_client::entities::{
-  FileContents, all_logs_success, stack::QuadletKind, update::Log,
+  all_logs_success, stack::QuadletKind, update::Log,
 };
 use mogh_resolver::Resolve;
 use periphery_client::api::quadlet::*;
@@ -18,71 +18,12 @@ use crate::{
   helpers::format_log_grep,
   podman,
   quadlet::{
-    self, deploy, installed_units, parse_units, prepare::prepare,
-    pull_or_clone_stack, read_stack_files, secret_prefix, select_units,
-    stack_quadlet_dir, state, units_only,
+    self, deploy, installed_units, parse_units, pull_or_clone_stack,
+    read_stack_files, secret_prefix, select_units, stack_quadlet_dir,
+    state, units_only,
   },
   systemd,
 };
-
-impl Resolve<crate::api::Args> for ReadStack {
-  #[instrument(
-    "ReadStack",
-    skip_all,
-    fields(id = args.id.to_string(), core = args.core, stack = self.stack.name)
-  )]
-  async fn resolve(
-    self,
-    args: &crate::api::Args,
-  ) -> anyhow::Result<ReadStackResponse> {
-    let ReadStack {
-      stack,
-      repo,
-      git_token,
-    } = self;
-    let mut res = ReadStackResponse::default();
-    let pulled = match pull_or_clone_stack(
-      &stack,
-      repo.as_ref(),
-      git_token,
-      &mut res.logs,
-      args,
-    )
-    .await
-    {
-      Ok(pulled) => pulled,
-      Err(e) => {
-        let error = format_serror(&e.into());
-        res.logs.push(Log::error("Pull Stack Repo", error.clone()));
-        res.errors.push(FileContents {
-          path: String::new(),
-          contents: error,
-        });
-        return Ok(res);
-      }
-    };
-    res.commit_hash = pulled.commit_hash;
-    res.commit_message = pulled.commit_message;
-    match read_stack_files(&pulled.run_directory).await {
-      Ok((files, errors)) => {
-        res.units = units_only(&parse_units(&files));
-        res.files = files;
-        res.errors = errors;
-      }
-      Err(e) => {
-        let error = format_serror(&e.into());
-        res.logs.push(Log::error("Read Stack Files", error.clone()));
-        res.errors.push(FileContents {
-          path: stack.config.run_directory.clone(),
-          contents: error,
-        });
-      }
-    }
-    Ok(res)
-  }
-}
-
-//
 
 impl Resolve<crate::api::Args> for DeployStack {
   #[instrument(
@@ -164,7 +105,7 @@ impl Resolve<crate::api::Args> for DeployStack {
       ));
       return Ok(res);
     }
-    let prepared = match prepare(&stack, &files, &variables, &secrets) {
+    let prepared = match ::quadlet::prepare::prepare(&stack, &files, &variables, &secrets) {
       Ok(p) => p,
       Err(e) => {
         res.logs.push(Log::error("Prepare Stack", format_serror(&e.into())));

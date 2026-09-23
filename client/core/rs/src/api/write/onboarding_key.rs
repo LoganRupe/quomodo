@@ -49,16 +49,12 @@ pub struct CreateOnboardingKey {
   /// Allows the Onboarding Key to be used to:
   ///
   /// 1. Enable a disabled Server
-  /// 2. Remove Server 'address' configuration, allowing Periphery -> Core connection.
-  /// 3. Update existing Server's public keys.
+  /// 2. Update existing Server's public keys.
   #[serde(default)]
   pub privileged: bool,
   /// Optional. New Servers copy this Server's config.
   #[serde(default)]
   pub copy_server: String,
-  /// Optional. Whether to also create a Builder for the Server.
-  #[serde(default)]
-  pub create_builder: bool,
 }
 
 /// The response for [CreateOnboardingKey]
@@ -108,13 +104,10 @@ pub struct UpdateOnboardingKey {
   /// Allows the Onboarding Key to be used to:
   ///
   /// 1. Enable a disabled Server
-  /// 2. Remove Server 'address' configuration, allowing Periphery -> Core connection.
-  /// 3. Update existing Server's public keys.
+  /// 2. Update existing Server's public keys.
   pub privileged: Option<bool>,
   /// Update the copy server
   pub copy_server: Option<String>,
-  /// Update whether to create Builder
-  pub create_builder: Option<bool>,
 }
 
 impl UpdateOnboardingKey {
@@ -125,7 +118,6 @@ impl UpdateOnboardingKey {
       && self.tags.is_none()
       && self.privileged.is_none()
       && self.copy_server.is_none()
-      && self.create_builder.is_none()
   }
 }
 

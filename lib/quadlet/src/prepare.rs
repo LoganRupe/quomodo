@@ -24,7 +24,7 @@ use komodo_client::entities::{
 };
 use regex::Regex;
 
-use super::{
+use crate::{
   ParsedUnit, secret_prefix, secret_safe, sha256_hex,
   unit::{base_name, parse_unit, with_userns_auto},
 };
@@ -215,7 +215,7 @@ pub fn prepare(
   }
 
   if skip {
-    prepared.units = super::parse_units(
+    prepared.units = crate::parse_units(
       &prepared
         .write
         .iter()

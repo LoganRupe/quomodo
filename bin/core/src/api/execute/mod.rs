@@ -39,15 +39,11 @@ use crate::{
 };
 
 mod action;
-mod alerter;
-mod build;
-mod deployment;
 mod maintenance;
 mod procedure;
 mod repo;
 mod server;
 mod stack;
-mod swarm;
 mod sync;
 
 use super::Variant;
@@ -80,37 +76,18 @@ pub enum ExecuteRequest {
   StartStack(StartStack),
   RestartStack(RestartStack),
   StopStack(StopStack),
-  PauseStack(PauseStack),
-  UnpauseStack(UnpauseStack),
   DestroyStack(DestroyStack),
   BatchDestroyStack(BatchDestroyStack),
-  RunStackService(RunStackService),
 
   // ==== DEPLOYMENT ====
-  Deploy(Deploy),
-  BatchDeploy(BatchDeploy),
-  PullDeployment(PullDeployment),
-  StartDeployment(StartDeployment),
-  RestartDeployment(RestartDeployment),
-  PauseDeployment(PauseDeployment),
-  UnpauseDeployment(UnpauseDeployment),
-  StopDeployment(StopDeployment),
-  DestroyDeployment(DestroyDeployment),
-  BatchDestroyDeployment(BatchDestroyDeployment),
 
   // ==== BUILD ====
-  RunBuild(RunBuild),
-  BatchRunBuild(BatchRunBuild),
-  CancelBuild(CancelBuild),
 
   // ==== REPO ====
   CloneRepo(CloneRepo),
   BatchCloneRepo(BatchCloneRepo),
   PullRepo(PullRepo),
   BatchPullRepo(BatchPullRepo),
-  BuildRepo(BuildRepo),
-  BatchBuildRepo(BatchBuildRepo),
-  CancelRepoBuild(CancelRepoBuild),
 
   // ==== PROCEDURE ====
   RunProcedure(RunProcedure),
@@ -126,48 +103,16 @@ pub enum ExecuteRequest {
   RunSync(RunSync),
 
   // ==== ALERTER ====
-  TestAlerter(TestAlerter),
-  SendAlert(SendAlert),
 
   // ==== SERVER ====
-  StartContainer(StartContainer),
-  RestartContainer(RestartContainer),
-  PauseContainer(PauseContainer),
-  UnpauseContainer(UnpauseContainer),
-  StopContainer(StopContainer),
-  DestroyContainer(DestroyContainer),
-  StartAllContainers(StartAllContainers),
-  RestartAllContainers(RestartAllContainers),
-  PauseAllContainers(PauseAllContainers),
-  UnpauseAllContainers(UnpauseAllContainers),
-  StopAllContainers(StopAllContainers),
-  PruneContainers(PruneContainers),
-  DeleteNetwork(DeleteNetwork),
-  PruneNetworks(PruneNetworks),
-  DeleteImage(DeleteImage),
   PruneImages(PruneImages),
-  DeleteVolume(DeleteVolume),
-  PruneVolumes(PruneVolumes),
-  PruneDockerBuilders(PruneDockerBuilders),
-  PruneBuildx(PruneBuildx),
   PruneSystem(PruneSystem),
 
   // ==== SWARM ====
-  RemoveSwarmNodes(RemoveSwarmNodes),
-  UpdateSwarmNode(UpdateSwarmNode),
-  RemoveSwarmStacks(RemoveSwarmStacks),
-  RemoveSwarmServices(RemoveSwarmServices),
-  CreateSwarmConfig(CreateSwarmConfig),
-  RotateSwarmConfig(RotateSwarmConfig),
-  RemoveSwarmConfigs(RemoveSwarmConfigs),
-  CreateSwarmSecret(CreateSwarmSecret),
-  RotateSwarmSecret(RotateSwarmSecret),
-  RemoveSwarmSecrets(RemoveSwarmSecrets),
 
   // ==== MAINTENANCE ====
   ClearRepoCache(ClearRepoCache),
   BackupCoreDatabase(BackupCoreDatabase),
-  GlobalAutoUpdate(GlobalAutoUpdate),
   RotateAllServerKeys(RotateAllServerKeys),
   RotateCoreKeys(RotateCoreKeys),
 }
@@ -228,8 +173,6 @@ pub fn inner_handler(
 
     // Need to validate no cancel is active before any update is created.
     // This ensures no double update created if Cancel is called more than once for the same request.
-    build::validate_cancel_build(&request).await?;
-    repo::validate_cancel_repo_build(&request).await?;
 
     let update = init_execution_update(&request, &user).await?;
 

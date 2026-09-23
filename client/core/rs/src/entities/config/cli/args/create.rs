@@ -48,12 +48,4 @@ pub struct CreateOnboardingKey {
   /// Optional. Onboarded Servers copy this Server's config. (aliases: `copy`, `server`)
   #[arg(long, alias = "copy", alias = "server", short = 's')]
   pub copy_server: Option<String>,
-  /// Optional. Whether to also create a Builder for the Server. (alias: `builder`)
-  #[arg(
-    long,
-    alias = "builder",
-    short = 'b',
-    default_value_t = false
-  )]
-  pub create_builder: bool,
 }

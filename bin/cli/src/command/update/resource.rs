@@ -2,13 +2,12 @@ use anyhow::Context;
 use colored::Colorize;
 use komodo_client::{
   api::write::{
-    UpdateBuild, UpdateDeployment, UpdateRepo, UpdateResourceSync,
+    UpdateRepo, UpdateResourceSync,
     UpdateServer, UpdateStack,
   },
   entities::{
-    build::PartialBuildConfig,
     config::cli::args::update::UpdateResource,
-    deployment::PartialDeploymentConfig, repo::PartialRepoConfig,
+    repo::PartialRepoConfig,
     server::PartialServerConfig, stack::PartialStackConfig,
     sync::PartialResourceSyncConfig,
   },
@@ -47,40 +46,6 @@ pub async fn update<
 pub trait ResourceUpdate {
   fn resource_type() -> &'static str;
   async fn apply(self, resource: &str) -> anyhow::Result<()>;
-}
-
-impl ResourceUpdate for PartialBuildConfig {
-  fn resource_type() -> &'static str {
-    "Build"
-  }
-  async fn apply(self, resource: &str) -> anyhow::Result<()> {
-    let client = crate::command::komodo_client().await?;
-    client
-      .write(UpdateBuild {
-        id: resource.to_string(),
-        config: self,
-      })
-      .await
-      .context("Failed to update build config")?;
-    Ok(())
-  }
-}
-
-impl ResourceUpdate for PartialDeploymentConfig {
-  fn resource_type() -> &'static str {
-    "Deployment"
-  }
-  async fn apply(self, resource: &str) -> anyhow::Result<()> {
-    let client = crate::command::komodo_client().await?;
-    client
-      .write(UpdateDeployment {
-        id: resource.to_string(),
-        config: self,
-      })
-      .await
-      .context("Failed to update deployment config")?;
-    Ok(())
-  }
 }
 
 impl ResourceUpdate for PartialRepoConfig {

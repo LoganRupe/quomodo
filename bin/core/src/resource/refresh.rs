@@ -4,10 +4,9 @@ use async_timing_util::{Timelength, get_timelength_in_ms};
 use database::mungos::find::find_collect;
 use komodo_client::{
   api::write::{
-    RefreshBuildCache, RefreshRepoCache, RefreshResourceSyncPending,
-    RefreshStackCache,
+    RefreshRepoCache, RefreshResourceSyncPending, RefreshStackCache,
   },
-  entities::user::{build_user, repo_user, stack_user, sync_user},
+  entities::user::{repo_user, stack_user, sync_user},
 };
 use mogh_resolver::Resolve;
 
@@ -57,7 +56,6 @@ pub fn spawn_resource_refresh_loop() {
 
 async fn refresh_all() {
   refresh_stacks().await;
-  refresh_builds().await;
   refresh_repos().await;
   refresh_syncs().await;
 }
@@ -81,30 +79,6 @@ async fn refresh_stacks() {
       .await
       .inspect_err(|e| {
         warn!("Failed to refresh Stack cache in refresh task | Stack: {} | {:#}", stack.name, e.error)
-      })
-      .ok();
-  }
-}
-
-async fn refresh_builds() {
-  let Ok(builds) = find_collect(&db_client().builds, None, None)
-    .await
-    .inspect_err(|e| {
-      warn!(
-        "Failed to get Builds from database in refresh task | {e:#}"
-      )
-    })
-  else {
-    return;
-  };
-  for build in builds {
-    RefreshBuildCache { build: build.id }
-      .resolve(
-        &WriteArgs { user: build_user().clone() },
-      )
-      .await
-      .inspect_err(|e| {
-        warn!("Failed to refresh Build cache in refresh task | Build: {} | {:#}", build.name, e.error)
       })
       .ok();
   }

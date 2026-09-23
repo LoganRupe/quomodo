@@ -245,9 +245,6 @@ impl Resolve<WriteArgs> for RefreshRepoCache {
 
     let info = RepoInfo {
       last_pulled_at: repo.info.last_pulled_at,
-      last_built_at: repo.info.last_built_at,
-      built_hash: repo.info.built_hash,
-      built_message: repo.info.built_message,
       latest_hash: res.commit_hash,
       latest_message: res.commit_message,
     };

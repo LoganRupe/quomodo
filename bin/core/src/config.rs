@@ -5,11 +5,10 @@ use colored::Colorize;
 use komodo_client::entities::{
   config::{
     DatabaseConfig,
-    core::{AwsCredentials, CoreConfig, Env},
+    core::{CoreConfig, Env, SecretsConfig, VaultwardenConfig},
   },
   logger::LogConfig,
 };
-use mogh_auth_client::config::NamedOauthConfig;
 use mogh_config::ConfigLoader;
 use mogh_pki::{PkiKind, RotatableKeyPair, SpkiPublicKey};
 use mogh_secret_file::{
@@ -25,22 +24,6 @@ pub fn core_keys() -> &'static RotatableKeyPair {
       &core_config().private_key,
     )
     .unwrap()
-  })
-}
-
-pub fn core_connection_query() -> &'static String {
-  static CORE_HOSTNAME: OnceLock<String> = OnceLock::new();
-  CORE_HOSTNAME.get_or_init(|| {
-    let host = url::Url::parse(&core_config().host)
-      .context("Failed to parse config field 'host' as URL")
-      .unwrap()
-      .host()
-      .context(
-        "Failed to parse config field 'host' | missing host part",
-      )
-      .unwrap()
-      .to_string();
-    format!("core={}", urlencoding::encode(&host))
   })
 }
 
@@ -157,11 +140,6 @@ pub fn core_config() -> &'static CoreConfig {
         env.komodo_private_key,
       )
       .unwrap_or(config.private_key),
-      passkey: maybe_read_item_from_file(
-        env.komodo_passkey_file,
-        env.komodo_passkey,
-      )
-      .or(config.passkey),
       jwt_secret: maybe_read_item_from_file(
         env.komodo_jwt_secret_file,
         env.komodo_jwt_secret,
@@ -238,47 +216,31 @@ pub fn core_config() -> &'static CoreConfig {
       oidc_auto_redirect: env
         .komodo_oidc_auto_redirect
         .unwrap_or(config.oidc_auto_redirect),
-      google_oauth: NamedOauthConfig {
-        enabled: env
-          .komodo_google_oauth_enabled
-          .unwrap_or(config.google_oauth.enabled),
-        client_id: maybe_read_item_from_file(
-          env.komodo_google_oauth_id_file,
-          env.komodo_google_oauth_id,
-        )
-        .unwrap_or(config.google_oauth.client_id),
-        client_secret: maybe_read_item_from_file(
-          env.komodo_google_oauth_secret_file,
-          env.komodo_google_oauth_secret,
-        )
-        .unwrap_or(config.google_oauth.client_secret),
-      },
-      github_oauth: NamedOauthConfig {
-        enabled: env
-          .komodo_github_oauth_enabled
-          .unwrap_or(config.github_oauth.enabled),
-        client_id: maybe_read_item_from_file(
-          env.komodo_github_oauth_id_file,
-          env.komodo_github_oauth_id,
-        )
-        .unwrap_or(config.github_oauth.client_id),
-        client_secret: maybe_read_item_from_file(
-          env.komodo_github_oauth_secret_file,
-          env.komodo_github_oauth_secret,
-        )
-        .unwrap_or(config.github_oauth.client_secret),
-      },
-      aws: AwsCredentials {
-        access_key_id: maybe_read_item_from_file(
-          env.komodo_aws_access_key_id_file,
-          env.komodo_aws_access_key_id,
-        )
-        .unwrap_or(config.aws.access_key_id),
-        secret_access_key: maybe_read_item_from_file(
-          env.komodo_aws_secret_access_key_file,
-          env.komodo_aws_secret_access_key,
-        )
-        .unwrap_or(config.aws.secret_access_key),
+
+      secrets: SecretsConfig {
+        provider: env
+          .komodo_secrets_provider
+          .unwrap_or(config.secrets.provider),
+        vaultwarden: VaultwardenConfig {
+          url: env
+            .komodo_vaultwarden_url
+            .unwrap_or(config.secrets.vaultwarden.url),
+          client_id: maybe_read_item_from_file(
+            env.komodo_vaultwarden_client_id_file,
+            env.komodo_vaultwarden_client_id,
+          )
+          .unwrap_or(config.secrets.vaultwarden.client_id),
+          client_secret: maybe_read_item_from_file(
+            env.komodo_vaultwarden_client_secret_file,
+            env.komodo_vaultwarden_client_secret,
+          )
+          .unwrap_or(config.secrets.vaultwarden.client_secret),
+          master_password: maybe_read_item_from_file(
+            env.komodo_vaultwarden_master_password_file,
+            env.komodo_vaultwarden_master_password,
+          )
+          .unwrap_or(config.secrets.vaultwarden.master_password),
+        },
       },
 
       // Non secrets
@@ -454,7 +416,6 @@ pub fn core_config() -> &'static CoreConfig {
         .unwrap_or(config.action_directory),
 
       // These can't be overridden on env
-      secrets: config.secrets,
       git_providers: config.git_providers,
       image_registries: config.image_registries,
     }

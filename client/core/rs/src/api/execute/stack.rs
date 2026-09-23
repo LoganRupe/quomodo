@@ -37,9 +37,6 @@ pub struct DeployStack {
   /// Note. For Swarm mode Stacks, this field is not supported and will be ignored.
   #[serde(default)]
   pub services: Vec<String>,
-  /// Override the default termination max time.
-  /// Only used if the stack needs to be taken down first.
-  pub stop_time: Option<i32>,
 }
 
 //
@@ -114,9 +111,6 @@ pub fn deploy_stack_if_changed() {}
 pub struct DeployStackIfChanged {
   /// Id or name
   pub stack: String,
-  /// Override the default termination max time.
-  /// Only used if the stack needs to be taken down first.
-  pub stop_time: Option<i32>,
 }
 
 //
@@ -331,8 +325,6 @@ pub fn stop_stack() {}
 pub struct StopStack {
   /// Id or name
   pub stack: String,
-  /// Override the default termination max time.
-  pub stop_time: Option<i32>,
   /// Filter to only stop specific services.
   /// If empty, will stop all services.
   #[serde(default)]
@@ -366,15 +358,6 @@ pub fn destroy_stack() {}
 pub struct DestroyStack {
   /// Id or name
   pub stack: String,
-  /// Filter to only destroy specific services.
-  /// If empty, will destroy all services.
-  #[serde(default)]
-  pub services: Vec<String>,
-  /// Pass `--remove-orphans`
-  #[serde(default)]
-  pub remove_orphans: bool,
-  /// Override the default termination max time.
-  pub stop_time: Option<i32>,
 }
 
 //
