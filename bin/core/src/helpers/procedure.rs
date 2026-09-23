@@ -439,9 +439,7 @@ impl ExtendBatch for BatchDeployStack {
 impl ExtendBatch for BatchDeployStackIfChanged {
   type Resource = Stack;
   fn single_execution(stack: String) -> Execution {
-    Execution::DeployStackIfChanged(DeployStackIfChanged {
-      stack,
-    })
+    Execution::DeployStackIfChanged(DeployStackIfChanged { stack })
   }
 }
 

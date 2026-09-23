@@ -18,8 +18,7 @@ use komodo_client::{
     },
   },
   entities::{
-    ResourceTarget,
-    komodo_timestamp,
+    ResourceTarget, komodo_timestamp,
     procedure::{EnabledExecution, ProcedureConfig, ProcedureStage},
     server::{PartialServerConfig, Server, ServerInfo},
     sync::ResourceSync,
@@ -228,12 +227,9 @@ async fn action_api_key_cleanup() {
 /// Ensures a default server / builder exists with the defined address
 async fn ensure_first_server() {
   let config = core_config();
-  if config.first_server_name.is_none()
-    && config.first_server_address.is_none()
-  {
-    // If neither defined, early return
+  let Some(name) = config.first_server_name.as_deref() else {
     return;
-  }
+  };
   // Maybe create first Server
   let db = db_client();
   // If any Server exists, exit early.
@@ -246,7 +242,6 @@ async fn ensure_first_server() {
   else {
     return;
   };
-  let name = config.first_server_name.as_deref().unwrap_or("Local");
   if let Err(e) = (CreateServer {
     name: name.to_string(),
     config: PartialServerConfig {

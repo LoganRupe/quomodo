@@ -157,7 +157,8 @@ pub async fn refresh_stack_cache(
     return Ok(RemoteStackContents::default());
   }
 
-  let contents = get_repo_stack_contents(stack, repo.as_ref()).await?;
+  let contents =
+    get_repo_stack_contents(stack, repo.as_ref()).await?;
 
   let info = StackInfo {
     deployed_units: stack.info.deployed_units.clone(),

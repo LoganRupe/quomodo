@@ -3,15 +3,9 @@ use std::collections::HashMap;
 use anyhow::Context;
 use indexmap::IndexMap;
 use komodo_client::entities::{
-  action::Action,
-  procedure::Procedure,
-  repo::Repo,
-  resource::Resource,
-  server::Server,
-  stack::Stack,
-  sync::ResourceSync,
-  tag::Tag,
-  toml::ResourceToml,
+  action::Action, procedure::Procedure, repo::Repo,
+  resource::Resource, server::Server, stack::Stack,
+  sync::ResourceSync, tag::Tag, toml::ResourceToml,
 };
 use partial_derive2::PartialDiff;
 

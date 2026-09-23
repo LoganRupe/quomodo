@@ -7,13 +7,11 @@ use std::{
 };
 
 use anyhow::{Context, anyhow};
-use komodo_client::entities::{
-  stack::QuadletKind, update::Log,
-};
+use komodo_client::entities::{stack::QuadletKind, update::Log};
 
 use super::{sha256_hex, state::StackState, unit::base_name};
-use quadlet::prepare::Prepared;
 use crate::{podman, systemd};
+use quadlet::prepare::Prepared;
 
 /// What the deploy will do to systemd units.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -57,7 +55,9 @@ pub fn plan(
     .collect::<BTreeMap<_, _>>();
 
   let Some(previous) = previous else {
-    plan.reasons.push(String::from("First deploy: starting every runnable unit"));
+    plan.reasons.push(String::from(
+      "First deploy: starting every runnable unit",
+    ));
     plan.start = units
       .iter()
       .filter(|u| u.unit.kind.is_runnable())
@@ -105,7 +105,10 @@ pub fn plan(
     .map(|(name, _)| name.as_str())
     .collect::<BTreeSet<_>>();
   for u in units {
-    if u.secrets.iter().any(|s| changed_secrets.contains(s.as_str()))
+    if u
+      .secrets
+      .iter()
+      .any(|s| changed_secrets.contains(s.as_str()))
       && changed_units.insert(u.unit.file.as_str())
     {
       plan.reasons.push(format!(
@@ -136,7 +139,9 @@ pub fn plan(
   for file in &changed_units {
     let Some(u) = by_file.get(file) else { continue };
     match u.unit.kind {
-      QuadletKind::Container | QuadletKind::Kube | QuadletKind::Pod => {
+      QuadletKind::Container
+      | QuadletKind::Kube
+      | QuadletKind::Pod => {
         to_restart.insert(file);
       }
       QuadletKind::Network | QuadletKind::Volume => {
@@ -145,17 +150,29 @@ pub fn plan(
           "{file}: podman does not recreate an existing {}; remove it by hand for the change to apply",
           u.unit.kind
         ));
-        for d in units.iter().filter(|d| d.deps.iter().any(|dep| dep == file)) {
+        for d in units
+          .iter()
+          .filter(|d| d.deps.iter().any(|dep| dep == file))
+        {
           if to_restart.insert(d.unit.file.as_str()) {
-            plan.reasons.push(format!("{}: depends on changed {file}", d.unit.file));
+            plan.reasons.push(format!(
+              "{}: depends on changed {file}",
+              d.unit.file
+            ));
           }
         }
       }
       QuadletKind::Image | QuadletKind::Build => {
         to_restart.insert(file);
-        for d in units.iter().filter(|d| d.deps.iter().any(|dep| dep == file)) {
+        for d in units
+          .iter()
+          .filter(|d| d.deps.iter().any(|dep| dep == file))
+        {
           if to_restart.insert(d.unit.file.as_str()) {
-            plan.reasons.push(format!("{}: depends on changed {file}", d.unit.file));
+            plan.reasons.push(format!(
+              "{}: depends on changed {file}",
+              d.unit.file
+            ));
           }
         }
       }
@@ -175,7 +192,12 @@ pub fn plan(
   // A container whose pod is restarting follows the pod.
   let restarting_pods = to_restart
     .iter()
-    .filter(|f| by_file.get(*f).map(|u| u.unit.kind == QuadletKind::Pod).unwrap_or(false))
+    .filter(|f| {
+      by_file
+        .get(*f)
+        .map(|u| u.unit.kind == QuadletKind::Pod)
+        .unwrap_or(false)
+    })
     .map(|f| f.to_string())
     .collect::<BTreeSet<_>>();
   to_restart.retain(|f| {
@@ -209,9 +231,9 @@ pub async fn write_files(
   prepared: &Prepared,
   logs: &mut Vec<Log>,
 ) -> anyhow::Result<BTreeMap<String, String>> {
-  tokio::fs::create_dir_all(target)
-    .await
-    .with_context(|| format!("Failed to create {}", target.display()))?;
+  tokio::fs::create_dir_all(target).await.with_context(|| {
+    format!("Failed to create {}", target.display())
+  })?;
 
   // Remove stale files.
   let (existing, _) = super::read_stack_files(target).await?;
@@ -219,9 +241,9 @@ pub async fn write_files(
   for file in existing {
     if !prepared.write.contains_key(&file.path) {
       let path = target.join(&file.path);
-      tokio::fs::remove_file(&path)
-        .await
-        .with_context(|| format!("Failed to remove {}", path.display()))?;
+      tokio::fs::remove_file(&path).await.with_context(|| {
+        format!("Failed to remove {}", path.display())
+      })?;
       removed.push(file.path);
     }
   }
@@ -234,9 +256,9 @@ pub async fn write_files(
     }
     let path = target.join(rel);
     if let Some(parent) = path.parent() {
-      tokio::fs::create_dir_all(parent)
-        .await
-        .with_context(|| format!("Failed to create {}", parent.display()))?;
+      tokio::fs::create_dir_all(parent).await.with_context(|| {
+        format!("Failed to create {}", parent.display())
+      })?;
     }
     let current = tokio::fs::read_to_string(&path).await.ok();
     if current.as_deref() != Some(contents.as_str()) {
@@ -244,12 +266,12 @@ pub async fn write_files(
         "{}.quomodo-tmp",
         path.extension().and_then(|e| e.to_str()).unwrap_or("")
       ));
-      tokio::fs::write(&tmp, contents)
-        .await
-        .with_context(|| format!("Failed to write {}", tmp.display()))?;
-      tokio::fs::rename(&tmp, &path)
-        .await
-        .with_context(|| format!("Failed to move {} into place", tmp.display()))?;
+      tokio::fs::write(&tmp, contents).await.with_context(|| {
+        format!("Failed to write {}", tmp.display())
+      })?;
+      tokio::fs::rename(&tmp, &path).await.with_context(|| {
+        format!("Failed to move {} into place", tmp.display())
+      })?;
       written.push(rel.clone());
     }
     hashes.insert(rel.clone(), sha256_hex(contents));
@@ -296,7 +318,10 @@ pub async fn create_secrets(
         if log.success {
           removed.push(name.clone());
         } else {
-          warn!("Failed to remove stale secret {name} | {}", log.stderr);
+          warn!(
+            "Failed to remove stale secret {name} | {}",
+            log.stderr
+          );
         }
       }
     }
@@ -305,8 +330,16 @@ pub async fn create_secrets(
     (true, true) => String::from("No secret changes"),
     _ => format!(
       "Created / replaced: {}\nRemoved: {}",
-      if created.is_empty() { "-".into() } else { created.join(", ") },
-      if removed.is_empty() { "-".into() } else { removed.join(", ") },
+      if created.is_empty() {
+        "-".into()
+      } else {
+        created.join(", ")
+      },
+      if removed.is_empty() {
+        "-".into()
+      } else {
+        removed.join(", ")
+      },
     ),
   };
   logs.push(Log::simple("Podman Secrets", msg));
@@ -314,7 +347,10 @@ pub async fn create_secrets(
 }
 
 /// Apply the plan. Returns Ok(false) when a unit failed to come up.
-pub async fn apply(plan: &Plan, logs: &mut Vec<Log>) -> anyhow::Result<bool> {
+pub async fn apply(
+  plan: &Plan,
+  logs: &mut Vec<Log>,
+) -> anyhow::Result<bool> {
   if !plan.reasons.is_empty() || !plan.warnings.is_empty() {
     let mut msg = plan.reasons.join("\n");
     if !plan.warnings.is_empty() {
@@ -325,7 +361,12 @@ pub async fn apply(plan: &Plan, logs: &mut Vec<Log>) -> anyhow::Result<bool> {
   }
 
   if !plan.stop_removed.is_empty() {
-    let log = systemd::systemctl("Stop Removed Units", "stop", &plan.stop_removed).await;
+    let log = systemd::systemctl(
+      "Stop Removed Units",
+      "stop",
+      &plan.stop_removed,
+    )
+    .await;
     // Stopping a unit that is already gone is not fatal.
     logs.push(log);
   }
@@ -338,7 +379,9 @@ pub async fn apply(plan: &Plan, logs: &mut Vec<Log>) -> anyhow::Result<bool> {
   }
 
   if !plan.restart.is_empty() {
-    let log = systemd::systemctl("Restart Units", "restart", &plan.restart).await;
+    let log =
+      systemd::systemctl("Restart Units", "restart", &plan.restart)
+        .await;
     let ok = log.success;
     logs.push(log);
     if !ok {
@@ -347,7 +390,8 @@ pub async fn apply(plan: &Plan, logs: &mut Vec<Log>) -> anyhow::Result<bool> {
     }
   }
   if !plan.start.is_empty() {
-    let log = systemd::systemctl("Start Units", "start", &plan.start).await;
+    let log =
+      systemd::systemctl("Start Units", "start", &plan.start).await;
     let ok = log.success;
     logs.push(log);
     if !ok {
@@ -363,10 +407,14 @@ pub async fn apply(plan: &Plan, logs: &mut Vec<Log>) -> anyhow::Result<bool> {
     .cloned()
     .collect::<Vec<_>>();
   if touched.is_empty() {
-    logs.push(Log::simple("Units", String::from("No units needed a restart")));
+    logs.push(Log::simple(
+      "Units",
+      String::from("No units needed a restart"),
+    ));
     return Ok(true);
   }
-  let failed = systemd::wait_active(&touched, Duration::from_secs(20)).await;
+  let failed =
+    systemd::wait_active(&touched, Duration::from_secs(20)).await;
   if failed.is_empty() {
     logs.push(Log::simple(
       "Units",
@@ -398,7 +446,11 @@ pub fn next_state(
   StackState {
     files,
     secrets: prepared.secret_hashes.clone(),
-    units: prepared.units.iter().map(|u| u.unit.file.clone()).collect(),
+    units: prepared
+      .units
+      .iter()
+      .map(|u| u.unit.file.clone())
+      .collect(),
   }
 }
 
@@ -407,7 +459,10 @@ mod tests {
   use super::*;
   use crate::quadlet::unit::parse_unit;
 
-  fn prepared(files: &[(&str, &str)], secrets: &[(&str, &str)]) -> Prepared {
+  fn prepared(
+    files: &[(&str, &str)],
+    secrets: &[(&str, &str)],
+  ) -> Prepared {
     let mut p = Prepared::default();
     for (path, contents) in files {
       p.write.insert(path.to_string(), contents.to_string());
@@ -425,7 +480,10 @@ mod tests {
 
   fn state(p: &Prepared) -> StackState {
     next_state(
-      p.write.iter().map(|(k, v)| (k.clone(), sha256_hex(v))).collect(),
+      p.write
+        .iter()
+        .map(|(k, v)| (k.clone(), sha256_hex(v)))
+        .collect(),
       p,
     )
   }
@@ -457,7 +515,12 @@ mod tests {
     let plan = plan(&p, None, &[]);
     assert_eq!(
       plan.start,
-      vec!["app-pod.service", "db.service", "solo.service", "web.service"]
+      vec![
+        "app-pod.service",
+        "db.service",
+        "solo.service",
+        "web.service"
+      ]
     );
     assert!(plan.restart.is_empty());
   }
@@ -467,7 +530,11 @@ mod tests {
     let p = base();
     let s = state(&p);
     let plan = plan(&p, Some(&s), &[]);
-    assert!(plan.start.is_empty() && plan.restart.is_empty() && plan.stop_removed.is_empty());
+    assert!(
+      plan.start.is_empty()
+        && plan.restart.is_empty()
+        && plan.stop_removed.is_empty()
+    );
   }
 
   #[test]
@@ -475,8 +542,15 @@ mod tests {
     let p = base();
     let s = state(&p);
     let mut p2 = base();
-    p2.write.insert("solo.container".into(), "[Container]\nImage=busybox:2\n".into());
-    p2.units = p2.write.iter().filter_map(|(k, v)| parse_unit(k, v)).collect();
+    p2.write.insert(
+      "solo.container".into(),
+      "[Container]\nImage=busybox:2\n".into(),
+    );
+    p2.units = p2
+      .write
+      .iter()
+      .filter_map(|(k, v)| parse_unit(k, v))
+      .collect();
     let plan = plan(&p2, Some(&s), &[]);
     assert_eq!(plan.restart, vec!["solo.service"]);
     assert!(plan.start.is_empty());
@@ -487,9 +561,17 @@ mod tests {
     let p = base();
     let s = state(&p);
     let mut p2 = base();
-    p2.write.insert("app.pod".into(), "[Pod]\nPodName=app\nPublishPort=8080:80\n".into());
-    p2.write.insert("web.container".into(), format!("{WEB}Label=x=y\n"));
-    p2.units = p2.write.iter().filter_map(|(k, v)| parse_unit(k, v)).collect();
+    p2.write.insert(
+      "app.pod".into(),
+      "[Pod]\nPodName=app\nPublishPort=8080:80\n".into(),
+    );
+    p2.write
+      .insert("web.container".into(), format!("{WEB}Label=x=y\n"));
+    p2.units = p2
+      .write
+      .iter()
+      .filter_map(|(k, v)| parse_unit(k, v))
+      .collect();
     let plan = plan(&p2, Some(&s), &[]);
     assert_eq!(plan.restart, vec!["app-pod.service"]);
   }
@@ -499,10 +581,20 @@ mod tests {
     let p = base();
     let s = state(&p);
     let mut p2 = base();
-    p2.write.insert("app.network".into(), "[Network]\nSubnet=10.9.1.0/24\n".into());
-    p2.units = p2.write.iter().filter_map(|(k, v)| parse_unit(k, v)).collect();
+    p2.write.insert(
+      "app.network".into(),
+      "[Network]\nSubnet=10.9.1.0/24\n".into(),
+    );
+    p2.units = p2
+      .write
+      .iter()
+      .filter_map(|(k, v)| parse_unit(k, v))
+      .collect();
     let plan = plan(&p2, Some(&s), &[]);
-    assert_eq!(plan.restart, vec!["app-network.service", "web.service"]);
+    assert_eq!(
+      plan.restart,
+      vec!["app-network.service", "web.service"]
+    );
     assert_eq!(plan.warnings.len(), 1);
   }
 
@@ -523,7 +615,11 @@ mod tests {
     let mut p2 = base();
     p2.write.remove("solo.container");
     p2.write.insert("extra.container".into(), SOLO.into());
-    p2.units = p2.write.iter().filter_map(|(k, v)| parse_unit(k, v)).collect();
+    p2.units = p2
+      .write
+      .iter()
+      .filter_map(|(k, v)| parse_unit(k, v))
+      .collect();
     let plan = plan(&p2, Some(&s), &[]);
     assert_eq!(plan.stop_removed, vec!["solo.service"]);
     assert_eq!(plan.start, vec!["extra.service"]);
@@ -535,8 +631,15 @@ mod tests {
     let p = base();
     let s = state(&p);
     let mut p2 = base();
-    p2.write.insert("solo.container".into(), "[Container]\nImage=busybox:2\n".into());
-    p2.units = p2.write.iter().filter_map(|(k, v)| parse_unit(k, v)).collect();
+    p2.write.insert(
+      "solo.container".into(),
+      "[Container]\nImage=busybox:2\n".into(),
+    );
+    p2.units = p2
+      .write
+      .iter()
+      .filter_map(|(k, v)| parse_unit(k, v))
+      .collect();
     let plan = plan(&p2, Some(&s), &["db.container".to_string()]);
     assert_eq!(plan.restart, vec!["db.service"]);
   }

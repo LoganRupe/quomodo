@@ -101,7 +101,10 @@ pub async fn update_server_stack_cache(
 
 /// Only for tests / callers that need the plain state without caching.
 #[allow(dead_code)]
-pub fn stack_state(stack: &Stack, containers: &[ContainerListItem]) -> StackState {
+pub fn stack_state(
+  stack: &Stack,
+  containers: &[ContainerListItem],
+) -> StackState {
   get_stack_state_from_containers(
     &stack.config.ignore_units,
     &units_of_stack(stack),

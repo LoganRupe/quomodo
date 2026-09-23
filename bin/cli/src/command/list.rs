@@ -396,10 +396,7 @@ impl ListResources for RepoListItem {
             RepoState::Failed | RepoState::Unknown
           )
         } else if minimal || filters.in_progress {
-          matches!(
-            repo.info.state,
-            RepoState::Cloning
-          )
+          matches!(repo.info.state, RepoState::Cloning)
         } else {
           true
         };

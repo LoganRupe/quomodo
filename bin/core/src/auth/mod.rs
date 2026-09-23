@@ -13,9 +13,7 @@ use komodo_client::entities::{
   user::{NewUserParams, User, UserConfig, UserConfigVariant},
 };
 use mogh_auth_client::{
-  api::login::LoginProvider,
-  config::OidcConfig,
-  passkey::Passkey,
+  api::login::LoginProvider, config::OidcConfig, passkey::Passkey,
 };
 use mogh_auth_server::{
   AuthImpl,
@@ -33,9 +31,7 @@ use mogh_rate_limit::RateLimiter;
 use crate::{
   config::{core_config, core_keys},
   helpers::{
-    query::{
-      find_oidc_user, get_user,
-    },
+    query::{find_oidc_user, get_user},
     validations::{
       validate_api_key_name, validate_password, validate_username,
     },

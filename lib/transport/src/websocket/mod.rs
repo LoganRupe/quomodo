@@ -160,7 +160,6 @@ pub trait WebsocketSenderExt: WebsocketSender + Send {
   ) -> impl Future<Output = anyhow::Result<()>> + Send {
     self.send_message(ResponseMessage::new(channel, response))
   }
-
 }
 
 impl<S: WebsocketSender + Send> WebsocketSenderExt for S {}

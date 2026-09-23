@@ -5,15 +5,13 @@ use std::{
 };
 
 use anyhow::{Context, anyhow};
-use database::{
-  mungos::{
-    by_id::{delete_one_by_id, update_one_by_id},
-    find::find_collect,
-    mongodb::{
-      Collection,
-      bson::{Document, doc, oid::ObjectId, to_document},
-      options::FindOptions,
-    },
+use database::mungos::{
+  by_id::{delete_one_by_id, update_one_by_id},
+  find::find_collect,
+  mongodb::{
+    Collection,
+    bson::{Document, doc, oid::ObjectId, to_document},
+    options::FindOptions,
   },
 };
 use formatting::format_serror;
@@ -1002,14 +1000,11 @@ pub async fn delete<T: KomodoResource>(
   );
   update.push_simple_log("Deleted Toml", toml);
 
-  tokio::join!(
-    async {
-      if let Err(e) = T::post_delete(&resource, &mut update).await {
-        update
-          .push_error_log("Post delete", format_serror(&e.into()));
-      }
-    },
-  );
+  tokio::join!(async {
+    if let Err(e) = T::post_delete(&resource, &mut update).await {
+      update.push_error_log("Post delete", format_serror(&e.into()));
+    }
+  },);
 
   refresh_all_resources_cache().await;
 
@@ -1018,7 +1013,6 @@ pub async fn delete<T: KomodoResource>(
 
   Ok(resource)
 }
-
 
 // =======
 

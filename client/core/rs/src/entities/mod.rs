@@ -1425,4 +1425,3 @@ pub fn resource_link(
   };
   format!("{host}{path}")
 }
-

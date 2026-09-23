@@ -95,8 +95,8 @@ struct PsItem {
 }
 
 /// `podman ps -a --format json`
-pub async fn list_containers() -> anyhow::Result<Vec<ContainerListItem>>
-{
+pub async fn list_containers()
+-> anyhow::Result<Vec<ContainerListItem>> {
   let output = run_standard_command(
     "podman ps -a --no-trunc --format json",
     CommandOptions::default().timeout(Duration::from_secs(20)),
@@ -112,7 +112,9 @@ pub async fn list_containers() -> anyhow::Result<Vec<ContainerListItem>>
   parse_ps_json(&output.stdout)
 }
 
-fn parse_ps_json(json: &str) -> anyhow::Result<Vec<ContainerListItem>> {
+fn parse_ps_json(
+  json: &str,
+) -> anyhow::Result<Vec<ContainerListItem>> {
   let items: Vec<PsItem> = serde_json::from_str(json.trim())
     .context("Failed to parse podman ps json")?;
   let mut containers = items
@@ -152,7 +154,8 @@ fn parse_ps_json(json: &str) -> anyhow::Result<Vec<ContainerListItem>> {
         name,
         id: (!item.id.is_empty()).then_some(item.id),
         image: (!item.image.is_empty()).then_some(item.image),
-        image_id: (!item.image_id.is_empty()).then_some(item.image_id),
+        image_id: (!item.image_id.is_empty())
+          .then_some(item.image_id),
         created,
         state: item
           .state
@@ -278,9 +281,15 @@ pub async fn pull(image: &str) -> Log {
 /// Create or replace a podman secret. The value goes over stdin,
 /// never through the process arguments.
 #[instrument("PodmanSecretCreate", skip(value))]
-pub async fn secret_create(name: &str, value: &str) -> anyhow::Result<()> {
+pub async fn secret_create(
+  name: &str,
+  value: &str,
+) -> anyhow::Result<()> {
   let output = run_standard_command(
-    &format!("podman secret create --replace -- {} -", escape(name.into())),
+    &format!(
+      "podman secret create --replace -- {} -",
+      escape(name.into())
+    ),
     CommandOptions::default()
       .stdin(value)
       .timeout(Duration::from_secs(20)),

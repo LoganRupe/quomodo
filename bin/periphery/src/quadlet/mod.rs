@@ -6,11 +6,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, anyhow};
 use formatting::format_serror;
 use komodo_client::entities::{
-  FileContents, RepoExecutionArgs,
-  repo::Repo,
-  stack::Stack,
-  to_path_compatible_name,
-  update::Log,
+  FileContents, RepoExecutionArgs, repo::Repo, stack::Stack,
+  to_path_compatible_name, update::Log,
 };
 use mogh_resolver::Resolve as _;
 use periphery_client::api::git::{CloneRepo, PullOrCloneRepo};
@@ -163,12 +160,13 @@ pub struct PulledStack {
 pub async fn read_stack_files(
   run_directory: &Path,
 ) -> anyhow::Result<(Vec<FileContents>, Vec<FileContents>)> {
-  let run_directory = run_directory.canonicalize().with_context(|| {
-    format!(
-      "Stack run directory does not exist on host: {}",
-      run_directory.display()
-    )
-  })?;
+  let run_directory =
+    run_directory.canonicalize().with_context(|| {
+      format!(
+        "Stack run directory does not exist on host: {}",
+        run_directory.display()
+      )
+    })?;
   let mut files = Vec::new();
   let mut errors = Vec::new();
   let mut stack = vec![run_directory.clone()];
@@ -237,7 +235,9 @@ fn rel(root: &Path, path: &Path) -> String {
 }
 
 /// The units currently installed for a stack, read from the quadlet dir.
-pub async fn installed_units(stack: &str) -> anyhow::Result<Vec<ParsedUnit>> {
+pub async fn installed_units(
+  stack: &str,
+) -> anyhow::Result<Vec<ParsedUnit>> {
   let dir = stack_quadlet_dir(stack);
   if !dir.is_dir() {
     return Ok(Vec::new());
@@ -266,7 +266,9 @@ pub fn select_units<'a>(
     match found {
       Some(u) => out.push(u),
       None => {
-        return Err(anyhow!("No unit named '{service}' in this stack"));
+        return Err(anyhow!(
+          "No unit named '{service}' in this stack"
+        ));
       }
     }
   }

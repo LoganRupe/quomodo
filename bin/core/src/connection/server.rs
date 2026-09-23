@@ -480,7 +480,6 @@ async fn create_server(
     warn!("{e:#}");
   };
 
-
   Ok(server.id)
 }
 

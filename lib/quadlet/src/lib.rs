@@ -18,7 +18,8 @@ pub fn secret_safe(input: &str) -> String {
   input
     .chars()
     .map(|c| {
-      if c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-' {
+      if c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-'
+      {
         c
       } else {
         '_'

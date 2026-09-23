@@ -1,12 +1,10 @@
-use std::collections::HashSet;
 use interpolate::Interpolator;
+use std::collections::HashSet;
 
 use anyhow::{Context, anyhow};
 use database::mungos::{
   by_id::update_one_by_id,
-  mongodb::{
-    bson::{doc, to_document},
-  },
+  mongodb::bson::{doc, to_document},
 };
 use formatting::format_serror;
 use komodo_client::{
@@ -384,7 +382,8 @@ async fn interpolate(
   if !repo.config.skip_secret_interp {
     let variables = get_variables().await?;
     let empty = Default::default();
-    let mut interpolator = Interpolator::new(Some(&variables), &empty);
+    let mut interpolator =
+      Interpolator::new(Some(&variables), &empty);
     interpolator
       .interpolate_repo(repo)?
       .push_logs(&mut update.logs);

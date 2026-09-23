@@ -224,10 +224,7 @@ impl super::KomodoResource for Stack {
       return Ok(());
     }
     if let Ok(server) = stack_server(created).await.inspect_err(|e| {
-      warn!(
-        "Failed to get Server for Stack {} | {e:#}",
-        created.name
-      )
+      warn!("Failed to get Server for Stack {} | {e:#}", created.name)
     }) {
       refresh_server_cache(&server, true).await;
     }

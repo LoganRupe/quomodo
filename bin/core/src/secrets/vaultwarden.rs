@@ -25,7 +25,10 @@ use aws_lc_rs::{
   digest, hkdf, hmac,
   iv::FixedLength,
   pbkdf2,
-  rsa::{OAEP_SHA1_MGF1SHA1, OaepPrivateDecryptingKey, PrivateDecryptingKey},
+  rsa::{
+    OAEP_SHA1_MGF1SHA1, OaepPrivateDecryptingKey,
+    PrivateDecryptingKey,
+  },
 };
 use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use komodo_client::entities::config::core::VaultwardenConfig;
@@ -130,8 +133,9 @@ impl Vaultwarden {
     let token: TokenResponse = serde_json::from_str(&body)
       .context("Failed to parse Vaultwarden token response")?;
 
-    let email = email_from_jwt(&token.access_token)
-      .context("Failed to read email from Vaultwarden access token")?;
+    let email = email_from_jwt(&token.access_token).context(
+      "Failed to read email from Vaultwarden access token",
+    )?;
 
     let master_key = derive_master_key(
       &self.config.master_password,
@@ -161,7 +165,10 @@ impl Vaultwarden {
     })
   }
 
-  async fn sync(&self, session: &Session) -> anyhow::Result<SyncResponse> {
+  async fn sync(
+    &self,
+    session: &Session,
+  ) -> anyhow::Result<SyncResponse> {
     let res = self
       .http
       .get(self.url("api/sync?excludeDomains=true"))
@@ -208,8 +215,8 @@ impl SecretProvider for Vaultwarden {
     for org in &sync.profile.organizations {
       let key = decrypt_org_key(&session.private_key_der, &org.key)
         .with_context(|| {
-          format!("Failed to decrypt key for organization {}", org.id)
-        })?;
+        format!("Failed to decrypt key for organization {}", org.id)
+      })?;
       org_keys.insert(org.id.clone(), key);
     }
 
@@ -248,8 +255,10 @@ impl SecretProvider for Vaultwarden {
       if cipher.deleted_date.is_some() {
         continue;
       }
-      let name = decrypt_string(org_key, &cipher.name)
-        .with_context(|| format!("Failed to decrypt item {}", cipher.id))?;
+      let name =
+        decrypt_string(org_key, &cipher.name).with_context(|| {
+          format!("Failed to decrypt item {}", cipher.id)
+        })?;
       items.insert(name, cipher);
     }
 
@@ -274,7 +283,8 @@ impl SecretProvider for Vaultwarden {
         Some(field) => {
           let mut found = None;
           for f in &cipher.fields {
-            let name = decrypt_string(org_key, &f.name).unwrap_or_default();
+            let name =
+              decrypt_string(org_key, &f.name).unwrap_or_default();
             if name == field {
               found = Some(
                 f.value
@@ -321,11 +331,19 @@ struct TokenResponse {
   private_key: String,
   #[serde(rename = "Kdf", alias = "kdf", default)]
   kdf: u32,
-  #[serde(rename = "KdfIterations", alias = "kdfIterations", default = "default_iterations")]
+  #[serde(
+    rename = "KdfIterations",
+    alias = "kdfIterations",
+    default = "default_iterations"
+  )]
   kdf_iterations: u32,
   #[serde(rename = "KdfMemory", alias = "kdfMemory", default)]
   kdf_memory: Option<u32>,
-  #[serde(rename = "KdfParallelism", alias = "kdfParallelism", default)]
+  #[serde(
+    rename = "KdfParallelism",
+    alias = "kdfParallelism",
+    default
+  )]
   kdf_parallelism: Option<u32>,
 }
 
@@ -394,10 +412,8 @@ struct Field {
 }
 
 fn email_from_jwt(jwt: &str) -> anyhow::Result<String> {
-  let payload = jwt
-    .split('.')
-    .nth(1)
-    .context("Access token is not a JWT")?;
+  let payload =
+    jwt.split('.').nth(1).context("Access token is not a JWT")?;
   let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
     .decode(payload)
     .context("JWT payload is not base64url")?;
@@ -462,7 +478,11 @@ fn derive_master_key(
         argon2::Version::V0x13,
         params,
       )
-      .hash_password_into(password.as_bytes(), salt.as_ref(), &mut out)
+      .hash_password_into(
+        password.as_bytes(),
+        salt.as_ref(),
+        &mut out,
+      )
       .map_err(|e| anyhow!("Argon2 failed: {e}"))?;
     }
     other => return Err(anyhow!("Unsupported Kdf type {other}")),
@@ -479,7 +499,9 @@ impl hkdf::KeyType for KeyLen {
 }
 
 /// HKDF-Expand the master key into the stretched (enc, mac) key.
-fn stretch_master_key(master_key: &[u8; 32]) -> anyhow::Result<SymmetricKey> {
+fn stretch_master_key(
+  master_key: &[u8; 32],
+) -> anyhow::Result<SymmetricKey> {
   let prk = hkdf::Prk::new_less_safe(hkdf::HKDF_SHA256, master_key);
   let mut enc = [0u8; 32];
   let mut mac = [0u8; 32];
@@ -497,7 +519,10 @@ fn stretch_master_key(master_key: &[u8; 32]) -> anyhow::Result<SymmetricKey> {
 }
 
 /// Decrypt a `2.<iv>|<data>|<mac>` string (AesCbc256_HmacSha256_B64).
-fn decrypt_symmetric(key: &SymmetricKey, enc: &str) -> anyhow::Result<Vec<u8>> {
+fn decrypt_symmetric(
+  key: &SymmetricKey,
+  enc: &str,
+) -> anyhow::Result<Vec<u8>> {
   let (typ, rest) = enc
     .split_once('.')
     .context("EncString has no type prefix")?;
@@ -533,18 +558,27 @@ fn decrypt_symmetric(key: &SymmetricKey, enc: &str) -> anyhow::Result<Vec<u8>> {
   let decrypting = PaddedBlockDecryptingKey::cbc_pkcs7(cipher_key)
     .map_err(|_| anyhow!("Failed to init AES-CBC"))?;
   let plain = decrypting
-    .decrypt(&mut data, DecryptionContext::Iv128(FixedLength::from(iv)))
+    .decrypt(
+      &mut data,
+      DecryptionContext::Iv128(FixedLength::from(iv)),
+    )
     .map_err(|_| anyhow!("AES-CBC decrypt failed"))?;
   Ok(plain.to_vec())
 }
 
-fn decrypt_string(key: &SymmetricKey, enc: &str) -> anyhow::Result<String> {
+fn decrypt_string(
+  key: &SymmetricKey,
+  enc: &str,
+) -> anyhow::Result<String> {
   let bytes = decrypt_symmetric(key, enc)?;
   String::from_utf8(bytes).context("Decrypted value is not UTF-8")
 }
 
 /// Decrypt a `4.<data>` (RSA-OAEP-SHA1) organization key with the user's private key.
-fn decrypt_org_key(private_key_der: &[u8], enc: &str) -> anyhow::Result<SymmetricKey> {
+fn decrypt_org_key(
+  private_key_der: &[u8],
+  enc: &str,
+) -> anyhow::Result<SymmetricKey> {
   let (typ, data) = enc
     .split_once('.')
     .context("Org key EncString has no type prefix")?;
@@ -570,15 +604,22 @@ fn decrypt_org_key(private_key_der: &[u8], enc: &str) -> anyhow::Result<Symmetri
 #[cfg(test)]
 mod tests {
   use super::*;
-  use aws_lc_rs::cipher::{EncryptionContext, PaddedBlockEncryptingKey};
+  use aws_lc_rs::cipher::{
+    EncryptionContext, PaddedBlockEncryptingKey,
+  };
 
   fn encrypt_symmetric(key: &SymmetricKey, plain: &[u8]) -> String {
     let iv = [7u8; 16];
-    let cipher_key = UnboundCipherKey::new(&AES_256, &key.enc).unwrap();
-    let encrypting = PaddedBlockEncryptingKey::cbc_pkcs7(cipher_key).unwrap();
+    let cipher_key =
+      UnboundCipherKey::new(&AES_256, &key.enc).unwrap();
+    let encrypting =
+      PaddedBlockEncryptingKey::cbc_pkcs7(cipher_key).unwrap();
     let mut data = plain.to_vec();
     encrypting
-      .less_safe_encrypt(&mut data, EncryptionContext::Iv128(FixedLength::from(iv)))
+      .less_safe_encrypt(
+        &mut data,
+        EncryptionContext::Iv128(FixedLength::from(iv)),
+      )
       .unwrap();
     let mac_key = hmac::Key::new(hmac::HMAC_SHA256, &key.mac);
     let mut signed = iv.to_vec();
@@ -594,38 +635,71 @@ mod tests {
 
   #[test]
   fn symmetric_round_trip_and_mac_check() {
-    let master = derive_master_key("hunter2", "Logan@Example.com", 0, 1000, None, None).unwrap();
+    let master = derive_master_key(
+      "hunter2",
+      "Logan@Example.com",
+      0,
+      1000,
+      None,
+      None,
+    )
+    .unwrap();
     let key = stretch_master_key(&master).unwrap();
     let enc = encrypt_symmetric(&key, b"the quick brown fox");
-    assert_eq!(decrypt_symmetric(&key, &enc).unwrap(), b"the quick brown fox");
+    assert_eq!(
+      decrypt_symmetric(&key, &enc).unwrap(),
+      b"the quick brown fox"
+    );
     // Tamper with the data: MAC must fail.
-    let mut parts = enc.splitn(3, '|').map(str::to_string).collect::<Vec<_>>();
+    let mut parts =
+      enc.splitn(3, '|').map(str::to_string).collect::<Vec<_>>();
     parts[1] = B64.encode([0u8; 32]);
     assert!(decrypt_symmetric(&key, &parts.join("|")).is_err());
     // Wrong password: different key, MAC fails.
-    let other = stretch_master_key(&derive_master_key("hunter3", "logan@example.com", 0, 1000, None, None).unwrap()).unwrap();
+    let other = stretch_master_key(
+      &derive_master_key(
+        "hunter3",
+        "logan@example.com",
+        0,
+        1000,
+        None,
+        None,
+      )
+      .unwrap(),
+    )
+    .unwrap();
     assert!(decrypt_symmetric(&other, &enc).is_err());
   }
 
   #[test]
   fn pbkdf2_matches_known_vector() {
     // PBKDF2-HMAC-SHA256("password", "salt", c = 4096, dkLen = 32)
-    let key = derive_master_key("password", "salt", 0, 4096, None, None).unwrap();
+    let key =
+      derive_master_key("password", "salt", 0, 4096, None, None)
+        .unwrap();
     assert_eq!(
       hex::encode(key),
       "c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a"
     );
     // Email is trimmed and lower-cased before use as the salt.
-    let key2 = derive_master_key("password", " SALT ", 0, 4096, None, None).unwrap();
+    let key2 =
+      derive_master_key("password", " SALT ", 0, 4096, None, None)
+        .unwrap();
     assert_eq!(key, key2);
   }
 
   #[test]
   fn argon2_derives_32_bytes_deterministically() {
-    let a = derive_master_key("pw", "a@b.c", 1, 2, Some(16), Some(1)).unwrap();
-    let b = derive_master_key("pw", "a@b.c", 1, 2, Some(16), Some(1)).unwrap();
+    let a = derive_master_key("pw", "a@b.c", 1, 2, Some(16), Some(1))
+      .unwrap();
+    let b = derive_master_key("pw", "a@b.c", 1, 2, Some(16), Some(1))
+      .unwrap();
     assert_eq!(a, b);
-    assert_ne!(a, derive_master_key("pw2", "a@b.c", 1, 2, Some(16), Some(1)).unwrap());
+    assert_ne!(
+      a,
+      derive_master_key("pw2", "a@b.c", 1, 2, Some(16), Some(1))
+        .unwrap()
+    );
   }
 
   #[test]

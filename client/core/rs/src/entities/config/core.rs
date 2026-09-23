@@ -86,9 +86,6 @@ pub struct Env {
   pub komodo_timezone: Option<String>,
   /// Override `first_server_name`
   pub komodo_first_server_name: Option<String>,
-  /// Override `first_server_address`
-  #[serde(alias = "komodo_first_server")]
-  pub komodo_first_server_address: Option<String>,
   /// Override `jwt_secret`
   pub komodo_jwt_secret: Option<String>,
   /// Override `jwt_secret` from file
@@ -406,21 +403,11 @@ pub struct CoreConfig {
   #[serde(default)]
   pub enable_fancy_toml: bool,
 
-  /// If defined, ensure an enabled first server exists with the name.
-  /// If None and "first_server_address" is defined, will default to "Local".
-  /// Set this and not 'first_server_address' for Periphery -> Core Server.
+  /// If defined, ensure an enabled first server exists with the name,
+  /// ready for an agent to connect as.
   /// Default: None
   #[serde(skip_serializing_if = "Option::is_none")]
   pub first_server_name: Option<String>,
-
-  /// If defined, ensure an enabled first server exists at this address.
-  /// Example: `wss://periphery:8120`.
-  /// In v1, was just 'first_server', maintains backward compatibility via alias.
-  #[serde(
-    alias = "first_server",
-    skip_serializing_if = "Option::is_none"
-  )]
-  pub first_server_address: Option<String>,
 
   /// Configure database connection
   #[serde(default, alias = "mongo")]
@@ -902,7 +889,6 @@ impl Default for CoreConfig {
       disable_websocket_reconnect: Default::default(),
       disable_init_resources: Default::default(),
       enable_fancy_toml: Default::default(),
-      first_server_address: Default::default(),
       first_server_name: Default::default(),
       database: Default::default(),
       local_auth: Default::default(),
@@ -981,7 +967,6 @@ impl CoreConfig {
       periphery_public_keys: config.periphery_public_keys,
       timezone: config.timezone,
       default_pagination_limit: config.default_pagination_limit,
-      first_server_address: config.first_server_address,
       first_server_name: config.first_server_name,
       jwt_secret: empty_or_redacted(&config.jwt_secret),
       jwt_ttl: config.jwt_ttl,

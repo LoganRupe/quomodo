@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Build, clippy, test
+    runs-on: docker
+    container:
+      image: rust:1.98.0-bookworm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: rustup component add clippy rustfmt
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace -- -D warnings
+      - name: Test
+        run: cargo test --workspace
+
+  ui:
+    name: Typecheck and build the UI
+    runs-on: docker
+    container:
+      image: node:22.12-bookworm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build client
+        run: cd client/core/ts && yarn --frozen-lockfile && yarn build && yarn link
+      - name: Build UI
+        run: cd ui && yarn link komodo_client && yarn --frozen-lockfile && yarn build

@@ -18,9 +18,8 @@ use super::{
   CustomSecret, ExtractBranch, VerifySecret,
   resources::{
     RepoWebhookOption, StackWebhookOption, SyncWebhookOption,
-    handle_action_webhook,
-    handle_procedure_webhook, handle_repo_webhook,
-    handle_stack_webhook, handle_sync_webhook,
+    handle_action_webhook, handle_procedure_webhook,
+    handle_repo_webhook, handle_stack_webhook, handle_sync_webhook,
   },
 };
 

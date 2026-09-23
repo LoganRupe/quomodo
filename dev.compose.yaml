@@ -1,56 +1,35 @@
+# Dev only: core + mongo on a docker host. Agents are installed on real
+# podman hosts, there is no agent container.
 services:
   core:
     build:
       context: .
-      dockerfile: bin/core/aio.Dockerfile
+      dockerfile: bin/core/Dockerfile
     restart: unless-stopped
-    logging:
-      driver: local
-    networks:
-      - default
+    ports:
+      - 9120:9120
     environment:
-      KOMODO_FIRST_SERVER: https://periphery:8120
-      KOMODO_DATABASE_ADDRESS: ferretdb
+      KOMODO_DATABASE_ADDRESS: mongo:27017
+      KOMODO_DATABASE_USERNAME: admin
+      KOMODO_DATABASE_PASSWORD: admin
       KOMODO_ENABLE_NEW_USERS: true
       KOMODO_LOCAL_AUTH: true
       KOMODO_JWT_SECRET: a_random_secret
     volumes:
       - repo-cache:/repo-cache
 
-  periphery:
-    build:
-      context: .
-      dockerfile: bin/periphery/aio.Dockerfile
+  mongo:
+    image: mongo:8
     restart: unless-stopped
-    logging:
-      driver: local
-    networks:
-      - default
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /proc:/proc
-      - repos:/etc/komodo/repos
-      - stacks:/etc/komodo/stacks
+    command: --quiet --wiredTigerCacheSizeGB 0.25
     environment:
-      PERIPHERY_INCLUDE_DISK_MOUNTS: /etc/hostname
-
-  ferretdb:
-    image: ghcr.io/ferretdb/ferretdb:1
-    restart: unless-stopped
-    logging:
-      driver: local
-    networks:
-      - default
-    environment:
-      - FERRETDB_HANDLER=sqlite
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin
     volumes:
-      - data:/state
-
-networks:
-  default: {}
+      - mongo-data:/data/db
+      - mongo-config:/data/configdb
 
 volumes:
-  data:
   repo-cache:
-  repos:
-  stacks:
+  mongo-data:
+  mongo-config:

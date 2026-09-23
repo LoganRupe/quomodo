@@ -85,11 +85,14 @@ pub fn prepare(
 
   // Pass 1: variables everywhere, then classify.
   for file in files {
-    let is_unit = QuadletKind::from_file_name(base_name(&file.path)).is_some();
+    let is_unit =
+      QuadletKind::from_file_name(base_name(&file.path)).is_some();
     let contents = if skip {
       file.contents.clone()
     } else {
-      replace_tokens(&file.contents, |name| variables.get(name).cloned())
+      replace_tokens(&file.contents, |name| {
+        variables.get(name).cloned()
+      })
     };
 
     if skip {
@@ -124,7 +127,8 @@ pub fn prepare(
                 idx + 1
               ));
             }
-            let secret_name = format!("{prefix}_{}", secret_safe(&path));
+            let secret_name =
+              format!("{prefix}_{}", secret_safe(&path));
             file_secret_refs.insert(path);
             value = match opts {
               Some(o) => format!("{secret_name},{o}"),
@@ -146,7 +150,8 @@ pub fn prepare(
           }
           let value = replace_tokens(&value, |name| {
             secrets.get(name).map(|v| {
-              let secret_name = format!("{prefix}_{}", secret_safe(name));
+              let secret_name =
+                format!("{prefix}_{}", secret_safe(name));
               prepared.secrets.insert(secret_name.clone(), v.clone());
               secret_name
             })
@@ -162,8 +167,9 @@ pub fn prepare(
         } else {
           let names = referenced_names(line);
           if !names.is_empty() {
-            let (secret, unknown): (Vec<_>, Vec<_>) =
-              names.into_iter().partition(|n| secrets.contains_key(n));
+            let (secret, unknown): (Vec<_>, Vec<_>) = names
+              .into_iter()
+              .partition(|n| secrets.contains_key(n));
             if !secret.is_empty() {
               errors.push(format!(
                 "{}:{}: secret [[{}]] may only be referenced on a Secret= line",
@@ -237,7 +243,8 @@ pub fn prepare(
         None => continue, // already reported as missing
       },
     };
-    let value = replace_tokens(&contents, |name| secrets.get(name).cloned());
+    let value =
+      replace_tokens(&contents, |name| secrets.get(name).cloned());
     prepared
       .secrets
       .insert(format!("{prefix}_{}", secret_safe(path)), value);
@@ -293,9 +300,10 @@ mod tests {
   }
 
   fn maps() -> (HashMap<String, String>, HashMap<String, String>) {
-    let vars = HashMap::from([
-      ("DOMAIN".to_string(), "example.com".to_string()),
-    ]);
+    let vars = HashMap::from([(
+      "DOMAIN".to_string(),
+      "example.com".to_string(),
+    )]);
     let secrets = HashMap::from([
       ("DB_PASSWORD".to_string(), "hunter2".to_string()),
       ("API_KEY".to_string(), "k-123".to_string()),
@@ -317,8 +325,12 @@ mod tests {
     let p = prepare(&stack(false), &files, &vars, &secrets).unwrap();
     let web = &p.write["web.container"];
     assert!(web.contains("Environment=DOMAIN=example.com"));
-    assert!(web.contains("Secret=my_stack_DB_PASSWORD,type=env,target=DB_PASSWORD"));
-    assert!(web.contains("Secret=my_stack_config.yml,type=mount,target=/etc/app.yml"));
+    assert!(web.contains(
+      "Secret=my_stack_DB_PASSWORD,type=env,target=DB_PASSWORD"
+    ));
+    assert!(web.contains(
+      "Secret=my_stack_config.yml,type=mount,target=/etc/app.yml"
+    ));
     assert!(web.contains("UserNS=auto"));
     assert!(!p.write.contains_key("config.yml"));
     assert_eq!(p.write["plain.txt"], "hello example.com\n");
@@ -358,7 +370,9 @@ mod tests {
     let err = prepare(&stack(false), &files, &vars, &secrets)
       .unwrap_err()
       .to_string();
-    assert!(err.contains("no unit mounts it with Secret=file:config.yml"));
+    assert!(
+      err.contains("no unit mounts it with Secret=file:config.yml")
+    );
   }
 
   #[test]

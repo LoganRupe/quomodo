@@ -257,13 +257,20 @@ fn build_cache_for_stack<'a>(
           &original.info.remote_contents,
         ) {
           for file in remote_contents {
-            match deployed_contents.iter().find(|c| c.path == file.path) {
-              Some(deployed) if deployed.contents == file.contents => {}
+            match deployed_contents
+              .iter()
+              .find(|c| c.path == file.path)
+            {
+              Some(deployed)
+                if deployed.contents == file.contents => {}
               Some(_) => {
                 cache.insert(
                   target,
                   Some((
-                    format!("File contents for {} have changed", file.path),
+                    format!(
+                      "File contents for {} have changed",
+                      file.path
+                    ),
                     after,
                   )),
                 );
@@ -272,22 +279,21 @@ fn build_cache_for_stack<'a>(
               None => {
                 cache.insert(
                   target,
-                  Some((
-                    format!("New file at {}", file.path),
-                    after,
-                  )),
+                  Some((format!("New file at {}", file.path), after)),
                 );
                 return Ok(());
               }
             }
           }
-          if deployed_contents
-            .iter()
-            .any(|d| !remote_contents.iter().any(|r| r.path == d.path))
-          {
+          if deployed_contents.iter().any(|d| {
+            !remote_contents.iter().any(|r| r.path == d.path)
+          }) {
             cache.insert(
               target,
-              Some((String::from("A deployed file was removed"), after)),
+              Some((
+                String::from("A deployed file was removed"),
+                after,
+              )),
             );
             return Ok(());
           }
@@ -337,7 +343,8 @@ fn build_cache_for_stack<'a>(
       let ResourceTarget::Stack(name) = parent else {
         unreachable!()
       };
-      let Some(parent_stack) = stacks.iter().find(|d| &d.name == name)
+      let Some(parent_stack) =
+        stacks.iter().find(|d| &d.name == name)
       else {
         // The parent is not in the sync, so won't be deploying.
         // Cross-sync deploy dependencies are not supported.

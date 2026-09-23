@@ -71,4 +71,3 @@ impl ReplaceIds for Procedure {
     replace_procedure_stage_ids_with_names(&mut config.stages);
   }
 }
-

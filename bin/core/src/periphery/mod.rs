@@ -9,12 +9,9 @@ use transport::channel::channel;
 use uuid::Uuid;
 
 use crate::{
-  connection::{
-    PeripheryConnectionArgs, ResponseChannels,
-  },
+  connection::{PeripheryConnectionArgs, ResponseChannels},
   state::periphery_connections,
 };
-
 
 #[derive(Debug)]
 pub struct PeripheryClient {

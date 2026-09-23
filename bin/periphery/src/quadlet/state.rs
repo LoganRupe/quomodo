@@ -41,7 +41,10 @@ pub async fn load(stack: &str) -> anyhow::Result<Option<StackState>> {
   Ok(Some(state))
 }
 
-pub async fn save(stack: &str, state: &StackState) -> anyhow::Result<()> {
+pub async fn save(
+  stack: &str,
+  state: &StackState,
+) -> anyhow::Result<()> {
   let path = state_path(stack);
   if let Some(parent) = path.parent() {
     tokio::fs::create_dir_all(parent)

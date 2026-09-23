@@ -86,12 +86,13 @@ pub async fn get_repo_stack_contents(
 fn read_stack_files(
   run_directory: &Path,
 ) -> anyhow::Result<(Vec<FileContents>, Vec<FileContents>)> {
-  let run_directory = run_directory.canonicalize().with_context(|| {
-    format!(
-      "Stack run directory does not exist in repo: {}",
-      run_directory.display()
-    )
-  })?;
+  let run_directory =
+    run_directory.canonicalize().with_context(|| {
+      format!(
+        "Stack run directory does not exist in repo: {}",
+        run_directory.display()
+      )
+    })?;
   let mut files = Vec::new();
   let mut errors = Vec::new();
   let mut dirs = vec![run_directory.clone()];

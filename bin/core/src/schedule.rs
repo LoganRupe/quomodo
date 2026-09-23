@@ -79,7 +79,9 @@ pub fn spawn_schedule_executor() {
                     if let Err(e) =
                       db_client().alerts.insert_one(&alert).await
                     {
-                      error!("Failed to record schedule alert | {e:#}");
+                      error!(
+                        "Failed to record schedule alert | {e:#}"
+                      );
                     }
                   }
 
@@ -156,7 +158,9 @@ pub fn spawn_schedule_executor() {
                     if let Err(e) =
                       db_client().alerts.insert_one(&alert).await
                     {
-                      error!("Failed to record schedule alert | {e:#}");
+                      error!(
+                        "Failed to record schedule alert | {e:#}"
+                      );
                     }
                   }
 

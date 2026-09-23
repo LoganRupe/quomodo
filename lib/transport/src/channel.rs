@@ -117,7 +117,6 @@ impl Sender<EncodedTransportMessage> {
       .send_message(ResponseMessage::new(channel, response))
       .await
   }
-
 }
 
 #[derive(Debug)]

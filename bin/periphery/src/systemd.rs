@@ -18,7 +18,11 @@ pub async fn daemon_reload() -> Log {
 }
 
 /// `systemctl <action> <units...>`. No-op with an empty list.
-pub async fn systemctl(stage: &str, action: &str, units: &[String]) -> Log {
+pub async fn systemctl(
+  stage: &str,
+  action: &str,
+  units: &[String],
+) -> Log {
   if units.is_empty() {
     return Log::simple(stage, String::from("No units to act on"));
   }
@@ -37,7 +41,10 @@ pub async fn systemctl(stage: &str, action: &str, units: &[String]) -> Log {
 
 pub async fn is_active(unit: &str) -> bool {
   run_standard_command(
-    &format!("systemctl is-active --quiet -- {}", escape(unit.into())),
+    &format!(
+      "systemctl is-active --quiet -- {}",
+      escape(unit.into())
+    ),
     CommandOptions::default().timeout(Duration::from_secs(10)),
   )
   .await

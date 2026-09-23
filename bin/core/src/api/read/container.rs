@@ -172,8 +172,9 @@ impl Resolve<ReadArgs> for ListContainers {
       PermissionLevel::Read.into(),
     )
     .await?;
-    let cache =
-      server_status_cache().get_or_insert_default(&server.id).await;
+    let cache = server_status_cache()
+      .get_or_insert_default(&server.id)
+      .await;
     Ok(cache.containers.clone().unwrap_or_default())
   }
 }
@@ -200,17 +201,18 @@ impl Resolve<ReadArgs> for GetResourceMatchingContainer {
     .await?;
 
     // The container name or unit label identifies the stack.
-    let unit = server_status_cache()
-      .get(&server.id)
-      .await
-      .and_then(|cache| {
-        cache.containers.as_ref().and_then(|containers| {
-          containers
-            .iter()
-            .find(|c| c.name == self.container)
-            .and_then(|c| c.unit.clone())
-        })
-      });
+    let unit =
+      server_status_cache()
+        .get(&server.id)
+        .await
+        .and_then(|cache| {
+          cache.containers.as_ref().and_then(|containers| {
+            containers
+              .iter()
+              .find(|c| c.name == self.container)
+              .and_then(|c| c.unit.clone())
+          })
+        });
 
     for stack in stacks {
       let is_match = units_of_stack(&stack).iter().any(|u| {

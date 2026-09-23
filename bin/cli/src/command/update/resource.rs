@@ -2,14 +2,12 @@ use anyhow::Context;
 use colored::Colorize;
 use komodo_client::{
   api::write::{
-    UpdateRepo, UpdateResourceSync,
-    UpdateServer, UpdateStack,
+    UpdateRepo, UpdateResourceSync, UpdateServer, UpdateStack,
   },
   entities::{
     config::cli::args::update::UpdateResource,
-    repo::PartialRepoConfig,
-    server::PartialServerConfig, stack::PartialStackConfig,
-    sync::PartialResourceSyncConfig,
+    repo::PartialRepoConfig, server::PartialServerConfig,
+    stack::PartialStackConfig, sync::PartialResourceSyncConfig,
   },
 };
 use serde::{Serialize, de::DeserializeOwned};

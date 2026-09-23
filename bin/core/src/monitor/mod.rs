@@ -28,13 +28,14 @@ use crate::{
   },
 };
 
-use self::helpers::{insert_repos_status_unknown, insert_server_status};
+use self::helpers::{
+  insert_repos_status_unknown, insert_server_status,
+};
 
 mod alert;
 mod helpers;
 mod record;
 mod resources;
-
 
 const ADDITIONAL_MS: u128 = 500;
 

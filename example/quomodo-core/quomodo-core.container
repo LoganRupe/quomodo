@@ -1,0 +1,38 @@
+[Unit]
+Description=Quomodo core
+After=quomodo-mongo.service
+Requires=quomodo-mongo.service
+
+[Container]
+Image=forgejo.example.com/owner/quomodo:latest
+Pod=quomodo.pod
+ContainerName=quomodo-core
+UserNS=auto
+AutoUpdate=registry
+Volume=quomodo-repo-cache.volume:/repo-cache
+Volume=quomodo-sync.volume:/syncs
+Volume=quomodo-keys.volume:/config/keys
+Environment=KOMODO_HOST=https://quomodo.example.com
+Environment=KOMODO_TITLE=Quomodo
+Environment=KOMODO_DATABASE_ADDRESS=localhost:27017
+Environment=KOMODO_DATABASE_USERNAME=quomodo
+Environment=KOMODO_LOCAL_AUTH=false
+Environment=KOMODO_OIDC_ENABLED=true
+Environment=KOMODO_OIDC_PROVIDER=https://auth.example.com/application/o/quomodo/
+Environment=KOMODO_OIDC_CLIENT_ID=quomodo
+Environment=KOMODO_SECRETS_PROVIDER=vaultwarden
+Environment=KOMODO_VAULTWARDEN_URL=https://vault.example.com
+# Bootstrap secrets are root podman secrets created once by Ansible from the
+# Bitwarden lookup. Nothing with a secret value is written under /etc.
+Secret=quomodo-mongo-password,type=env,target=KOMODO_DATABASE_PASSWORD
+Secret=quomodo-jwt-secret,type=env,target=KOMODO_JWT_SECRET
+Secret=quomodo-oidc-client-secret,type=env,target=KOMODO_OIDC_CLIENT_SECRET
+Secret=quomodo-vaultwarden-client-id,type=env,target=KOMODO_VAULTWARDEN_CLIENT_ID
+Secret=quomodo-vaultwarden-client-secret,type=env,target=KOMODO_VAULTWARDEN_CLIENT_SECRET
+Secret=quomodo-vaultwarden-master-password,type=env,target=KOMODO_VAULTWARDEN_MASTER_PASSWORD
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,16 @@
+[Unit]
+Description=Example web
+After=db.service
+
+[Container]
+Image=docker.io/library/nginx:1.27
+Pod=app.pod
+Network=app.network
+Environment=DOMAIN=[[DOMAIN]]
+Secret=file:config.yml,type=mount,target=/etc/app/config.yml
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

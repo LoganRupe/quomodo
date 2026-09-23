@@ -252,9 +252,6 @@ pub fn core_config() -> &'static CoreConfig {
       periphery_public_keys: env
         .komodo_periphery_public_keys
         .or(config.periphery_public_keys),
-      first_server_address: env
-        .komodo_first_server_address
-        .or(config.first_server_address),
       first_server_name: env
         .komodo_first_server_name
         .or(config.first_server_name),

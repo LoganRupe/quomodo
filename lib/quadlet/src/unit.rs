@@ -34,7 +34,10 @@ pub fn base_name(path: &str) -> &str {
 }
 
 pub fn stem(file_name: &str) -> &str {
-  file_name.rsplit_once('.').map(|(s, _)| s).unwrap_or(file_name)
+  file_name
+    .rsplit_once('.')
+    .map(|(s, _)| s)
+    .unwrap_or(file_name)
 }
 
 /// Every `Key=` value in `[Section]`, in file order.
@@ -47,7 +50,9 @@ pub fn get_values<'a>(
   let mut out = Vec::new();
   for line in contents.lines() {
     let line = line.trim();
-    if line.is_empty() || line.starts_with('#') || line.starts_with(';')
+    if line.is_empty()
+      || line.starts_with('#')
+      || line.starts_with(';')
     {
       continue;
     }
@@ -215,14 +220,17 @@ mod tests {
     let pod = parse_unit("app.pod", "[Pod]\n").unwrap();
     assert_eq!(pod.unit.service, "app-pod.service");
     assert_eq!(pod.unit.name, "systemd-app");
-    let net =
-      parse_unit("sub/app.network", "[Network]\nSubnet=10.1.0.0/24\n")
-        .unwrap();
+    let net = parse_unit(
+      "sub/app.network",
+      "[Network]\nSubnet=10.1.0.0/24\n",
+    )
+    .unwrap();
     assert_eq!(net.unit.service, "app-network.service");
     assert_eq!(net.unit.file, "sub/app.network");
     assert!(parse_unit("config.yml", "a: 1").is_none());
-    let c = parse_unit("db.container", "[Container]\nImage=db.build\n")
-      .unwrap();
+    let c =
+      parse_unit("db.container", "[Container]\nImage=db.build\n")
+        .unwrap();
     assert_eq!(c.unit.name, "systemd-db");
     assert_eq!(c.deps, vec!["db.build"]);
   }

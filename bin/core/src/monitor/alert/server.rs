@@ -711,7 +711,6 @@ async fn resolve_alerts(alerts: &[(Alert, SendAlerts)]) {
       .inspect_err(|e| warn!("{e:#}"))
       .ok();
 
-
     anyhow::Ok(())
   };
 

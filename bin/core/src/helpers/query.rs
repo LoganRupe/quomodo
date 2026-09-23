@@ -3,9 +3,7 @@ use std::{collections::HashMap, str::FromStr};
 use anyhow::{Context, anyhow};
 use database::mungos::{
   find::find_collect,
-  mongodb::{
-    bson::{Document, doc, oid::ObjectId},
-  },
+  mongodb::bson::{Document, doc, oid::ObjectId},
 };
 use komodo_client::{
   busy::Busy,

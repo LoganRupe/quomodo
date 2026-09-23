@@ -7,8 +7,8 @@ use komodo_client::{
     write::{RefreshResourceSyncPending, RefreshStackCache},
   },
   entities::{
-    action::Action, procedure::Procedure, repo::Repo,
-    stack::Stack, sync::ResourceSync, user::git_webhook_user,
+    action::Action, procedure::Procedure, repo::Repo, stack::Stack,
+    sync::ResourceSync, user::git_webhook_user,
   },
 };
 use mogh_resolver::Resolve;

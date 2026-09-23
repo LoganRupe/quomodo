@@ -3,8 +3,7 @@ use std::{collections::HashMap, sync::Mutex};
 use anyhow::Context;
 use komodo_client::entities::{
   alert::AlertDataVariant, permission::PermissionLevel,
-  resource::ResourceQuery, server::Server,
-  user::system_user,
+  resource::ResourceQuery, server::Server, user::system_user,
 };
 
 use crate::resource;

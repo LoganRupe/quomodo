@@ -21,11 +21,17 @@ async fn prune<T>(
   server: &str,
   user: &User,
   mut update: Update,
-  set_in_progress: impl Fn(&mut komodo_client::entities::server::ServerActionState),
+  set_in_progress: impl Fn(
+    &mut komodo_client::entities::server::ServerActionState,
+  ),
   request: T,
 ) -> mogh_error::Result<Update>
 where
-  T: std::fmt::Debug + serde::Serialize + mogh_resolver::HasResponse<Response = komodo_client::entities::update::Log>,
+  T: std::fmt::Debug
+    + serde::Serialize
+    + mogh_resolver::HasResponse<
+      Response = komodo_client::entities::update::Log,
+    >,
 {
   let server = get_check_permissions::<Server>(
     server,
@@ -35,8 +41,10 @@ where
   .await?;
 
   // get the action state for the server (or insert default).
-  let action_state =
-    action_states().server.get_or_insert_default(&server.id).await;
+  let action_state = action_states()
+    .server
+    .get_or_insert_default(&server.id)
+    .await;
 
   // Will check to ensure server not already busy before updating, and return Err if so.
   // The returned guard will set the action state back to default when dropped.

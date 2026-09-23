@@ -1,51 +1,65 @@
-# Komodo 🦎
+# Quomodo
 
-A tool to build and deploy software across many servers. 
+A hard fork of [Komodo](https://github.com/moghtech/komodo) v2.3.3 stripped
+to what one home lab uses, with podman quadlets as the deploy unit and no secrets
+at rest. GPL-3.0-or-later, same as upstream.
 
-🦎 [See the docs](https://komo.do)
+## What it is
 
-🦎 [Try the Demo](https://demo.komo.do) - Login: `demo` : `demo`
+- **Core** (`quomodo`): the API and UI. Runs as a root quadlet pod with mongo.
+- **Agent** (`quomodo-agent`): runs as root on every host, dials out to Core
+  over the tailnet. No inbound listener, no passkeys, no terminals.
+- **Stacks**: a directory in git holding raw `.pod`, `.container`, `.network`,
+  `.volume`, `.build`, `.image` or `.kube` files plus config files. Deploying
+  copies the directory to `/etc/containers/systemd/<stack>/`, reloads systemd
+  and restarts the units whose files changed. Every `.container` gets
+  `UserNS=auto`.
+- **Secrets**: `[[NAME]]` resolves from non-secret Variables first, then from
+  the secret store named by the Stack's `secrets_collection`. Core fetches the
+  values at deploy time, sends them to the agent over the key-authenticated
+  websocket, and the agent creates podman secrets. A secret may only be
+  referenced on a `Secret=` line; a config file holding a secret reference is
+  mounted with `Secret=file:<path>` and never written under `/etc`. Nothing
+  with a resolved secret touches mongo. First provider: Vaultwarden over the
+  Bitwarden vault protocol.
 
-🦎 [See the Build Server](https://build.mogh.tech)  - Login: `komodo` : `komodo`
+Resources: Server, Stack, Repo, ResourceSync, Procedure, Action, Variables.
+Auth: local, OIDC, API keys. Webhooks: the Forgejo (GitHub-compatible)
+listener. Alerts are recorded and shown in the UI; nothing sends them.
 
-🦎 [Join the Discord](https://discord.gg/DRqE8Fvg5c)
+Gone from upstream: Deployment, Build, Builder, Swarm, Alerter, Google and
+GitHub OAuth, terminals and container exec, docker and compose, image update
+polling. The Rust module names inside still say `komodo` and `periphery`.
 
-## About
+## Layout
 
-The Komodo dragon is the largest living member of the [*Monitor* family of lizards](https://en.wikipedia.org/wiki/Monitor_lizard).
+- `bin/core`, `bin/periphery` (the agent), `bin/cli` (`km`)
+- `client/core/rs` types, `client/core/ts` the TypeScript client the UI uses
+- `lib/quadlet` unit parsing and the interpolation rules shared by core and agent
+- `config/core.config.toml`, `config/agent.config.toml` documented defaults
+- `example/quomodo-core` the core pod as quadlet files
+- `example/stack` a sample stack directory
 
-There is no limit to the number of servers you can connect, and there will never be. There is no limit to what API you can use for automation, and there never will be.
+## Build
 
-## Disclaimer
+```
+cargo build --release -p komodo_core -p komodo_periphery -p komodo_cli
+cd client/core/ts && yarn && yarn build && yarn link
+cd ui && yarn link komodo_client && yarn && yarn build
+```
 
-Warning. This is open source software (GPL-V3), and while we make a best effort to ensure releases are stable and bug-free,
-there are no warranties. Use at your own risk.
+Releases are tagged. Forgejo Actions builds the x86_64 agent binary as a
+release asset and pushes the core image to the Forgejo registry
+(`.forgejo/workflows/release.yml`).
 
-## Links
+## Agent install
 
-- [periphery setup](https://github.com/moghtech/komodo/blob/main/scripts/readme.md)
-- [roadmap](https://github.com/moghtech/komodo/blob/main/roadmap.md)
+An Ansible role installs podman, fetches `quomodo-agent` by version
+from the Forgejo release, writes `/etc/quomodo/config.toml`, the key pair and
+`core.pub` under `/etc/quomodo/keys/`, and a root systemd unit. See
+`scripts/readme.md` for what the unit needs.
 
-## Screenshots
+## Upstream
 
-### Light Theme
-
-![Dashboard](https://raw.githubusercontent.com/moghtech/komodo/main/screenshots/Light-Dashboard.png)
-![Stack](https://raw.githubusercontent.com/moghtech/komodo/main/screenshots/Light-Stack.png)
-![Compose](https://raw.githubusercontent.com/moghtech/komodo/main/screenshots/Light-Compose.png)
-![Env](https://raw.githubusercontent.com/moghtech/komodo/main/screenshots/Light-Env.png)
-![Sync](https://raw.githubusercontent.com/moghtech/komodo/main/screenshots/Light-Sync.png)
-![Update](https://raw.githubusercontent.com/moghtech/komodo/main/screenshots/Light-Update.png)
-![Stats](https://raw.githubusercontent.com/moghtech/komodo/main/screenshots/Light-Stats.png)
-![Export](https://raw.githubusercontent.com/moghtech/komodo/main/screenshots/Light-Export.png)
-
-### Dark Theme
-
-![Dashboard](https://raw.githubusercontent.com/moghtech/komodo/main/screenshots/Dark-Dashboard.png)
-![Stack](https://raw.githubusercontent.com/moghtech/komodo/main/screenshots/Dark-Stack.png)
-![Compose](https://raw.githubusercontent.com/moghtech/komodo/main/screenshots/Dark-Compose.png)
-![Env](https://raw.githubusercontent.com/moghtech/komodo/main/screenshots/Dark-Env.png)
-![Sync](https://raw.githubusercontent.com/moghtech/komodo/main/screenshots/Dark-Sync.png)
-![Update](https://raw.githubusercontent.com/moghtech/komodo/main/screenshots/Dark-Update.png)
-![Stats](https://raw.githubusercontent.com/moghtech/komodo/main/screenshots/Dark-Stats.png)
-![Export](https://raw.githubusercontent.com/moghtech/komodo/main/screenshots/Dark-Export.png)
+Pinned at v2.3.3. Security fixes are cherry-picked by hand; there are no
+tracking merges.

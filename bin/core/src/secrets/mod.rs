@@ -29,8 +29,9 @@ pub trait SecretProvider: Send + Sync {
     &self,
     collection: &str,
     names: &[String],
-  ) -> impl std::future::Future<Output = anyhow::Result<HashMap<String, String>>>
-  + Send;
+  ) -> impl std::future::Future<
+    Output = anyhow::Result<HashMap<String, String>>,
+  > + Send;
 }
 
 enum Provider {
@@ -124,7 +125,9 @@ pub async fn resolve_stack_secrets(
 }
 
 /// Only used at startup to fail fast on a broken provider config.
-pub fn validate_config(config: &VaultwardenConfig) -> anyhow::Result<()> {
+pub fn validate_config(
+  config: &VaultwardenConfig,
+) -> anyhow::Result<()> {
   if config.url.is_empty() {
     return Err(anyhow!("secrets.vaultwarden.url is required"));
   }

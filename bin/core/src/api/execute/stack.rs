@@ -1,3 +1,4 @@
+use ::quadlet as quadlet_lib;
 use anyhow::{Context, anyhow};
 use database::mungos::mongodb::bson::{doc, to_document};
 use formatting::format_serror;
@@ -13,7 +14,6 @@ use komodo_client::{
 };
 use mogh_resolver::Resolve;
 use periphery_client::api::quadlet::{self, StackUnitAction};
-use ::quadlet as quadlet_lib;
 
 use crate::{
   api::write::refresh_stack_cache,
@@ -162,7 +162,8 @@ impl Resolve<ExecuteArgs> for DeployStack {
     // Non-secret variables into the pre / post deploy commands and repo commands.
     let mut replacers = if !stack.config.skip_secret_interp {
       let empty = Default::default();
-      let mut interpolator = Interpolator::new(Some(&variables), &empty);
+      let mut interpolator =
+        Interpolator::new(Some(&variables), &empty);
       interpolator.interpolate_stack(&mut stack)?;
       if let Some(repo) = repo.as_mut()
         && !repo.config.skip_secret_interp
@@ -380,20 +381,22 @@ impl Resolve<ExecuteArgs> for DeployStackIfChanged {
 
     // Hash the latest files together with the resolved secret values,
     // so a rotated secret also counts as a change.
-    let latest_hash = if contents.errors.is_empty()
-      && !contents.files.is_empty()
-    {
-      let variables = get_variables().await?;
-      let resolved = if stack.config.skip_secret_interp {
-        Default::default()
+    let latest_hash =
+      if contents.errors.is_empty() && !contents.files.is_empty() {
+        let variables = get_variables().await?;
+        let resolved = if stack.config.skip_secret_interp {
+          Default::default()
+        } else {
+          resolve_stack_secrets(&stack, &contents.files, &variables)
+            .await?
+        };
+        Some(quadlet_lib::contents_hash(
+          &contents.files,
+          &resolved.hashes,
+        ))
       } else {
-        resolve_stack_secrets(&stack, &contents.files, &variables)
-          .await?
+        None
       };
-      Some(quadlet_lib::contents_hash(&contents.files, &resolved.hashes))
-    } else {
-      None
-    };
 
     let unchanged = latest_hash.is_some()
       && latest_hash == stack.info.deployed_contents_hash
@@ -519,16 +522,17 @@ impl Resolve<ExecuteArgs> for PullStack {
       || format!("Failed to get registry token in call to db. Stopping run. | {} | {}", stack.config.registry_provider, stack.config.registry_account),
     )?;
 
-    let quadlet::PullStackResponse { logs } = periphery_client(&server)
-      .await?
-      .request(quadlet::PullStack {
-        stack: stack.clone(),
-        repo,
-        git_token,
-        registry_token,
-        services: self.services,
-      })
-      .await?;
+    let quadlet::PullStackResponse { logs } =
+      periphery_client(&server)
+        .await?
+        .request(quadlet::PullStack {
+          stack: stack.clone(),
+          repo,
+          git_token,
+          registry_token,
+          services: self.services,
+        })
+        .await?;
 
     update.logs.extend(logs);
 
@@ -771,4 +775,3 @@ impl Resolve<ExecuteArgs> for DestroyStack {
     Ok(update)
   }
 }
-

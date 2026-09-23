@@ -7,8 +7,7 @@ use typeshare::typeshare;
 use crate::entities::{I64, MongoId};
 
 use super::{
-  _Serror, ResourceTarget, ResourceTargetVariant,
-  stack::StackState,
+  _Serror, ResourceTarget, ResourceTargetVariant, stack::StackState,
 };
 
 /// Representation of an alert in the system.

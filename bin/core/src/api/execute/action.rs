@@ -43,10 +43,7 @@ use crate::{
   api::execute::ExecuteRequest,
   auth::KomodoAuthImpl,
   config::core_config,
-  helpers::{
-    query::get_variables,
-    update::update_update,
-  },
+  helpers::{query::get_variables, update::update_update},
   permission::get_check_permissions,
   resource::refresh_action_state_cache,
   state::{action_cancel_cache, action_states, db_client},

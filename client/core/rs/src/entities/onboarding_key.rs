@@ -59,5 +59,4 @@ pub struct OnboardingKey {
   /// the Server.
   #[serde(default)]
   pub copy_server: String,
-
 }

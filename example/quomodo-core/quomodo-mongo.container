@@ -1,0 +1,20 @@
+[Unit]
+Description=Quomodo mongo
+
+[Container]
+Image=docker.io/mongo:8
+Pod=quomodo.pod
+ContainerName=quomodo-mongo
+UserNS=auto
+Volume=quomodo-mongo-data.volume:/data/db
+Volume=quomodo-mongo-config.volume:/data/configdb
+Environment=MONGO_INITDB_ROOT_USERNAME=quomodo
+# Bootstrap secret created once by Ansible: podman secret create quomodo-mongo-password -
+Secret=quomodo-mongo-password,type=env,target=MONGO_INITDB_ROOT_PASSWORD
+Exec=--quiet --wiredTigerCacheSizeGB 0.25
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

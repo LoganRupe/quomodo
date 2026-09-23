@@ -4,8 +4,7 @@ use formatting::{Color, bold, colored, muted};
 use komodo_client::entities::{
   ResourceTargetVariant, action::Action, procedure::Procedure,
   repo::Repo, server::Server, stack::Stack, sync::ResourceSync,
-  tag::Tag, update::Log,
-  user::sync_user,
+  tag::Tag, update::Log, user::sync_user,
 };
 use partial_derive2::MaybeNone;
 

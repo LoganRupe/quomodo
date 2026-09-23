@@ -1,6 +1,5 @@
 use komodo_client::entities::{
-  config::cli::args::update::UpdateCommand,
-  repo::PartialRepoConfig,
+  config::cli::args::update::UpdateCommand, repo::PartialRepoConfig,
   server::PartialServerConfig, stack::PartialStackConfig,
   sync::PartialResourceSyncConfig,
 };

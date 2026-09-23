@@ -2,17 +2,12 @@ use std::{fmt::Write as _, sync::OnceLock};
 
 use anyhow::{Context, anyhow};
 use command::{CommandOptions, run_komodo_standard_command};
-use database::{
-  bson::Document,
-  mungos::find::find_collect,
-};
+use database::{bson::Document, mungos::find::find_collect};
 use formatting::{bold, format_serror};
 use futures_util::{StreamExt, stream::FuturesOrdered};
-use komodo_client::{
-  api::execute::{
-    BackupCoreDatabase, ClearRepoCache, RotateAllServerKeys,
-    RotateCoreKeys,
-  },
+use komodo_client::api::execute::{
+  BackupCoreDatabase, ClearRepoCache, RotateAllServerKeys,
+  RotateCoreKeys,
 };
 use komodo_client::entities::server::ServerState;
 use mogh_error::AddStatusCodeError;

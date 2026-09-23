@@ -77,11 +77,7 @@ impl super::KomodoResource for Server {
         )
       })
       .unwrap_or_default();
-    let (
-      version,
-      public_key,
-      public_ip,
-    ) = match periphery_info {
+    let (version, public_key, public_ip) = match periphery_info {
       Some(info) => (
         Some(info.version.clone()),
         Some(info.public_key.clone()),

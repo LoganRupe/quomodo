@@ -177,8 +177,6 @@ pub enum UserConfig {
   /// User that logs in with username / password
   Local { password: String },
 
-
-
   /// User that logs in via Oidc provider
   Oidc { provider: String, user_id: String },
 

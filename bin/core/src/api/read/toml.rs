@@ -10,11 +10,10 @@ use komodo_client::{
     ListUserGroups,
   },
   entities::{
-    ResourceTarget, action::Action,
-    permission::PermissionLevel, procedure::Procedure, repo::Repo,
-    resource::ResourceQuery, server::Server, stack::Stack,
-    sync::ResourceSync, toml::ResourcesToml,
-    user::User,
+    ResourceTarget, action::Action, permission::PermissionLevel,
+    procedure::Procedure, repo::Repo, resource::ResourceQuery,
+    server::Server, stack::Stack, sync::ResourceSync,
+    toml::ResourcesToml, user::User,
   },
 };
 use mogh_resolver::Resolve;

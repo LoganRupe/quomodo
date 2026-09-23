@@ -190,8 +190,7 @@ impl Resolve<ReadArgs> for GetReposSummary {
           }
         }
         // will never come off the cache in the building state, since that comes from action states
-        (RepoState::Cloning, _)
-        | (RepoState::Pulling, _) => {
+        (RepoState::Cloning, _) | (RepoState::Pulling, _) => {
           unreachable!()
         }
       }

@@ -1,5 +1,5 @@
-## Builds the Komodo Core, Periphery, and Util binaries
-## for a specific architecture. Requires OpenSSL 3 or later.
+## Builds the Quomodo core, agent and km binaries for one architecture.
+## OpenSSL is vendored, so the binaries do not depend on the host libssl.
 
 FROM rust:1.98.0-bookworm AS builder
 RUN cargo install cargo-strip cargo-edit
@@ -16,8 +16,7 @@ COPY ./xtask ./xtask
 
 # Set Version
 ARG VERSION="0.0.0"
-ARG IMAGE_TAG=""
-RUN cargo set-version -p komodo_core ${VERSION}${IMAGE_TAG:+-${IMAGE_TAG}}
+RUN cargo set-version -p komodo_core ${VERSION}
 
 # Compile bin
 RUN \
@@ -29,10 +28,9 @@ RUN \
 # Copy just the binaries to scratch image
 FROM scratch
 
-COPY --from=builder /builder/target/release/core /core
-COPY --from=builder /builder/target/release/periphery /periphery
+COPY --from=builder /builder/target/release/quomodo /quomodo
+COPY --from=builder /builder/target/release/quomodo-agent /quomodo-agent
 COPY --from=builder /builder/target/release/km /km
 
-LABEL org.opencontainers.image.source="https://github.com/moghtech/komodo"
-LABEL org.opencontainers.image.description="Komodo Binaries"
+LABEL org.opencontainers.image.description="Quomodo binaries"
 LABEL org.opencontainers.image.licenses="GPL-3.0"

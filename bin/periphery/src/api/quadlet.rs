@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use anyhow::{Context, anyhow};
 use command::{
-  CommandOptions, KomodoCommandMode, run_komodo_command_with_sanitization,
-  run_komodo_shell_command,
+  CommandOptions, KomodoCommandMode,
+  run_komodo_command_with_sanitization, run_komodo_shell_command,
 };
 use formatting::format_serror;
 use komodo_client::entities::{
@@ -71,9 +71,10 @@ impl Resolve<crate::api::Args> for DeployStack {
     {
       Ok(pulled) => pulled,
       Err(e) => {
-        res
-          .logs
-          .push(Log::error("Pull Stack Repo", format_serror(&e.into())));
+        res.logs.push(Log::error(
+          "Pull Stack Repo",
+          format_serror(&e.into()),
+        ));
         return Ok(res);
       }
     };
@@ -84,13 +85,17 @@ impl Resolve<crate::api::Args> for DeployStack {
     }
 
     // 2. Read + prepare
-    let (files, errors) = match read_stack_files(&pulled.run_directory).await {
-      Ok(r) => r,
-      Err(e) => {
-        res.logs.push(Log::error("Read Stack Files", format_serror(&e.into())));
-        return Ok(res);
-      }
-    };
+    let (files, errors) =
+      match read_stack_files(&pulled.run_directory).await {
+        Ok(r) => r,
+        Err(e) => {
+          res.logs.push(Log::error(
+            "Read Stack Files",
+            format_serror(&e.into()),
+          ));
+          return Ok(res);
+        }
+      };
     res.file_contents = files.clone();
     res.remote_errors = errors;
     if !res.remote_errors.is_empty() {
@@ -105,10 +110,15 @@ impl Resolve<crate::api::Args> for DeployStack {
       ));
       return Ok(res);
     }
-    let prepared = match ::quadlet::prepare::prepare(&stack, &files, &variables, &secrets) {
+    let prepared = match ::quadlet::prepare::prepare(
+      &stack, &files, &variables, &secrets,
+    ) {
       Ok(p) => p,
       Err(e) => {
-        res.logs.push(Log::error("Prepare Stack", format_serror(&e.into())));
+        res.logs.push(Log::error(
+          "Prepare Stack",
+          format_serror(&e.into()),
+        ));
         return Ok(res);
       }
     };
@@ -123,13 +133,19 @@ impl Resolve<crate::api::Args> for DeployStack {
       return Ok(res);
     }
     res.units = units_only(&prepared.units);
-    res.contents_hash = Some(quadlet::contents_hash(&files, &prepared.secret_hashes));
+    res.contents_hash =
+      Some(quadlet::contents_hash(&files, &prepared.secret_hashes));
     res.logs.push(Log::simple(
       "Units",
       prepared
         .units
         .iter()
-        .map(|u| format!("{} -> {} ({})", u.unit.file, u.unit.service, u.unit.name))
+        .map(|u| {
+          format!(
+            "{} -> {} ({})",
+            u.unit.file, u.unit.service, u.unit.name
+          )
+        })
         .collect::<Vec<_>>()
         .join("\n"),
     ));
@@ -152,7 +168,10 @@ impl Resolve<crate::api::Args> for DeployStack {
       )
       .await
     {
-      res.logs.push(Log::error("Login to Registry", format_serror(&e.into())));
+      res.logs.push(Log::error(
+        "Login to Registry",
+        format_serror(&e.into()),
+      ));
       return Ok(res);
     }
     if stack.config.auto_pull {
@@ -173,7 +192,8 @@ impl Resolve<crate::api::Args> for DeployStack {
 
     // 4. Pre deploy
     if !stack.config.pre_deploy.is_none() {
-      let path = pulled.run_directory.join(&stack.config.pre_deploy.path);
+      let path =
+        pulled.run_directory.join(&stack.config.pre_deploy.path);
       let span = info_span!("ExecutePreDeploy");
       if let Some(log) = run_komodo_command_with_sanitization(
         "Pre Deploy",
@@ -199,15 +219,29 @@ impl Resolve<crate::api::Args> for DeployStack {
     // 5. Plan, write, secrets, apply
     let plan = deploy::plan(&prepared, previous.as_ref(), &services);
     let target = stack_quadlet_dir(&stack.name);
-    let file_hashes = match deploy::write_files(&target, &prepared, &mut res.logs).await {
-      Ok(h) => h,
-      Err(e) => {
-        res.logs.push(Log::error("Write Stack Files", format_serror(&e.into())));
-        return Ok(res);
-      }
-    };
-    if let Err(e) = deploy::create_secrets(&prepared, previous.as_ref(), &mut res.logs).await {
-      res.logs.push(Log::error("Podman Secrets", format_serror(&e.into())));
+    let file_hashes =
+      match deploy::write_files(&target, &prepared, &mut res.logs)
+        .await
+      {
+        Ok(h) => h,
+        Err(e) => {
+          res.logs.push(Log::error(
+            "Write Stack Files",
+            format_serror(&e.into()),
+          ));
+          return Ok(res);
+        }
+      };
+    if let Err(e) = deploy::create_secrets(
+      &prepared,
+      previous.as_ref(),
+      &mut res.logs,
+    )
+    .await
+    {
+      res
+        .logs
+        .push(Log::error("Podman Secrets", format_serror(&e.into())));
       return Ok(res);
     }
     let applied = deploy::apply(&plan, &mut res.logs).await?;
@@ -218,7 +252,10 @@ impl Resolve<crate::api::Args> for DeployStack {
     // Save state even on failure: files and secrets are on the host now.
     let next = deploy::next_state(file_hashes, &prepared);
     if let Err(e) = state::save(&stack.name, &next).await {
-      res.logs.push(Log::error("Save Stack State", format_serror(&e.into())));
+      res.logs.push(Log::error(
+        "Save Stack State",
+        format_serror(&e.into()),
+      ));
       return Ok(res);
     }
     res.deployed = applied;
@@ -228,7 +265,8 @@ impl Resolve<crate::api::Args> for DeployStack {
 
     // 6. Post deploy
     if !stack.config.post_deploy.is_none() {
-      let path = pulled.run_directory.join(&stack.config.post_deploy.path);
+      let path =
+        pulled.run_directory.join(&stack.config.post_deploy.path);
       let span = info_span!("ExecutePostDeploy");
       if let Some(log) = run_komodo_command_with_sanitization(
         "Post Deploy",
@@ -283,9 +321,10 @@ impl Resolve<crate::api::Args> for PullStack {
     {
       Ok(pulled) => pulled,
       Err(e) => {
-        res
-          .logs
-          .push(Log::error("Pull Stack Repo", format_serror(&e.into())));
+        res.logs.push(Log::error(
+          "Pull Stack Repo",
+          format_serror(&e.into()),
+        ));
         return Ok(res);
       }
     };
@@ -301,7 +340,10 @@ impl Resolve<crate::api::Args> for PullStack {
       )
       .await
     {
-      res.logs.push(Log::error("Login to Registry", format_serror(&e.into())));
+      res.logs.push(Log::error(
+        "Login to Registry",
+        format_serror(&e.into()),
+      ));
       return Ok(res);
     }
     for u in selected.into_iter().filter(|u| {
@@ -313,7 +355,10 @@ impl Resolve<crate::api::Args> for PullStack {
       res.logs.push(podman::pull(&u.unit.image).await);
     }
     if res.logs.is_empty() {
-      res.logs.push(Log::simple("Pull Images", String::from("No container units with a pullable image")));
+      res.logs.push(Log::simple(
+        "Pull Images",
+        String::from("No container units with a pullable image"),
+      ));
     }
     Ok(res)
   }
@@ -347,7 +392,11 @@ impl Resolve<crate::api::Args> for StackUnits {
       .into_iter()
       .filter(|u| u.unit.kind.is_runnable())
       // Containers in a pod follow the pod when acting on everything.
-      .filter(|u| !services.is_empty() || u.unit.pod.is_none() || u.unit.kind != QuadletKind::Container)
+      .filter(|u| {
+        !services.is_empty()
+          || u.unit.pod.is_none()
+          || u.unit.kind != QuadletKind::Container
+      })
       .map(|u| u.unit.service.clone())
       .collect::<Vec<_>>();
     let (stage, verb) = match action {
@@ -381,22 +430,30 @@ impl Resolve<crate::api::Args> for DestroyStack {
       .map(|u| u.unit.service.clone())
       .collect::<Vec<_>>();
     if !runnable.is_empty() {
-      let log = systemd::systemctl("Stop Stack", "stop", &runnable).await;
-      lines.push(format!("stop {}: {}", runnable.join(" "), if log.success { "ok" } else { "failed" }));
+      let log =
+        systemd::systemctl("Stop Stack", "stop", &runnable).await;
+      lines.push(format!(
+        "stop {}: {}",
+        runnable.join(" "),
+        if log.success { "ok" } else { "failed" }
+      ));
       if !log.success {
         lines.push(log.stderr);
       }
     }
     if dir.is_dir() {
-      tokio::fs::remove_dir_all(&dir)
-        .await
-        .with_context(|| format!("Failed to remove {}", dir.display()))?;
+      tokio::fs::remove_dir_all(&dir).await.with_context(|| {
+        format!("Failed to remove {}", dir.display())
+      })?;
       lines.push(format!("removed {}", dir.display()));
     } else {
       lines.push(format!("{} was not present", dir.display()));
     }
     let reload = systemd::daemon_reload().await;
-    lines.push(format!("daemon-reload: {}", if reload.success { "ok" } else { "failed" }));
+    lines.push(format!(
+      "daemon-reload: {}",
+      if reload.success { "ok" } else { "failed" }
+    ));
 
     // Secrets: those recorded in state, plus any with the stack prefix.
     let prefix = format!("{}_", secret_prefix(&stack));
@@ -407,13 +464,18 @@ impl Resolve<crate::api::Args> for DestroyStack {
       .map(|s| s.secrets.keys().cloned().collect::<Vec<_>>())
       .unwrap_or_default();
     if let Ok(existing) = podman::secret_names().await {
-      names.extend(existing.into_iter().filter(|n| n.starts_with(&prefix)));
+      names.extend(
+        existing.into_iter().filter(|n| n.starts_with(&prefix)),
+      );
     }
     names.sort();
     names.dedup();
     for name in names {
       let log = podman::secret_rm(&name).await;
-      lines.push(format!("secret rm {name}: {}", if log.success { "ok" } else { "failed" }));
+      lines.push(format!(
+        "secret rm {name}: {}",
+        if log.success { "ok" } else { "failed" }
+      ));
     }
     state::remove(&stack).await;
 
@@ -437,7 +499,9 @@ async fn stack_container_names(
     .map(|u| u.unit.name.clone())
     .collect::<Vec<_>>();
   if names.is_empty() {
-    return Err(anyhow!("No container units matched in stack '{stack}'"));
+    return Err(anyhow!(
+      "No container units matched in stack '{stack}'"
+    ));
   }
   Ok(names)
 }
