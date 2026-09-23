@@ -1,8 +1,8 @@
 # Tagged releases only. No edge builds.
 #
 # - x86_64 agent binary attached to the Forgejo release as `quomodo-agent-x86_64`
-# - core image pushed to this Forgejo's container registry as
-#   <registry>/<owner>/quomodo:<tag> and :latest
+#   (plus its .sha256), which an Ansible role fetches by version
+# - core image pushed to this Forgejo's registry as <registry>/<owner>/quomodo:<tag> and :latest
 #
 # aarch64 is added when a host needs it.
 name: Release
@@ -14,20 +14,23 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  REGISTRY: forgejo.example.com
 
 jobs:
   agent:
-    name: Agent binary (x86_64)
+    name: agent binary (x86_64)
     runs-on: docker
-    container:
-      image: rust:1.98.0-bookworm
     steps:
-      - uses: actions/checkout@v4
-      - name: Version from tag
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v7
+      - name: Install Rust
+        run: |
+          apt-get update -qq && apt-get install -y -qq curl build-essential pkg-config perl jq > /dev/null
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - name: Build
         run: |
-          cargo install cargo-edit
+          VERSION="${GITHUB_REF_NAME#v}"
+          cargo install cargo-edit --locked -q
           cargo set-version -p komodo_periphery "$VERSION"
           cargo build -p komodo_periphery --release
           cp target/release/quomodo-agent quomodo-agent-x86_64
@@ -38,7 +41,6 @@ jobs:
           API: ${{ github.server_url }}/api/v1/repos/${{ github.repository }}
         run: |
           set -eu
-          apt-get update -qq && apt-get install -y -qq jq >/dev/null
           release_id=$(curl -sf -H "Authorization: token $TOKEN" "$API/releases/tags/$GITHUB_REF_NAME" | jq -r .id || true)
           if [ -z "$release_id" ] || [ "$release_id" = "null" ]; then
             release_id=$(curl -sf -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/json" \
@@ -52,26 +54,30 @@ jobs:
           done
 
   core-image:
-    name: Core image
+    name: core image
     runs-on: docker
-    container:
-      image: quay.io/podman/stable
-      options: --privileged
     steps:
-      - uses: actions/checkout@v4
-      - name: Version and registry
+      - uses: actions/checkout@v7
+      - name: Install Docker CLI + Buildx (talks to the runner's DinD daemon)
         run: |
-          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
-          echo "REGISTRY=${GITHUB_SERVER_URL#https://}" >> "$GITHUB_ENV"
-          echo "IMAGE=${GITHUB_SERVER_URL#https://}/${GITHUB_REPOSITORY_OWNER}/quomodo" >> "$GITHUB_ENV"
-      - name: Build
+          apt-get update -qq
+          apt-get install -y -qq ca-certificates curl iproute2 > /dev/null
+          install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+          chmod a+r /etc/apt/keyrings/docker.asc
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" \
+            > /etc/apt/sources.list.d/docker.list
+          apt-get update -qq
+          apt-get install -y -qq docker-ce-cli docker-buildx-plugin > /dev/null
+          GW="$(ip route show default | awk '{print $3; exit}')"
+          echo "DOCKER_HOST=tcp://${GW}:2375" >> "$GITHUB_ENV"
+          export DOCKER_HOST="tcp://${GW}:2375"
+          docker version
+      - name: Build and push
         run: |
-          podman build -f bin/core/Dockerfile --build-arg VERSION="$VERSION" \
-            -t "$IMAGE:$GITHUB_REF_NAME" -t "$IMAGE:latest" .
-      - name: Push
-        env:
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          podman login "$REGISTRY" -u "$GITHUB_ACTOR" -p "$TOKEN"
-          podman push "$IMAGE:$GITHUB_REF_NAME"
-          podman push "$IMAGE:latest"
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          IMAGE="${REGISTRY}/${GITHUB_REPOSITORY_OWNER}/quomodo"
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login "${REGISTRY}" -u "${{ github.actor }}" --password-stdin
+          docker buildx build --file bin/core/Dockerfile --build-arg VERSION="$VERSION" \
+            --tag "$IMAGE:$GITHUB_REF_NAME" --tag "$IMAGE:latest" --push .

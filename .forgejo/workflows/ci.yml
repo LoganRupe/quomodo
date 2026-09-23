@@ -11,14 +11,15 @@ env:
 
 jobs:
   rust:
-    name: Build, clippy, test
-    runs-on: docker
-    container:
-      image: rust:1.98.0-bookworm
+    name: fmt, clippy, test
+    runs-on: docker # the runner's default image carries node, which actions/checkout needs
     steps:
-      - uses: actions/checkout@v4
-      - name: Toolchain
-        run: rustup component add clippy rustfmt
+      - uses: actions/checkout@v7
+      - name: Install Rust
+        run: |
+          apt-get update -qq && apt-get install -y -qq curl build-essential pkg-config perl > /dev/null
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --component clippy,rustfmt
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy
@@ -27,12 +28,10 @@ jobs:
         run: cargo test --workspace
 
   ui:
-    name: Typecheck and build the UI
+    name: typecheck and build the UI
     runs-on: docker
-    container:
-      image: node:22.12-bookworm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build client
         run: cd client/core/ts && yarn --frozen-lockfile && yarn build && yarn link
       - name: Build UI
