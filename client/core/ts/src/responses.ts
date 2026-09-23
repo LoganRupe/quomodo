@@ -3,32 +3,10 @@ import * as Types from "./types.js";
 export type ReadResponses = {
   GetVersion: Types.GetVersionResponse;
   GetCoreInfo: Types.GetCoreInfoResponse;
-  ListSecrets: Types.ListSecretsResponse;
   ListGitProvidersFromConfig: Types.ListGitProvidersFromConfigResponse;
   ListImageRegistriesFromConfig: Types.ListImageRegistriesFromConfigResponse;
 
   // ==== SWARM ====
-  GetSwarmsSummary: Types.GetSwarmsSummaryResponse;
-  GetSwarm: Types.GetSwarmResponse;
-  GetSwarmActionState: Types.GetSwarmActionStateResponse;
-  ListSwarms: Types.ListSwarmsResponse;
-  ListFullSwarms: Types.ListFullSwarmsResponse;
-  InspectSwarm: Types.InspectSwarmResponse;
-  ListSwarmNodes: Types.ListSwarmNodesResponse;
-  InspectSwarmNode: Types.InspectSwarmNodeResponse;
-  ListSwarmConfigs: Types.ListSwarmConfigsResponse;
-  InspectSwarmConfig: Types.InspectSwarmConfigResponse;
-  ListSwarmSecrets: Types.ListSwarmSecretsResponse;
-  InspectSwarmSecret: Types.InspectSwarmSecretResponse;
-  ListSwarmStacks: Types.ListSwarmStacksResponse;
-  InspectSwarmStack: Types.InspectSwarmStackResponse;
-  ListSwarmTasks: Types.ListSwarmTasksResponse;
-  InspectSwarmTask: Types.InspectSwarmTaskResponse;
-  ListSwarmServices: Types.ListSwarmServicesResponse;
-  InspectSwarmService: Types.InspectSwarmServiceResponse;
-  GetSwarmServiceLog: Types.GetSwarmServiceLogResponse;
-  SearchSwarmServiceLog: Types.SearchSwarmServiceLogResponse;
-  ListSwarmNetworks: Types.ListSwarmNetworksResponse;
 
   // ==== SERVER ====
   GetServersSummary: Types.GetServersSummaryResponse;
@@ -40,24 +18,14 @@ export type ReadResponses = {
   ListFullServers: Types.ListFullServersResponse;
 
   // ==== TERMINAL ====
-  ListTerminals: Types.ListTerminalsResponse;
 
   // ==== DOCKER ====
   GetContainersSummary: Types.GetContainersSummaryResponse;
   ListAllContainers: Types.ListAllContainersResponse;
   ListContainers: Types.ListContainersResponse;
-  InspectContainer: Types.InspectContainerResponse;
   GetResourceMatchingContainer: Types.GetResourceMatchingContainerResponse;
   GetContainerLog: Types.GetContainerLogResponse;
   SearchContainerLog: Types.SearchContainerLogResponse;
-  ListComposeProjects: Types.ListComposeProjectsResponse;
-  ListNetworks: Types.ListNetworksResponse;
-  InspectNetwork: Types.InspectNetworkResponse;
-  ListImages: Types.ListImagesResponse;
-  InspectImage: Types.InspectImageResponse;
-  ListImageHistory: Types.ListImageHistoryResponse;
-  ListVolumes: Types.ListVolumesResponse;
-  InspectVolume: Types.InspectVolumeResponse;
 
   // ==== SERVER STATS ====
   GetSystemInformation: Types.GetSystemInformationResponse;
@@ -71,38 +39,14 @@ export type ReadResponses = {
   GetStackActionState: Types.GetStackActionStateResponse;
   GetStackLog: Types.GetStackLogResponse;
   SearchStackLog: Types.SearchStackLogResponse;
-  InspectStackContainer: Types.InspectStackContainerResponse;
-  InspectStackSwarmService: Types.InspectStackSwarmServiceResponse;
   ListStacks: Types.ListStacksResponse;
   ListFullStacks: Types.ListFullStacksResponse;
   ListStackServices: Types.ListStackServicesResponse;
   ListAllStackServices: Types.ListAllStackServicesResponse;
-  ListCommonStackExtraArgs: Types.ListCommonStackExtraArgsResponse;
-  ListCommonStackBuildExtraArgs: Types.ListCommonStackBuildExtraArgsResponse;
 
   // ==== DEPLOYMENT ====
-  GetDeploymentsSummary: Types.GetDeploymentsSummaryResponse;
-  GetDeployment: Types.GetDeploymentResponse;
-  GetDeploymentContainer: Types.GetDeploymentContainerResponse;
-  GetDeploymentActionState: Types.GetDeploymentActionStateResponse;
-  GetDeploymentStats: Types.GetDeploymentStatsResponse;
-  GetDeploymentLog: Types.GetDeploymentLogResponse;
-  SearchDeploymentLog: Types.SearchDeploymentLogResponse;
-  InspectDeploymentContainer: Types.InspectDeploymentContainerResponse;
-  InspectDeploymentSwarmService: Types.InspectDeploymentSwarmServiceResponse;
-  ListDeployments: Types.ListDeploymentsResponse;
-  ListFullDeployments: Types.ListFullDeploymentsResponse;
-  ListCommonDeploymentExtraArgs: Types.ListCommonDeploymentExtraArgsResponse;
 
   // ==== BUILD ====
-  GetBuildsSummary: Types.GetBuildsSummaryResponse;
-  GetBuild: Types.GetBuildResponse;
-  GetBuildActionState: Types.GetBuildActionStateResponse;
-  GetBuildMonthlyStats: Types.GetBuildMonthlyStatsResponse;
-  ListBuilds: Types.ListBuildsResponse;
-  ListFullBuilds: Types.ListFullBuildsResponse;
-  ListBuildVersions: Types.ListBuildVersionsResponse;
-  ListCommonBuildExtraArgs: Types.ListCommonBuildExtraArgsResponse;
 
   // ==== REPO ====
   GetReposSummary: Types.GetReposSummaryResponse;
@@ -136,16 +80,8 @@ export type ReadResponses = {
   ListFullResourceSyncs: Types.ListFullResourceSyncsResponse;
 
   // ==== BUILDER ====
-  GetBuildersSummary: Types.GetBuildersSummaryResponse;
-  GetBuilder: Types.GetBuilderResponse;
-  ListBuilders: Types.ListBuildersResponse;
-  ListFullBuilders: Types.ListFullBuildersResponse;
 
   // ==== ALERTER ====
-  GetAlertersSummary: Types.GetAlertersSummaryResponse;
-  GetAlerter: Types.GetAlerterResponse;
-  ListAlerters: Types.ListAlertersResponse;
-  ListFullAlerters: Types.ListFullAlertersResponse;
 
   // ==== TOML ====
   ExportAllResourcesToToml: Types.ExportAllResourcesToTomlResponse;
@@ -196,11 +132,6 @@ export type WriteResponses = {
   UpdateResourceMeta: Types.UpdateResourceMetaResponse;
 
   // ==== SWARM ====
-  CreateSwarm: Types.Swarm;
-  CopySwarm: Types.Swarm;
-  DeleteSwarm: Types.Swarm;
-  UpdateSwarm: Types.Swarm;
-  RenameSwarm: Types.Update;
 
   // ==== SERVER ====
   CreateServer: Types.Server;
@@ -208,15 +139,10 @@ export type WriteResponses = {
   DeleteServer: Types.Server;
   UpdateServer: Types.Server;
   RenameServer: Types.Update;
-  CreateNetwork: Types.Update;
   UpdateServerPublicKey: Types.Update;
   RotateServerKeys: Types.Update;
 
   // ==== TERMINAL ====
-  CreateTerminal: Types.Terminal;
-  DeleteTerminal: Types.NoData;
-  DeleteAllTerminals: Types.NoData;
-  BatchDeleteAllTerminals: Types.NoData;
 
   // ==== STACK ====
   CreateStack: Types.Stack;
@@ -224,29 +150,11 @@ export type WriteResponses = {
   DeleteStack: Types.Stack;
   UpdateStack: Types.Stack;
   RenameStack: Types.Update;
-  WriteStackFileContents: Types.Update;
   RefreshStackCache: Types.NoData;
-  CheckStackForUpdate: Types.CheckStackForUpdateResponse;
-  BatchCheckStackForUpdate: Types.BatchCheckStackForUpdateResponse;
 
   // ==== DEPLOYMENT ====
-  CreateDeployment: Types.Deployment;
-  CopyDeployment: Types.Deployment;
-  CreateDeploymentFromContainer: Types.Deployment;
-  DeleteDeployment: Types.Deployment;
-  UpdateDeployment: Types.Deployment;
-  RenameDeployment: Types.Update;
-  CheckDeploymentForUpdate: Types.CheckDeploymentForUpdateResponse;
-  BatchCheckDeploymentForUpdate: Types.BatchCheckDeploymentForUpdateResponse;
 
   // ==== BUILD ====
-  CreateBuild: Types.Build;
-  CopyBuild: Types.Build;
-  DeleteBuild: Types.Build;
-  UpdateBuild: Types.Build;
-  RenameBuild: Types.Update;
-  WriteBuildFileContents: Types.Update;
-  RefreshBuildCache: Types.NoData;
 
   // ==== REPO ====
   CreateRepo: Types.Repo;
@@ -281,18 +189,8 @@ export type WriteResponses = {
   RefreshResourceSyncPending: Types.ResourceSync;
 
   // ==== BUILDER ====
-  CreateBuilder: Types.Builder;
-  CopyBuilder: Types.Builder;
-  DeleteBuilder: Types.Builder;
-  UpdateBuilder: Types.Builder;
-  RenameBuilder: Types.Update;
 
   // ==== ALERTER ====
-  CreateAlerter: Types.Alerter;
-  CopyAlerter: Types.Alerter;
-  DeleteAlerter: Types.Alerter;
-  UpdateAlerter: Types.Alerter;
-  RenameAlerter: Types.Update;
 
   // ==== ONBOARDING KEY ====
   CreateOnboardingKey: Types.CreateOnboardingKeyResponse;
@@ -362,37 +260,18 @@ export type ExecuteResponses = {
   StartStack: Types.Update;
   RestartStack: Types.Update;
   StopStack: Types.Update;
-  PauseStack: Types.Update;
-  UnpauseStack: Types.Update;
   DestroyStack: Types.Update;
   BatchDestroyStack: Types.BatchExecutionResponse;
-  RunStackService: Types.Update;
 
   // ==== DEPLOYMENT ====
-  Deploy: Types.Update;
-  BatchDeploy: Types.BatchExecutionResponse;
-  PullDeployment: Types.Update;
-  StartDeployment: Types.Update;
-  RestartDeployment: Types.Update;
-  PauseDeployment: Types.Update;
-  UnpauseDeployment: Types.Update;
-  StopDeployment: Types.Update;
-  DestroyDeployment: Types.Update;
-  BatchDestroyDeployment: Types.BatchExecutionResponse;
 
   // ==== BUILD ====
-  RunBuild: Types.Update;
-  BatchRunBuild: Types.BatchExecutionResponse;
-  CancelBuild: Types.Update;
 
   // ==== REPO ====
   CloneRepo: Types.Update;
   BatchCloneRepo: Types.BatchExecutionResponse;
   PullRepo: Types.Update;
   BatchPullRepo: Types.BatchExecutionResponse;
-  BuildRepo: Types.Update;
-  BatchBuildRepo: Types.BatchExecutionResponse;
-  CancelRepoBuild: Types.Update;
 
   // ==== PROCEDURE ====
   RunProcedure: Types.Update;
@@ -408,48 +287,16 @@ export type ExecuteResponses = {
   RunSync: Types.Update;
 
   // ==== ALERTER ====
-  TestAlerter: Types.Update;
-  SendAlert: Types.Update;
 
   // ==== SERVER ====
-  StartContainer: Types.Update;
-  RestartContainer: Types.Update;
-  PauseContainer: Types.Update;
-  UnpauseContainer: Types.Update;
-  StopContainer: Types.Update;
-  DestroyContainer: Types.Update;
-  StartAllContainers: Types.Update;
-  RestartAllContainers: Types.Update;
-  PauseAllContainers: Types.Update;
-  UnpauseAllContainers: Types.Update;
-  StopAllContainers: Types.Update;
-  PruneContainers: Types.Update;
-  DeleteNetwork: Types.Update;
-  PruneNetworks: Types.Update;
-  DeleteImage: Types.Update;
   PruneImages: Types.Update;
-  DeleteVolume: Types.Update;
-  PruneVolumes: Types.Update;
-  PruneDockerBuilders: Types.Update;
-  PruneBuildx: Types.Update;
   PruneSystem: Types.Update;
 
   // ==== SWARM ====
-  RemoveSwarmNodes: Types.Update;
-  UpdateSwarmNode: Types.Update;
-  RemoveSwarmStacks: Types.Update;
-  RemoveSwarmServices: Types.Update;
-  CreateSwarmConfig: Types.Update;
-  RotateSwarmConfig: Types.Update;
-  RemoveSwarmConfigs: Types.Update;
-  CreateSwarmSecret: Types.Update;
-  RotateSwarmSecret: Types.Update;
-  RemoveSwarmSecrets: Types.Update;
 
   // ==== MAINTENANCE ====
   ClearRepoCache: Types.Update;
   BackupCoreDatabase: Types.Update;
-  GlobalAutoUpdate: Types.Update;
   RotateAllServerKeys: Types.Update;
   RotateCoreKeys: Types.Update;
 };

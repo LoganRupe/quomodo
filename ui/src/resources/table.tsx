@@ -6,13 +6,12 @@ import {
 } from ".";
 import ResourceNotFound from "./not-found";
 import ListPagination from "@/components/list-pagination";
-import { LabelledSwitch, SearchInput, TableSkeleton } from "mogh_ui";
+import { SearchInput, TableSkeleton } from "mogh_ui";
 import TemplateQuerySelector from "@/components/template-query-selector";
 import TagsFilter from "@/components/tags/filter";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   useDebouncedTermSearch,
-  useFilterByUpdateAvailable,
   useRead,
   useTagsFilter,
   useTemplatesQueryBehavior,
@@ -24,7 +23,6 @@ export interface ResourceTableProps extends StackProps {
   type: UsableResource;
   showTagsQuery?: boolean;
   showTemplateQuery?: boolean;
-  showAvailableUpdatesQuery?: boolean;
   onQueryChange?: (query: Types.ResourceQuery<any>) => void;
   newProps?: Parameters<RequiredResourceComponents["New"]>[0];
   specific?: any;
@@ -34,7 +32,6 @@ export default function ResourceTable({
   type,
   showTagsQuery,
   showTemplateQuery,
-  showAvailableUpdatesQuery,
   onQueryChange,
   newProps,
   specific,
@@ -49,9 +46,6 @@ export default function ResourceTable({
   const { search, setSearch, terms } = useDebouncedTermSearch({
     onUpdate: () => setPage(0),
   });
-
-  const [filterUpdateAvailable, toggleFilterUpdateAvailable] =
-    useFilterByUpdateAvailable();
 
   const tags = useTagsFilter();
   const [templates] = useTemplatesQueryBehavior();
@@ -76,10 +70,7 @@ export default function ResourceTable({
       terms,
       tags: showTagsQuery ? tags : undefined,
       templates: showTemplateQuery ? templates : undefined,
-      specific:
-        showAvailableUpdatesQuery && (type === "Stack" || type === "Deployment")
-          ? { update_available: filterUpdateAvailable, ...specific }
-          : specific,
+      specific,
     };
     onQueryChange?.(query);
     return query;
@@ -90,8 +81,6 @@ export default function ResourceTable({
     tags,
     showTemplateQuery,
     templates,
-    showAvailableUpdatesQuery,
-    filterUpdateAvailable,
     specific,
   ]);
 
@@ -123,7 +112,6 @@ export default function ResourceTable({
     type,
     tags,
     templates,
-    filterUpdateAvailable,
     sort.sort_by,
     sort.sort_desc,
   ]);
@@ -158,16 +146,6 @@ export default function ResourceTable({
         </Group>
 
         <Group w={{ base: "100%", xs: "fit-content" }}>
-          {showAvailableUpdatesQuery &&
-            (type === "Stack" || type === "Deployment") && (
-              <LabelledSwitch
-                label="Pending Update"
-                checked={filterUpdateAvailable}
-                onCheckedChange={toggleFilterUpdateAvailable}
-                opacity={0.7}
-                fz="sm"
-              />
-            )}
           {showTemplateQuery && <TemplateQuerySelector />}
           {showTagsQuery && <TagsFilter />}
           <SearchInput value={search} onSearch={setSearch} />

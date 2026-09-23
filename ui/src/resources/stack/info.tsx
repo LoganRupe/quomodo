@@ -1,17 +1,10 @@
-import { usePermissions, useWrite } from "@/lib/hooks";
-import { useLocalStorage } from "@mantine/hooks";
-import { notifications } from "@mantine/notifications";
 import { ReactNode, useState } from "react";
-import { DEFAULT_STACK_FILE_CONTENTS, useFullStack, useStack } from ".";
+import { useFullStack, useStack } from ".";
 import { Types } from "komodo_client";
 import { Section } from "mogh_ui";
-import { Button, Code, Group, Stack, Text } from "@mantine/core";
-import { ConfirmButton } from "mogh_ui";
-import { FilePlus } from "lucide-react";
+import { Code, Group, Stack, Text } from "@mantine/core";
 import { updateLogToHtml } from "@/lib/utils";
 import { CopyButton } from "mogh_ui";
-import { ICONS } from "@/lib/icons";
-import { ConfirmUpdate } from "mogh_ui";
 import { ShowHideButton } from "mogh_ui";
 import { languageFromPath, MonacoEditor } from "mogh_ui";
 
@@ -22,37 +15,23 @@ export default function StackInfo({
   id: string;
   titleOther: ReactNode;
 }) {
-  const [edits, setEdits] = useLocalStorage<Record<string, string | undefined>>(
-    { key: `stack-${id}-edits`, defaultValue: {} },
-  );
   const [show, setShow] = useState<Record<string, boolean | undefined>>({});
-  const { canWrite } = usePermissions({ type: "Stack", id });
-
-  const { mutateAsync, isPending } = useWrite("WriteStackFileContents", {
-    onSuccess: (res) => {
-      notifications.show({
-        message: res.success
-          ? "Contents written."
-          : "Failed to write contents.",
-        color: res.success ? "green" : "red",
-      });
-    },
-  });
 
   const notDown = useStack(id)?.info.state !== Types.StackState.Down;
   const stack = useFullStack(id);
 
-  const filesOnHost = stack?.config?.files_on_host ?? false;
-  const gitRepo = !!(stack?.config?.repo || stack?.config?.linked_repo);
-  const canEdit = canWrite && (filesOnHost || gitRepo);
-  const editFileCallback = (path: string) => (contents: string) =>
-    setEdits({ ...edits, [path]: contents });
-
   const latestContents = stack?.info?.remote_contents;
   const latestErrors = stack?.info?.remote_errors;
+  const deployedContents = stack?.info?.deployed_contents;
 
-  // Contents will be default hidden if there is more than 2 file editor to show
+  // Contents will be default hidden if there is more than 2 file to show
   const defaultShowContents = !latestContents || latestContents.length < 3;
+
+  const toggleShow = (key: string) => () =>
+    setShow((show) => ({
+      ...show,
+      [key]: !(show[key] ?? defaultShowContents),
+    }));
 
   return (
     <Section titleOther={titleOther}>
@@ -61,33 +40,10 @@ export default function StackInfo({
         latestErrors.length > 0 &&
         latestErrors.map((error) => (
           <Stack key={error.path} className="bordered-light" bdrs="md" p="xl">
-            {/* HEADER */}
-            <Group justify="between">
-              <Group ff="monospace">
-                <Text c="dimmed">Path:</Text>
-                {error.path}
-              </Group>
-
-              {canEdit && (
-                <ConfirmButton
-                  loading={isPending}
-                  icon={<FilePlus size="1rem" />}
-                  onClick={() => {
-                    if (stack) {
-                      mutateAsync({
-                        stack: stack.name,
-                        file_path: error.path,
-                        contents: DEFAULT_STACK_FILE_CONTENTS,
-                      });
-                    }
-                  }}
-                >
-                  Initialize File
-                </ConfirmButton>
-              )}
+            <Group ff="monospace">
+              <Text c="dimmed">Path:</Text>
+              {error.path}
             </Group>
-
-            {/* CONTENTS */}
             <Code
               component="pre"
               fz="sm"
@@ -100,122 +56,84 @@ export default function StackInfo({
           </Stack>
         ))}
 
-      {/* Update latest contents */}
+      {/* Latest contents */}
       {latestContents &&
-        latestContents.map((content) => {
-          const showContents = show[content.path] ?? defaultShowContents;
-          const handleToggleShow = () => {
-            setShow((show) => ({
-              ...show,
-              [content.path]: !(show[content.path] ?? defaultShowContents),
-            }));
-          };
-          return (
-            <Stack
-              key={content.path}
-              className="bordered-light"
-              bdrs="md"
-              p="xl"
-            >
-              {/* HEADER */}
-              <Group
-                justify="space-between"
-                style={{ cursor: "pointer" }}
-                onClick={handleToggleShow}
-                tabIndex={0}
-                role="button"
-                aria-pressed={showContents}
-                onKeyDown={(e) => {
-                  if (
-                    (e.key === "Enter" || e.key === " ") &&
-                    e.target === e.currentTarget
-                  ) {
-                    if (e.key === " ") e.preventDefault();
-                    handleToggleShow();
-                  }
-                }}
-              >
-                {/* PATH */}
-                <Group ff="monospace">
-                  <Text c="dimmed">File:</Text>
-                  {content.path}
-                  <CopyButton label="file path" content={content.path} />
-                </Group>
+        latestContents.map((content) => (
+          <FileContentsCard
+            key={content.path}
+            file={content}
+            show={show[`latest-${content.path}`] ?? defaultShowContents}
+            toggleShow={toggleShow(`latest-${content.path}`)}
+          />
+        ))}
 
-                {/* SAVE */}
-                <Group>
-                  {canEdit && (
-                    <>
-                      <Button
-                        variant="outline"
-                        leftSection={<ICONS.History size="1rem" />}
-                        disabled={!edits[content.path]}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEdits({ ...edits, [content.path]: undefined });
-                        }}
-                      >
-                        Reset
-                      </Button>
-                      <ConfirmUpdate
-                        original={{ contents: content.contents }}
-                        update={{ contents: edits[content.path] }}
-                        onConfirm={async () => {
-                          if (stack) {
-                            return await mutateAsync({
-                              stack: stack.name,
-                              file_path: content.path,
-                              contents: edits[content.path]!,
-                            }).then(() =>
-                              setEdits({
-                                ...edits,
-                                [content.path]: undefined,
-                              }),
-                            );
-                          }
-                        }}
-                        disabled={!edits[content.path]}
-                        language="yaml"
-                        loading={isPending}
-                      />
-                    </>
-                  )}
-                  <ShowHideButton show={showContents} setShow={handleToggleShow} />
-                </Group>
-              </Group>
-
-              {/* CONTENTS */}
-              {showContents && (
-                <MonacoEditor
-                  value={edits[content.path] ?? content.contents}
-                  language={languageFromPath(content.path)}
-                  readOnly={!canEdit}
-                  filename={content.path}
-                  onValueChange={editFileCallback(content.path)}
-                />
-              )}
-            </Stack>
-          );
-        })}
-
-      {stack?.info?.deployed_config && notDown && (
+      {/* Deployed contents */}
+      {notDown && deployedContents && deployedContents.length > 0 && (
         <Stack className="bordered-light" bdrs="md" p="xl">
-          {/* HEADER */}
           <Stack ff="monospace" gap="0">
-            <Text fz="md">Deployed config:</Text>
+            <Text fz="md">Deployed contents:</Text>
             <Text fz="sm" c="dimmed">
-              Output of '<code>docker compose config</code>' when Stack was last
-              deployed.
+              The unit files as they were when the Stack was last deployed.
             </Text>
           </Stack>
-
-          <MonacoEditor
-            value={stack.info.deployed_config}
-            language="yaml"
-            readOnly
-          />
+          {deployedContents.map((content) => (
+            <FileContentsCard
+              key={content.path}
+              file={content}
+              show={show[`deployed-${content.path}`] ?? false}
+              toggleShow={toggleShow(`deployed-${content.path}`)}
+            />
+          ))}
         </Stack>
       )}
     </Section>
+  );
+}
+
+function FileContentsCard({
+  file,
+  show,
+  toggleShow,
+}: {
+  file: Types.FileContents;
+  show: boolean;
+  toggleShow: () => void;
+}) {
+  return (
+    <Stack className="bordered-light" bdrs="md" p="xl">
+      <Group
+        justify="space-between"
+        style={{ cursor: "pointer" }}
+        onClick={toggleShow}
+        tabIndex={0}
+        role="button"
+        aria-pressed={show}
+        onKeyDown={(e) => {
+          if (
+            (e.key === "Enter" || e.key === " ") &&
+            e.target === e.currentTarget
+          ) {
+            if (e.key === " ") e.preventDefault();
+            toggleShow();
+          }
+        }}
+      >
+        <Group ff="monospace">
+          <Text c="dimmed">File:</Text>
+          {file.path}
+          <CopyButton label="file path" content={file.path} />
+        </Group>
+        <ShowHideButton show={show} setShow={toggleShow} />
+      </Group>
+
+      {show && (
+        <MonacoEditor
+          value={file.contents}
+          language={languageFromPath(file.path)}
+          filename={file.path}
+          readOnly
+        />
+      )}
+    </Stack>
   );
 }

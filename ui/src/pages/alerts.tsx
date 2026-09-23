@@ -19,22 +19,23 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 const ALERT_TYPES_BY_RESOURCE: { [key: string]: Types.AlertData["type"][] } = {
-  Server: ["ServerUnreachable", "ServerCpu", "ServerMem", "ServerDisk"],
-  Swarm: ["SwarmUnhealthy"],
-  Stack: ["StackStateChange", "StackImageUpdateAvailable", "StackAutoUpdated"],
-  Deployment: [
-    "ContainerStateChange",
-    "DeploymentImageUpdateAvailable",
-    "DeploymentAutoUpdated",
+  Server: [
+    "ServerUnreachable",
+    "ServerCpu",
+    "ServerMem",
+    "ServerDisk",
+    "ServerVersionMismatch",
   ],
-  Build: ["BuildFailed"],
-  Repo: ["RepoBuildFailed"],
+  Stack: ["StackStateChange"],
+  Procedure: ["ProcedureFailed"],
+  Action: ["ActionFailed"],
   ResourceSync: ["ResourceSyncPendingUpdates"],
 };
 
 const FALLBACK_ALERT_TYPES = [
   ...Object.values(ALERT_TYPES_BY_RESOURCE).flat(),
-  "AwsBuilderTerminationFailed",
+  "ScheduleRun",
+  "Custom",
 ];
 
 export default function Alerts() {

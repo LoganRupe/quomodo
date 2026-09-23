@@ -9,102 +9,6 @@ export function themeAdditionalColors() {
   );
 }
 
-export function swarmStateIntention(state?: Types.SwarmState): ColorIntention {
-  switch (state) {
-    case Types.SwarmState.Healthy:
-      return "Good";
-    case Types.SwarmState.Unhealthy:
-      return "Critical";
-    case Types.SwarmState.Down:
-      return "Neutral";
-    case Types.SwarmState.Unknown:
-      return "Unknown";
-    case undefined:
-      return "None";
-  }
-}
-
-export function swarmNodeStateIntention(
-  state?: Types.NodeState,
-): ColorIntention {
-  switch (state) {
-    case Types.NodeState.READY:
-      return "Good";
-    case Types.NodeState.DOWN:
-      return "Critical";
-    case Types.NodeState.DISCONNECTED:
-      return "Critical";
-    case Types.NodeState.UNKNOWN:
-      return "Neutral";
-    case undefined:
-      return "None";
-  }
-}
-
-export function swarmNodeAvailabilityIntention(
-  state?: Types.NodeSpecAvailabilityEnum,
-): ColorIntention {
-  switch (state) {
-    case Types.NodeSpecAvailabilityEnum.ACTIVE:
-      return "Good";
-    case Types.NodeSpecAvailabilityEnum.DRAIN:
-      return "Warning";
-    case Types.NodeSpecAvailabilityEnum.PAUSE:
-      return "Critical";
-    case Types.NodeSpecAvailabilityEnum.EMPTY:
-      return "Neutral";
-    case undefined:
-      return "None";
-  }
-}
-
-export function swarmNodeRoleIntention(
-  state?: Types.NodeSpecRoleEnum,
-): ColorIntention {
-  switch (state) {
-    case Types.NodeSpecRoleEnum.MANAGER:
-      return "Good";
-    case Types.NodeSpecRoleEnum.WORKER:
-      return "Neutral";
-    case Types.NodeSpecRoleEnum.EMPTY:
-      return "None";
-    case undefined:
-      return "None";
-  }
-}
-
-export function swarmTaskStateIntention(
-  state?: Types.TaskState,
-  desired?: Types.TaskState,
-): ColorIntention {
-  // Case when its desired running
-  if (desired === Types.TaskState.RUNNING) {
-    if (state === Types.TaskState.RUNNING) {
-      return "Good";
-    } else {
-      return "Critical";
-    }
-  }
-
-  // Case when its desired shutdown
-  if (desired === Types.TaskState.SHUTDOWN) {
-    // If you want it shutdown, then running is critical.
-    if (state === Types.TaskState.RUNNING) {
-      return "Critical";
-    } else {
-      // Otherwise, it is "Down", give neutral color
-      return "Neutral";
-    }
-  }
-
-  // Others
-  if (state === desired) {
-    return "Good";
-  } else {
-    return "Critical";
-  }
-}
-
 export function serverStateIntention(
   state: Types.ServerState | undefined,
   versionMismatch: boolean,
@@ -124,40 +28,19 @@ export function serverStateIntention(
 
 export function stackStateIntention(
   state: Types.StackState | undefined,
-  updateAvailable: boolean | undefined,
-) {
+): ColorIntention {
   switch (state) {
     case undefined:
       return "None";
     case Types.StackState.Deploying:
       return "Warning";
     case Types.StackState.Running:
-      return updateAvailable ? "Warning" : "Good";
+      return "Good";
     case Types.StackState.Restarting:
       return "Critical";
     case Types.StackState.Down:
       return "Neutral";
     case Types.StackState.Unknown:
-      return "Unknown";
-    default:
-      return "Critical";
-  }
-}
-
-export function deploymentStateIntention(
-  state: Types.DeploymentState | undefined,
-  updateAvailable: boolean | undefined,
-): ColorIntention {
-  switch (state) {
-    case undefined:
-      return "None";
-    case Types.DeploymentState.Deploying:
-      return "Warning";
-    case Types.DeploymentState.Running:
-      return updateAvailable ? "Warning" : "Good";
-    case Types.DeploymentState.NotDeployed:
-      return "Neutral";
-    case Types.DeploymentState.Unknown:
       return "Unknown";
     default:
       return "Critical";
@@ -181,23 +64,6 @@ export function containerStateIntention(
   }
 }
 
-export function buildStateIntention(status?: Types.BuildState) {
-  switch (status) {
-    case undefined:
-      return "None";
-    case Types.BuildState.Unknown:
-      return "Unknown";
-    case Types.BuildState.Ok:
-      return "Good";
-    case Types.BuildState.Building:
-      return "Warning";
-    case Types.BuildState.Failed:
-      return "Critical";
-    default:
-      return "None";
-  }
-}
-
 export function repoStateIntention(state?: Types.RepoState) {
   switch (state) {
     case undefined:
@@ -209,8 +75,6 @@ export function repoStateIntention(state?: Types.RepoState) {
     case Types.RepoState.Cloning:
       return "Warning";
     case Types.RepoState.Pulling:
-      return "Warning";
-    case Types.RepoState.Building:
       return "Warning";
     case Types.RepoState.Failed:
       return "Critical";

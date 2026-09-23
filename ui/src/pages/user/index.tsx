@@ -101,29 +101,18 @@ export default function User() {
                     {user?.admin ? "Take Admin" : "Make Admin"}
                   </ConfirmButton>
 
-                  {!user?.admin &&
-                    (["Server", "Build"] as Array<"Server" | "Build">).map(
-                      (item) => {
-                        const key =
-                          `create_${item.toLowerCase()}_permissions` as
-                            | "create_server_permissions"
-                            | "create_build_permissions";
-                        const reqKey = `create_${item.toLowerCase()}s`;
-                        return (
-                          <LabelledSwitch
-                            key={item}
-                            label={`Create ${item} Permission`}
-                            checked={user?.[key]}
-                            onCheckedChange={(checked) =>
-                              updateBase({
-                                user_id: userId,
-                                [reqKey]: checked,
-                              })
-                            }
-                          />
-                        );
-                      },
-                    )}
+                  {!user?.admin && (
+                    <LabelledSwitch
+                      label="Create Server Permission"
+                      checked={user?.create_server_permissions}
+                      onCheckedChange={(checked) =>
+                        updateBase({
+                          user_id: userId,
+                          create_servers: checked,
+                        })
+                      }
+                    />
+                  )}
                 </Group>
               </Section>
             )}

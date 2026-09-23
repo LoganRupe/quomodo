@@ -14,7 +14,6 @@ import { MonacoEditor } from "mogh_ui";
 import { Config, ConfigItem, ConfigSwitch } from "mogh_ui";
 import ActionLastRun from "./last-run";
 import TimezoneSelector from "@/components/timezone-selector";
-import SecretsSearch from "@/components/config/secrets-search";
 import WebhookBuilder from "@/components/webhook/builder";
 import { LabelledSwitch } from "mogh_ui";
 import CopyWebhookUrl from "@/components/webhook/copy-url";
@@ -61,8 +60,7 @@ export default function ActionConfig({ id }: { id: string }) {
               file_contents(value, set) {
                 return (
                   <Stack>
-                    <Group justify="space-between">
-                      <SecretsSearch />
+                    <Group justify="flex-end">
                       <Group visibleFrom="lg">
                         <Text c="dimmed">Docs</Text>
                         {["read", "execute", "write"].map((api) => (
@@ -101,7 +99,6 @@ export default function ActionConfig({ id }: { id: string }) {
                 return (
                   <Stack>
                     <Group>
-                      <SecretsSearch />
                       <Select
                         placeholder="Select format"
                         value={format}

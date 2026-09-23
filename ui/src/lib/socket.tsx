@@ -152,16 +152,10 @@ function onUpdate(
   // Invalidate these every time
   invalidate(["ListUpdates"]);
   invalidate(["GetUpdate", { id: update.id }]);
-  if (update.target.type === "Swarm") {
-    invalidate(["GetSwarmActionState", { swarm: update.target.id }]);
-  } else if (update.target.type === "Server") {
+  if (update.target.type === "Server") {
     invalidate(["GetServerActionState", { server: update.target.id }]);
   } else if (update.target.type === "Stack") {
     invalidate(["GetStackActionState", { stack: update.target.id }]);
-  } else if (update.target.type === "Deployment") {
-    invalidate(["GetDeploymentActionState", { deployment: update.target.id }]);
-  } else if (update.target.type === "Build") {
-    invalidate(["GetBuildActionState", { build: update.target.id }]);
   } else if (update.target.type === "Repo") {
     invalidate(["GetRepoActionState", { repo: update.target.id }]);
   } else if (update.target.type === "Procedure") {
@@ -173,22 +167,16 @@ function onUpdate(
   }
 
   // Invalidate lists for execution updates - this updates status
-  if (update.operation === Types.Operation.RunBuild) {
-    invalidate(["ListBuilds"]);
-  } else if (
-    [
-      Types.Operation.CloneRepo,
-      Types.Operation.PullRepo,
-      Types.Operation.BuildRepo,
-    ].includes(update.operation)
+  if (
+    [Types.Operation.CloneRepo, Types.Operation.PullRepo].includes(
+      update.operation,
+    )
   ) {
     invalidate(["ListRepos"]);
   } else if (update.operation === Types.Operation.RunProcedure) {
     invalidate(["ListProcedures"]);
   } else if (update.operation === Types.Operation.RunAction) {
     invalidate(["ListActions"]);
-  } else if (update.operation === Types.Operation.Deploy) {
-    invalidate(["ListDeployments"]);
   } else if (update.operation === Types.Operation.DeployStack) {
     invalidate(["ListStacks"]);
   }
@@ -197,40 +185,12 @@ function onUpdate(
   if (update.status === Types.UpdateStatus.Complete) {
     invalidate(["ListAlerts"]);
 
-    // Invalidate docker infos
-    if (["Server", "Deployment", "Stack"].includes(update.target.type)) {
+    // Invalidate container infos
+    if (["Server", "Stack"].includes(update.target.type)) {
       invalidate(
         ["ListContainers"],
         ["ListAllContainers"],
-        ["InspectContainer"],
-        ["ListNetworks"],
-        ["InspectNetwork"],
-        ["ListImages"],
-        ["InspectImage"],
-        ["ListVolumes"],
-        ["InspectVolume"],
         ["GetResourceMatchingContainer"],
-      );
-    }
-
-    if (update.target.type === "Swarm") {
-      invalidate(
-        ["ListSwarms"],
-        ["ListFullSwarms"],
-        ["GetSwarmsSummary"],
-        ["GetSwarm"],
-        ["ListSwarmNodes"],
-        ["InspectSwarmNode"],
-        ["ListSwarmStacks"],
-        ["InspectSwarmStack"],
-        ["ListSwarmServices"],
-        ["InspectSwarmService"],
-        ["ListSwarmTasks"],
-        ["InspectSwarmTask"],
-        ["ListSwarmConfigs"],
-        ["InspectSwarmConfig"],
-        ["ListSwarmSecrets"],
-        ["InspectSwarmSecret"],
       );
     }
 
@@ -250,43 +210,12 @@ function onUpdate(
         ["ListStacks"],
         ["ListFullStacks"],
         ["GetStacksSummary"],
-        ["ListCommonStackExtraArgs"],
-        ["ListComposeProjects"],
         ["ListContainers"],
-        ["ListNetworks"],
-        ["ListImages"],
         ["GetStackLog", { stack: update.target.id }],
         ["SearchStackLog", { stack: update.target.id }],
         ["GetStack"],
         ["ListStackServices"],
         ["GetResourceMatchingContainer"],
-      );
-    }
-
-    if (update.target.type === "Deployment") {
-      invalidate(
-        ["ListDeployments"],
-        ["ListFullDeployments"],
-        ["GetDeploymentsSummary"],
-        ["ListContainers"],
-        ["ListNetworks"],
-        ["ListImages"],
-        ["GetDeployment"],
-        ["GetDeploymentLog", { deployment: update.target.id }],
-        ["SearchDeploymentLog", { deployment: update.target.id }],
-        ["GetDeploymentContainer"],
-        ["GetResourceMatchingContainer"],
-      );
-    }
-
-    if (update.target.type === "Build") {
-      invalidate(
-        ["ListBuilds"],
-        ["ListFullBuilds"],
-        ["GetBuildsSummary"],
-        ["GetBuildMonthlyStats"],
-        ["GetBuild"],
-        ["ListBuildVersions"],
       );
     }
 
@@ -325,24 +254,6 @@ function onUpdate(
         ["ListFullResourceSyncs"],
         ["GetResourceSyncsSummary"],
         ["GetResourceSync"],
-      );
-    }
-
-    if (update.target.type === "Builder") {
-      invalidate(
-        ["ListBuilders"],
-        ["ListFullBuilders"],
-        ["GetBuildersSummary"],
-        ["GetBuilder"],
-      );
-    }
-
-    if (update.target.type === "Alerter") {
-      invalidate(
-        ["ListAlerters"],
-        ["ListFullAlerters"],
-        ["GetAlertersSummary"],
-        ["GetAlerter"],
       );
     }
 

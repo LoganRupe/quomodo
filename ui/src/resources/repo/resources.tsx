@@ -22,13 +22,6 @@ export default function RepoLinkedResourcesSection({
           specific={{ linked_repos: [repoId] }}
         />
       </Section>
-      <Section title="Builds" icon={<ICONS.Build size="1.3rem" />}>
-        <ResourceTable
-          type="Build"
-          newProps={{ repoId }}
-          specific={{ linked_repos: [repoId] }}
-        />
-      </Section>
       <Section title="Syncs" icon={<ICONS.ResourceSync size="1.3rem" />}>
         <ResourceTable
           type="ResourceSync"

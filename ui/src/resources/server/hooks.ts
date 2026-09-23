@@ -23,7 +23,7 @@ export function useServerAddress(id: string | undefined): ServerAddress | null {
 
   if (!server) return null;
 
-  const base = server.info.external_address || server.info.address;
+  const base = server.info.external_address || server.info.public_ip;
 
   if (!base) return null;
 

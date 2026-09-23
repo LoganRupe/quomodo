@@ -134,22 +134,6 @@ export default function Profile() {
                 >
               )?.data?.user_id
             }
-            githubLinkedId={
-              (
-                user.linked_logins?.Github as Extract<
-                  Types.UserConfig,
-                  { type: "Github" }
-                >
-              )?.data?.github_id
-            }
-            googleLinkedId={
-              (
-                user.linked_logins?.Google as Extract<
-                  Types.UserConfig,
-                  { type: "Google" }
-                >
-              )?.data?.google_id
-            }
             extraProviderFilter={(provider) => user.config.type !== provider}
           />
 

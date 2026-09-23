@@ -4,7 +4,7 @@ import { Select, SelectProps } from "@mantine/core";
 
 export interface AccountSelectorProps extends Omit<SelectProps, "onSelect"> {
   disabled: boolean;
-  type: "Server" | "Builder" | "None";
+  type: "Server" | "None";
   id?: string;
   accountType: "git" | "docker";
   provider: string;

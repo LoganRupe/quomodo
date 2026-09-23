@@ -27,20 +27,9 @@ const User = lazy(() => import("@/pages/user"));
 const UserGroup = lazy(() => import("@/pages/user-group"));
 const Schedules = lazy(() => import("@/pages/schedules"));
 const Stats = lazy(() => import("@/pages/stats"));
-const Terminals = lazy(() => import("@/pages/terminals"));
-const Terminal = lazy(() => import("@/pages/terminal"));
 const Containers = lazy(() => import("@/pages/containers"));
 const Container = lazy(() => import("@/pages/docker/container"));
-const Image = lazy(() => import("@/pages/docker/image"));
-const Network = lazy(() => import("@/pages/docker/network"));
-const Volume = lazy(() => import("@/pages/docker/volume"));
 const StackService = lazy(() => import("@/pages/stack-service"));
-const SwarmNode = lazy(() => import("@/pages/swarm/node"));
-const SwarmStack = lazy(() => import("@/pages/swarm/stack"));
-const SwarmService = lazy(() => import("@/pages/swarm/service"));
-const SwarmTask = lazy(() => import("@/pages/swarm/task"));
-const SwarmConfig = lazy(() => import("@/pages/swarm/config"));
-const SwarmSecret = lazy(() => import("@/pages/swarm/secret"));
 
 export const Router = () => {
   // Handle exchange token loop to avoid showing login flash
@@ -62,7 +51,6 @@ export const Router = () => {
           <Route path="/" element={<App />}>
             <Route path="" element={<Dashboard />} />
             <Route path="containers" element={<Containers />} />
-            <Route path="terminals" element={<Terminals />} />
             <Route path="stats" element={<Stats />} />
             <Route path="schedules" element={<Schedules />} />
             <Route path="profile" element={<Profile />} />
@@ -84,39 +72,8 @@ export const Router = () => {
               {/* Stack Service */}
               <Route path=":id/service/:service" element={<StackService />} />
 
-              {/* Docker Resource */}
+              {/* Container */}
               <Route path=":id/container/:container" element={<Container />} />
-              <Route path=":id/network/:network" element={<Network />} />
-              <Route path=":id/image/:image" element={<Image />} />
-              <Route path=":id/volume/:volume" element={<Volume />} />
-
-              {/* Swarm Resource */}
-              <Route path=":id/swarm-node/:node" element={<SwarmNode />} />
-              <Route path=":id/swarm-stack/:stack" element={<SwarmStack />} />
-              <Route
-                path=":id/swarm-service/:service"
-                element={<SwarmService />}
-              />
-              <Route path=":id/swarm-task/:task" element={<SwarmTask />} />
-              <Route
-                path=":id/swarm-config/:config"
-                element={<SwarmConfig />}
-              />
-              <Route
-                path=":id/swarm-secret/:secret"
-                element={<SwarmSecret />}
-              />
-
-              {/* Terminal Pages */}
-              <Route path=":id/terminal/:terminal" element={<Terminal />} />
-              <Route
-                path=":id/service/:service/terminal/:terminal"
-                element={<Terminal />}
-              />
-              <Route
-                path=":id/container/:container/terminal/:terminal"
-                element={<Terminal />}
-              />
             </Route>
           </Route>
         </Route>

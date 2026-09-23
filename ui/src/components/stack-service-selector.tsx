@@ -14,9 +14,7 @@ import { ChevronsUpDown } from "lucide-react";
 import { useEffect } from "react";
 import { DOCKER_LINK_ICONS } from "./docker/link";
 import { ICONS } from "@/lib/icons";
-import { containerStateIntention, swarmStateIntention } from "@/lib/color";
-import { SWARM_LINK_ICONS } from "./swarm/link";
-import { useStack } from "@/resources/stack";
+import { stackServiceStateIntention } from "./stack-service-link";
 import { hexColorByIntention, useSearchCombobox } from "mogh_ui";
 
 export interface StackServiceSelectorProps extends ComboboxProps {
@@ -43,7 +41,6 @@ export default function StackServiceSelector({
   clearable,
   ...comboboxProps
 }: StackServiceSelectorProps) {
-  const stack = useStack(stackId);
   const services = useRead("ListStackServices", {
     stack: stackId,
   }).data?.filter((service) => !state || service?.container?.state === state);
@@ -55,16 +52,7 @@ export default function StackServiceSelector({
 
   const selectedService = services?.find((s) => s.service === selected);
   const name = selectedService?.service;
-  const container = selectedService?.container;
-  const swarmService = selectedService?.swarm_service;
-
-  const intention = !selectedService
-    ? "None"
-    : swarmService?.State
-      ? swarmStateIntention(swarmService.State)
-      : containerStateIntention(
-          container?.state ?? Types.ContainerStateStatusEnum.Empty,
-        );
+  const intention = stackServiceStateIntention(selectedService?.state);
 
   const { search, setSearch, combobox } = useSearchCombobox();
 
@@ -151,12 +139,6 @@ export default function StackServiceSelector({
                   <DOCKER_LINK_ICONS.Container
                     serverId={service.container.server_id!}
                     name={service.container.name}
-                  />
-                )}
-                {service.swarm_service && (
-                  <SWARM_LINK_ICONS.Service
-                    swarmId={stack?.info.swarm_id}
-                    resourceId={service.swarm_service.ID}
                   />
                 )}
                 <Text>{service.service}</Text>

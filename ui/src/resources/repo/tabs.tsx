@@ -23,12 +23,6 @@ export default function RepoTabs({ id }: { id: string }) {
       limit: 1,
     }).data ?? [];
   const noStacks = stacks.length === 0;
-  const builds =
-    useRead("ListBuilds", {
-      query: { specific: { linked_repos: [id] } },
-      limit: 1,
-    }).data ?? [];
-  const noBuilds = builds.length === 0;
   const syncs =
     useRead("ListResourceSyncs", {
       query: { specific: { linked_repos: [id] } },
@@ -36,7 +30,7 @@ export default function RepoTabs({ id }: { id: string }) {
     }).data ?? [];
   const noSyncs = syncs.length === 0;
 
-  const noResources = noStacks && noBuilds && noSyncs;
+  const noResources = noStacks && noSyncs;
 
   const tabs = useMemo<TabNoContent[]>(
     () => [

@@ -1,20 +1,18 @@
 import { useLocalStorage } from "@mantine/hooks";
 import { useStack } from ".";
-import { usePermissions, useRead } from "@/lib/hooks";
+import { usePermissions } from "@/lib/hooks";
 import { Types } from "komodo_client";
 import { useMemo } from "react";
 import { MobileFriendlyTabsSelector, TabNoContent } from "mogh_ui";
 import { Tabs } from "@mantine/core";
 import { ICONS } from "@/lib/icons";
 import { stackStateIntention } from "@/lib/color";
-import { useServer } from "@/resources/server";
 import StackConfig from "./config";
 import StackInfo from "./info";
 import StackServices from "./services";
 import StackLog from "./log";
-import TerminalSection from "@/components/terminal/section";
 
-type StackTabsView = "Config" | "Info" | "Services" | "Log" | "Terminals";
+type StackTabsView = "Config" | "Info" | "Services" | "Log";
 
 export default function StackTabs({ id }: { id: string }) {
   const [_view, setView] = useLocalStorage<StackTabsView>({
@@ -22,39 +20,21 @@ export default function StackTabs({ id }: { id: string }) {
     defaultValue: "Config",
   });
   const info = useStack(id)?.info;
-  const { specificLogs, specificTerminal } = usePermissions({
+  const { specificLogs } = usePermissions({
     type: "Stack",
     id,
   });
 
-  const services = useRead("ListStackServices", { stack: id }).data;
-
-  const containerTerminalsDisabled =
-    useServer(info?.server_id)?.info.container_terminals_disabled ?? false;
-
   const state = info?.state;
-  const hideInfo = !info?.files_on_host && !info?.repo && !info?.linked_repo;
+  const hideInfo = !info?.repo && !info?.linked_repo;
   const hideLogs =
     state === undefined ||
     state === Types.StackState.Unknown ||
     state === Types.StackState.Down ||
     !specificLogs;
-  const terminalDisabled =
-    !specificTerminal ||
-    containerTerminalsDisabled ||
-    // Not attached to swarm
-    !!info?.swarm_id ||
-    // All services are not running
-    services?.every(
-      (service) =>
-        !service.container ||
-        service.container.state !== Types.ContainerStateStatusEnum.Running,
-    );
 
   const view =
-    (_view === "Info" && hideInfo) ||
-    (_view === "Terminals" && terminalDisabled) ||
-    (_view === "Log" && hideLogs)
+    (_view === "Info" && hideInfo) || (_view === "Log" && hideLogs)
       ? "Config"
       : _view;
 
@@ -78,20 +58,8 @@ export default function StackTabs({ id }: { id: string }) {
         disabled: hideLogs,
         icon: ICONS.Log,
       },
-      {
-        value: "Terminals",
-        disabled: terminalDisabled,
-        hidden: !specificTerminal,
-        icon: ICONS.Terminal,
-      },
     ],
-    [
-      hideInfo,
-      specificLogs,
-      hideLogs,
-      specificTerminal,
-      terminalDisabled,
-    ],
+    [hideInfo, hideLogs],
   );
 
   const Selector = (
@@ -100,16 +68,6 @@ export default function StackTabs({ id }: { id: string }) {
       value={view}
       onValueChange={setView as any}
     />
-  );
-
-  const target: Types.TerminalTarget = useMemo(
-    () => ({
-      type: "Stack",
-      params: {
-        stack: id,
-      },
-    }),
-    [id],
   );
 
   let View = Selector;
@@ -126,26 +84,10 @@ export default function StackTabs({ id }: { id: string }) {
     case "Log":
       View = <StackLog id={id} titleOther={Selector} />;
       break;
-    case "Terminals":
-      View = (
-        <TerminalSection
-          target={target}
-          services={services?.map((s) => s.service)}
-          titleOther={Selector}
-        />
-      );
-      break;
   }
 
   return (
-    <Tabs
-      color={stackStateIntention(
-        state,
-        info?.services &&
-          !info.services.every((service) => !service.update_available),
-      )}
-      value={view}
-    >
+    <Tabs color={stackStateIntention(state)} value={view}>
       {View}
     </Tabs>
   );

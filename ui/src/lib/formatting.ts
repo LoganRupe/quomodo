@@ -97,7 +97,7 @@ export function fmtUtcOffset(tz: Types.IanaTimezone): string {
 }
 
 export function fmtPortMount(port: Types.Port) {
-  return `${port.IP ? port.IP + ":" : ""}${port.PublicPort ?? "NONE"}:${port.PrivatePort ?? "NONE"}${port.Type ? "/" + port.Type : ""}`;
+  return `${port.ip ? port.ip + ":" : ""}${port.public_port ?? "NONE"}:${port.private_port ?? "NONE"}${port.typ ? "/" + port.typ : ""}`;
 }
 
 export function fmtMaintenanceWindowTime(window: Types.MaintenanceWindow) {

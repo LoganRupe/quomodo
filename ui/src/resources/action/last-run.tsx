@@ -6,7 +6,7 @@ import { Box, Code, Group, Stack, Text } from "@mantine/core";
 export default function ActionLastRun({ id }: { id: string }) {
   const update = useRead("ListUpdates", {
     query: {
-      ...getUpdateQuery({ type: "Action", id }, undefined),
+      ...getUpdateQuery({ type: "Action", id }),
       operation: "RunAction",
     },
   }).data?.updates[0];

@@ -1,74 +1,40 @@
-import { useRead } from "@/lib/hooks";
 import { useState } from "react";
 import NewResource from "./new";
 import { Types } from "komodo_client";
 import ResourceSelector from "./selector";
-import { Divider } from "@mantine/core";
 
-/** Used by Stacks and Deployments */
+/** Used by Stacks */
 export default function NewResourceWithDeployTarget({
   type,
   serverId: _serverId,
-  swarmId: _swarmId,
-  buildId,
   repoId,
 }: {
-  type: "Stack" | "Deployment";
+  type: "Stack";
   serverId?: string;
-  swarmId?: string;
-  /** Deployment only */
-  buildId?: string;
-  /** Stack only */
   repoId?: string;
 }) {
   const [serverId, setServerId] = useState("");
-  const [swarmId, setSwarmId] = useState("");
-  const showSwarms = !!useRead("ListSwarms", {}).data?.length;
   return (
-    <NewResource<Types.StackConfig | Types.DeploymentConfig>
+    <NewResource<Types.StackConfig>
       type={type}
       config={() => ({
         server_id: _serverId ?? serverId,
-        swarm_id: _swarmId ?? swarmId,
-        image: buildId
-          ? { type: "Build", params: { build_id: buildId } }
-          : undefined,
         linked_repo: repoId,
       })}
       extraInputs={
-        !(_serverId ?? _swarmId) ? (
-          <>
-            {!swarmId && (
-              <ResourceSelector
-                type="Server"
-                selected={serverId}
-                onSelect={setServerId}
-                targetProps={{ w: "100%", maw: "100%" }}
-                width="target"
-                position="bottom"
-                clearable
-              />
-            )}
-            {showSwarms && !serverId && (
-              <>
-                {!swarmId && <Divider label="OR" my="-10" />}
-                <ResourceSelector
-                  type="Swarm"
-                  selected={swarmId}
-                  onSelect={setSwarmId}
-                  targetProps={{ w: "100%", maw: "100%" }}
-                  width="target"
-                  position="bottom"
-                  clearable
-                />
-              </>
-            )}
-          </>
+        !_serverId ? (
+          <ResourceSelector
+            type="Server"
+            selected={serverId}
+            onSelect={setServerId}
+            targetProps={{ w: "100%", maw: "100%" }}
+            width="target"
+            position="bottom"
+            clearable
+          />
         ) : undefined
       }
-      showTemplateSelector={
-        !!_serverId || !!_swarmId || (!serverId && !swarmId)
-      }
+      showTemplateSelector={!!_serverId || !serverId}
     />
   );
 }

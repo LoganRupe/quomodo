@@ -13,7 +13,6 @@ import ResourceSelector from "@/resources/selector";
 import { Group, Stack, Text } from "@mantine/core";
 import { ProviderSelectorConfig } from "@/components/config/provider-selector";
 import { AccountSelectorConfig } from "@/components/config/account-selector";
-import SecretsSearch from "@/components/config/secrets-search";
 import { MonacoEditor } from "mogh_ui";
 import SystemCommand from "@/components/config/system-command";
 import { ReactNode } from "react";
@@ -96,42 +95,6 @@ export default function RepoConfig({
             },
           },
           {
-            label: "Builder",
-            labelHidden: true,
-            fields: {
-              builder_id: (builder_id, set) => {
-                return (
-                  <ConfigItem
-                    label={
-                      builder_id ? (
-                        <Group fz="h3">
-                          Builder:
-                          <ResourceLink
-                            type="Builder"
-                            id={builder_id}
-                            fz="h3"
-                            iconSize="1.2rem"
-                          />
-                        </Group>
-                      ) : (
-                        "Select Builder"
-                      )
-                    }
-                    description="Select the Builder to build with. Optional."
-                  >
-                    <ResourceSelector
-                      type="Builder"
-                      selected={builder_id}
-                      onSelect={(builder_id) => set({ builder_id })}
-                      disabled={disabled}
-                      clearable
-                    />
-                  </ConfigItem>
-                );
-              },
-            },
-          },
-          {
             label: "Source",
             fields: {
               git_provider: (provider, set) => {
@@ -149,9 +112,9 @@ export default function RepoConfig({
               },
               git_account: (account, set) => (
                 <AccountSelectorConfig
-                  id={update.builder_id ?? config.builder_id ?? undefined}
+                  id={update.server_id ?? config.server_id ?? undefined}
                   accountType="git"
-                  type="Builder"
+                  type="Server"
                   provider={update.git_provider ?? config.git_provider}
                   selected={account}
                   onSelect={(git_account) => set({ git_account })}
@@ -204,17 +167,12 @@ export default function RepoConfig({
               "Write these variables to a .env-formatted file at the specified path before on_clone / on_pull are run.",
             fields: {
               environment: (env, set) => (
-                <Stack gap="xs">
-                  <SecretsSearch
-                    server={update.server_id ?? config.server_id}
-                  />
-                  <MonacoEditor
-                    value={env || "  # VARIABLE = value\n"}
-                    onValueChange={(environment) => set({ environment })}
-                    language="key_value"
-                    readOnly={disabled}
-                  />
-                </Stack>
+                <MonacoEditor
+                  value={env || "  # VARIABLE = value\n"}
+                  onValueChange={(environment) => set({ environment })}
+                  language="key_value"
+                  readOnly={disabled}
+                />
               ),
               env_file_path: {
                 description:
@@ -283,13 +241,6 @@ export default function RepoConfig({
                   label="Webhook URL - Clone"
                   integration={webhookIntegration}
                   path={`/repo/${idOrName === "Id" ? id : encodeURIComponent(name ?? "...")}/clone`}
-                />
-              ),
-              ["Build" as any]: () => (
-                <CopyWebhookUrl
-                  label="Webhook URL - Build"
-                  integration={webhookIntegration}
-                  path={`/repo/${idOrName === "Id" ? id : encodeURIComponent(name ?? "...")}/build`}
                 />
               ),
               webhook_enabled: true,

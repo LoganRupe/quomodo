@@ -4,14 +4,9 @@ import { PieChartItem } from "@/components/dashboard-summary";
 import React from "react";
 import { ServerComponents } from "./server";
 import { StackComponents } from "./stack";
-import { SwarmComponents } from "./swarm";
-import { DeploymentComponents } from "./deployment";
-import { BuildComponents } from "./build";
 import { RepoComponents } from "./repo";
 import { ProcedureComponents } from "./procedure";
 import { ResourceSyncComponents } from "./sync";
-import { BuilderComponents } from "./builder";
-import { AlerterComponents } from "./alerter";
 import { BoxProps, TableProps } from "@mantine/core";
 
 export type UsableResourceTarget = Exclude<
@@ -22,19 +17,14 @@ export type UsableResource = Exclude<Types.ResourceTarget["type"], "System">;
 
 export const RESOURCE_TARGETS = [
   "Server",
-  "Swarm",
   "Stack",
-  "Deployment",
-  "Build",
   "Repo",
   "Procedure",
   "Action",
-  "Builder",
-  "Alerter",
   "ResourceSync",
 ] as const;
 
-export const SETTINGS_RESOURCES: UsableResource[] = ["Builder", "Alerter"];
+export const SETTINGS_RESOURCES: UsableResource[] = [];
 
 export const SIDEBAR_RESOURCES: UsableResource[] = RESOURCE_TARGETS.filter(
   (target) => !SETTINGS_RESOURCES.includes(target),
@@ -44,16 +34,11 @@ export const ResourceComponents: {
   [key in UsableResource]: RequiredResourceComponents;
 } = {
   Server: ServerComponents,
-  Swarm: SwarmComponents,
   Stack: StackComponents,
-  Deployment: DeploymentComponents,
-  Build: BuildComponents,
   Repo: RepoComponents,
   Procedure: ProcedureComponents,
   Action: ActionComponents,
   ResourceSync: ResourceSyncComponents,
-  Builder: BuilderComponents,
-  Alerter: AlerterComponents,
 };
 
 type IdComponent = React.FC<{ id: string }>;

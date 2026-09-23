@@ -19,8 +19,6 @@ import { ReactNode, useState } from "react";
 
 export type LogTarget =
   | { type: "Container"; serverId: string; container: string }
-  | { type: "SwarmService"; swarmId: string; service: string }
-  | { type: "Deployment"; deploymentId: string }
   | { type: "Stack"; stackId: string; services: string[] };
 
 export type LogStream = "stdout" | "stderr";
@@ -215,15 +213,6 @@ function targetParams(target: LogTarget) {
       return {
         server: target.serverId,
         container: target.container,
-      };
-    case "SwarmService":
-      return {
-        swarm: target.swarmId,
-        service: target.service,
-      };
-    case "Deployment":
-      return {
-        deployment: target.deploymentId,
       };
     case "Stack":
       return {

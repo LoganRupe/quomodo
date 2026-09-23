@@ -1,12 +1,10 @@
 import { useResourceSelectionState } from "@/lib/hooks";
 import { DataTable, SortableHeader } from "mogh_ui";
-import { Group, BoxProps } from "@mantine/core";
+import { BoxProps } from "@mantine/core";
 import { Types } from "komodo_client";
 import ResourceLink from "@/resources/link";
-import { StackComponents } from ".";
+import { StackComponents, StackSource } from ".";
 import TableTags from "@/components/tags/table";
-import FileSource from "@/components/file-source";
-import StackUpdateAvailable from "./update-available";
 
 const SORT_KEYS = ["Name", "Source", "Host", "State"];
 
@@ -51,14 +49,7 @@ export default function StackTable({
           ),
           id: "Name",
           accessorKey: "name",
-          cell: ({ row }) => {
-            return (
-              <Group wrap="nowrap">
-                <ResourceLink type="Stack" id={row.original.id} />
-                <StackUpdateAvailable id={row.original.id} small />
-              </Group>
-            );
-          },
+          cell: ({ row }) => <ResourceLink type="Stack" id={row.original.id} />,
         },
         {
           header: ({ column }) => (
@@ -66,7 +57,7 @@ export default function StackTable({
           ),
           id: "Source",
           accessorKey: "info.repo",
-          cell: ({ row }) => <FileSource info={row.original.info} />,
+          cell: ({ row }) => <StackSource info={row.original.info} />,
         },
         {
           header: ({ column }) => (
@@ -75,12 +66,8 @@ export default function StackTable({
           id: "Host",
           accessorKey: "info.server_id",
           sortFn: (a, b) => {
-            const name_a = a.original.info.swarm_id
-              ? a.original.info.swarm_name
-              : a.original.info.server_name;
-            const name_b = b.original.info.swarm_id
-              ? b.original.info.swarm_name
-              : b.original.info.server_name;
+            const name_a = a.original.info.server_name;
+            const name_b = b.original.info.server_name;
 
             if (!name_a && !name_b) return 0;
             if (!name_a) return 1;
@@ -90,12 +77,9 @@ export default function StackTable({
             else if (name_a < name_b) return -1;
             else return 0;
           },
-          cell: ({ row }) =>
-            row.original.info.swarm_id ? (
-              <ResourceLink type="Swarm" id={row.original.info.swarm_id} />
-            ) : (
-              <ResourceLink type="Server" id={row.original.info.server_id} />
-            ),
+          cell: ({ row }) => (
+            <ResourceLink type="Server" id={row.original.info.server_id} />
+          ),
         },
         {
           id: "State",

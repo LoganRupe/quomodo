@@ -1,6 +1,6 @@
-# Komodo
+# komodo_client (Quomodo)
 
-_A system to build and deploy software across many servers_. [https://komo.do](https://komo.do)
+TypeScript client for the Quomodo API. Generated from the Rust types with typeshare; the package keeps the upstream name so the UI imports do not change.
 
 ```sh
 npm install komodo_client

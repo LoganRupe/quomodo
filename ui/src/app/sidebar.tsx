@@ -26,12 +26,6 @@ const Sidebar = ({ close }: { close: () => void }) => {
             {...linkProps}
           />
           <SidebarLink
-            label="Terminals"
-            icon={<ICONS.Terminal size="1rem" />}
-            to="/terminals"
-            {...linkProps}
-          />
-          <SidebarLink
             label="Stats"
             icon={<ICONS.Stats size="1rem" />}
             to="/stats"

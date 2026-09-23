@@ -1,11 +1,30 @@
-import { containerStateIntention, swarmStateIntention } from "@/lib/color";
 import { useRead } from "@/lib/hooks";
 import { ICONS } from "@/lib/icons";
-import { useStack } from "@/resources/stack";
 import { Group, Text } from "@mantine/core";
 import { Types } from "komodo_client";
 import { ColorIntention, hexColorByIntention } from "mogh_ui";
 import { Link } from "react-router-dom";
+
+export function stackServiceStateIntention(
+  state?: Types.StackServiceState,
+): ColorIntention {
+  switch (state) {
+    case undefined:
+      return "None";
+    case Types.StackServiceState.Healthy:
+    case Types.StackServiceState.Running:
+      return "Good";
+    case Types.StackServiceState.Paused:
+    case Types.StackServiceState.Created:
+      return "Warning";
+    case Types.StackServiceState.Down:
+      return "Neutral";
+    case Types.StackServiceState.Unknown:
+      return "Unknown";
+    default:
+      return "Critical";
+  }
+}
 
 export interface StackServiceLinkProps {
   id: string;
@@ -16,21 +35,13 @@ export default function StackServiceLink({
   id,
   service: _service,
 }: StackServiceLinkProps) {
-  const isUnknown = useStack(id)?.info.state === Types.StackState.Unknown;
   const services = useRead(
     "ListStackServices",
     { stack: id },
     { refetchInterval: 10_000 },
   ).data;
   const service = services?.find((s) => s.service === _service);
-  const intention: ColorIntention = service?.swarm_service?.State
-    ? swarmStateIntention(service?.swarm_service?.State)
-    : service?.container?.state
-      ? containerStateIntention(service?.container?.state)
-      : isUnknown
-        ? "Unknown"
-        : "Neutral";
-  const color = hexColorByIntention(intention);
+  const color = hexColorByIntention(stackServiceStateIntention(service?.state));
   return (
     <Group
       renderRoot={(props) => (

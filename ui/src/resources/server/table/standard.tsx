@@ -20,18 +20,16 @@ export default function StandardServerTable({
   onServerSort?: (sort: { sort_by?: string; sort_desc?: boolean }) => void;
 } & BoxProps) {
   const selectionState = useResourceSelectionState("Server");
-  const deployments = useRead("ListDeployments", { limit: 0 }).data;
   const stacks = useRead("ListStacks", { limit: 0 }).data;
   const repos = useRead("ListRepos", { limit: 0 }).data;
   const resourcesCount = useCallback(
     (id: string) => {
       return (
-        (deployments?.filter((d) => d.info.server_id === id).length || 0) +
         (stacks?.filter((d) => d.info.server_id === id).length || 0) +
         (repos?.filter((d) => d.info.server_id === id).length || 0)
       );
     },
-    [deployments, stacks, repos],
+    [stacks, repos],
   );
 
   return (

@@ -1,16 +1,11 @@
 import {
-  SettingsView,
   useAllResources,
   useRead,
   useSettingsView,
   useUser,
 } from "@/lib/hooks";
 import { ICONS } from "@/lib/icons";
-import {
-  terminalLink,
-  termMatchesTypeKeyword,
-  usableResourcePath,
-} from "@/lib/utils";
+import { termMatchesTypeKeyword, usableResourcePath } from "@/lib/utils";
 import { RESOURCE_TARGETS, ResourceComponents } from "@/resources";
 import {
   createSpotlight,
@@ -23,7 +18,7 @@ import { TemplateMarker } from "@/components/template-marker";
 import { DOCKER_LINK_ICONS } from "@/components/docker/link";
 import { Types } from "komodo_client";
 import { hexColorByIntention, useDebounce } from "mogh_ui";
-import { containerStateIntention, swarmStateIntention } from "@/lib/color";
+import { containerStateIntention } from "@/lib/color";
 import { keepPreviousData } from "@tanstack/react-query";
 
 const ITEM_LIMIT = 7;
@@ -91,23 +86,6 @@ export function useOmniSearch(opened: boolean) {
     placeholderData: keepPreviousData,
   }).data;
 
-  const terminalsQuery: Types.ListTerminals = useMemo(
-    () => ({
-      terms: debouncedTerms
-        // Allows search like 'term my name' to return terminals matching 'my name'
-        .filter((term) => !termMatchesTypeKeyword("terminals", term)),
-      limit: 10,
-      page: 0,
-    }),
-    [debouncedTerms],
-  );
-
-  const terminals = useRead("ListTerminals", terminalsQuery, {
-    refetchInterval: 15_000,
-    enabled: opened,
-    placeholderData: keepPreviousData,
-  }).data;
-
   const user = useUser().data;
   const resources = useAllResources(debouncedTerms, 10, 15_000, opened);
   const [_, setSettingsView] = useSettingsView();
@@ -131,14 +109,7 @@ export function useOmniSearch(opened: boolean) {
               id: type + "s",
               label: type + "s",
               leftSection: <Components.Icon size="1.3rem" />,
-              onClick: () => {
-                if (type === "Builder" || type === "Alerter") {
-                  setSettingsView((type + "s") as SettingsView);
-                  nav("/settings");
-                } else {
-                  nav(usableResourcePath(_type));
-                }
-              },
+              onClick: () => nav(usableResourcePath(_type)),
             };
           }),
 
@@ -147,12 +118,6 @@ export function useOmniSearch(opened: boolean) {
             label: "Containers",
             leftSection: <ICONS.Container size="1.3rem" />,
             onClick: () => nav("/containers"),
-          },
-          {
-            id: "Terminals",
-            label: "Terminals",
-            leftSection: <ICONS.Terminal size="1.3rem" />,
-            onClick: () => nav("/terminals"),
           },
           {
             id: "Stats",
@@ -216,8 +181,6 @@ export function useOmniSearch(opened: boolean) {
               })
               .map((resource) => {
                 const info = resource.info as {
-                  swarm_id?: string;
-                  swarm_name?: string;
                   server_id?: string;
                   server_name?: string;
                 };
@@ -232,11 +195,9 @@ export function useOmniSearch(opened: boolean) {
                   rightSection: resource.template && (
                     <TemplateMarker type={_type} />
                   ),
-                  description: info.swarm_id
-                    ? "Swarm: " + info.swarm_name
-                    : info.server_id
-                      ? "Server: " + info.server_name
-                      : undefined,
+                  description: info.server_id
+                    ? "Server: " + info.server_name
+                    : undefined,
                 };
               }) ?? [],
         };
@@ -246,10 +207,9 @@ export function useOmniSearch(opened: boolean) {
         group: "Services",
         actions:
           services?.map((service) => {
-            const intention = service?.swarm_service?.State
-              ? swarmStateIntention(service?.swarm_service?.State)
-              : containerStateIntention(service?.container?.state);
-            const color = hexColorByIntention(intention);
+            const color = hexColorByIntention(
+              containerStateIntention(service.container?.state),
+            );
             return {
               id: service.stack_id + " " + service.service,
               label: service.service,
@@ -281,27 +241,11 @@ export function useOmniSearch(opened: boolean) {
             ),
           })) ?? [],
       },
-
-      {
-        group: "Terminals",
-        actions:
-          terminals?.map((terminal) => ({
-            id: JSON.stringify(terminal.target) + " " + terminal.name,
-            label: terminal.name,
-            description: terminalTargetDescription(
-              terminal.target,
-              terminal.target_name,
-            ),
-            onClick: () => nav(terminalLink(terminal)),
-            leftSection: <ICONS.Terminal size="1.3rem" />,
-          })) ?? [],
-      },
     ];
   }, [
     resources,
     containers,
     services,
-    terminals,
     searchTerms,
     user,
     nav,
@@ -355,22 +299,4 @@ export function useOmniSearch(opened: boolean) {
     spotlight,
     spotlightStore,
   };
-}
-
-function terminalTargetDescription(
-  target: Types.TerminalTarget,
-  target_name: string | undefined,
-) {
-  switch (target.type) {
-    case "Server":
-      return "Server: " + target_name;
-    case "Container":
-      return (
-        "Server: " + target_name + ", Container: " + target.params.container
-      );
-    case "Stack":
-      return "Stack: " + target_name + ", Service: " + target.params.service;
-    case "Deployment":
-      return "Deployment: " + target_name;
-  }
 }

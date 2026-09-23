@@ -1,12 +1,7 @@
 import ContainerPorts from "@/components/docker/container-ports";
 import DockerResourceLink from "@/components/docker/link";
 import { containerStateIntention } from "@/lib/color";
-import {
-  useDebouncedTermSearch,
-  useDockerSelectionState,
-  useRead,
-  useTagsFilter,
-} from "@/lib/hooks";
+import { useDebouncedTermSearch, useRead, useTagsFilter } from "@/lib/hooks";
 import { keepPreviousData } from "@tanstack/react-query";
 import { Types } from "komodo_client";
 import { ICONS } from "@/lib/icons";
@@ -21,14 +16,11 @@ import { SearchInput } from "mogh_ui";
 import TagsFilter from "@/components/tags/filter";
 import ResourceMultiSelector from "@/resources/multi-selector";
 import ListPagination from "@/components/list-pagination";
-import DockerBatchExecutions from "@/components/docker/batch-executions";
 
 const CONTAINER_SORT_KEYS = Object.values(Types.ContainerSortBy);
 
 export default function Containers() {
   const [selectedServers, setSelectedServers] = useState<string[]>([]);
-
-  const selectionState = useDockerSelectionState("Container");
 
   const [page, setPage] = useState(0);
 
@@ -87,10 +79,6 @@ export default function Containers() {
                 }
               : {},
           );
-        }}
-        selectOptions={{
-          selectKey: ({ server_id, name }) => `${server_id} ${name}`,
-          state: selectionState,
         }}
         columns={[
           {
@@ -167,7 +155,7 @@ export default function Containers() {
               <SortableHeader column={column} title="Networks" />
             ),
             cell: ({ row }) =>
-              (row.original.networks?.length ?? 0) > 0 ? (
+              (row.original.networks?.length ?? 0) > 0 && (
                 <DividedChildren wrap="nowrap" gap="xs">
                   {row.original.networks?.map((network) => (
                     <DockerResourceLink
@@ -178,14 +166,6 @@ export default function Containers() {
                     />
                   ))}
                 </DividedChildren>
-              ) : (
-                row.original.network_mode && (
-                  <DockerResourceLink
-                    type="Network"
-                    serverId={row.original.server_id!}
-                    name={row.original.network_mode}
-                  />
-                )
               ),
           },
           {
@@ -196,7 +176,7 @@ export default function Containers() {
                 const ports = row.original.ports ?? [];
                 if (!ports.length) return Number.POSITIVE_INFINITY;
                 const nums = ports
-                  .map((p) => p.PublicPort)
+                  .map((p) => p.public_port)
                   .filter((p): p is number => typeof p === "number")
                   .map((n) => Number(n));
                 if (!nums.length || nums.some((n) => Number.isNaN(n))) {
@@ -240,7 +220,7 @@ export default function Containers() {
         ]}
       />
     );
-  }, [containers, selectionState]);
+  }, [containers]);
 
   return (
     <Page
@@ -256,7 +236,6 @@ export default function Containers() {
               value={selectedServers}
               onChange={setSelectedServers}
             />
-            <DockerBatchExecutions type="Container" />
             <ListPagination
               page={page}
               setPage={setPage}

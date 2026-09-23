@@ -1,19 +1,18 @@
-import { usePermissions, useRead } from "@/lib/hooks";
+import { useRead } from "@/lib/hooks";
 import { useLocalStorage } from "@mantine/hooks";
 import { useServer } from ".";
 import { useMemo } from "react";
 import { MobileFriendlyTabsSelector, TabNoContent } from "mogh_ui";
 import { Types } from "komodo_client";
-import TerminalSection from "@/components/terminal/section";
 import { Tabs } from "@mantine/core";
 import { serverStateIntention } from "@/lib/color";
 import ServerConfig from "./config";
 import { ICONS } from "@/lib/icons";
-import ServerDockerResources from "./docker";
+import ServerContainers from "./docker";
 import ServerStats from "./stats";
 import ServerHostedResourcesSection from "./resources";
 
-type ServerTabsView = "Config" | "Stats" | "Docker" | "Resources" | "Terminals";
+type ServerTabsView = "Config" | "Stats" | "Containers" | "Resources";
 
 export default function ServerTabs({ id }: { id: string }) {
   const [view, setView] = useLocalStorage<ServerTabsView>({
@@ -21,13 +20,9 @@ export default function ServerTabs({ id }: { id: string }) {
     defaultValue: "Config",
   });
 
-  const { specificTerminal } = usePermissions({ type: "Server", id });
-
   const coreVersion = useRead("GetVersion", {}).data?.version;
   const serverInfo = useServer(id)?.info;
   const notReachable = serverInfo?.state !== Types.ServerState.Ok;
-  const terminalDisabled =
-    !specificTerminal || (serverInfo?.terminals_disabled ?? true);
 
   const stacks =
     useRead("ListStacks", {
@@ -35,12 +30,6 @@ export default function ServerTabs({ id }: { id: string }) {
       limit: 1,
     }).data ?? [];
   const noStacks = stacks.length === 0;
-  const deployments =
-    useRead("ListDeployments", {
-      query: { specific: { server_ids: [id] } },
-      limit: 1,
-    }).data ?? [];
-  const noDeployments = deployments.length === 0;
   const repos =
     useRead("ListRepos", {
       query: { specific: { server_ids: [id] } },
@@ -48,7 +37,7 @@ export default function ServerTabs({ id }: { id: string }) {
     }).data ?? [];
   const noRepos = repos.length === 0;
 
-  const noResources = noDeployments && noRepos && noStacks;
+  const noResources = noRepos && noStacks;
 
   const tabs = useMemo<TabNoContent[]>(
     () => [
@@ -61,8 +50,8 @@ export default function ServerTabs({ id }: { id: string }) {
         icon: ICONS.Stats,
       },
       {
-        value: "Docker",
-        icon: ICONS.Docker,
+        value: "Containers",
+        icon: ICONS.Container,
         disabled: notReachable,
       },
       {
@@ -70,13 +59,8 @@ export default function ServerTabs({ id }: { id: string }) {
         icon: ICONS.Resources,
         disabled: noResources,
       },
-      {
-        value: "Terminals",
-        disabled: terminalDisabled,
-        icon: ICONS.Terminal,
-      },
     ],
-    [noResources, terminalDisabled],
+    [noResources, notReachable],
   );
 
   const Selector = (
@@ -87,16 +71,6 @@ export default function ServerTabs({ id }: { id: string }) {
     />
   );
 
-  const target: Types.TerminalTarget = useMemo(
-    () => ({
-      type: "Server",
-      params: {
-        server: id,
-      },
-    }),
-    [id],
-  );
-
   let View = Selector;
   switch (view) {
     case "Config":
@@ -105,16 +79,13 @@ export default function ServerTabs({ id }: { id: string }) {
     case "Stats":
       View = <ServerStats id={id} titleOther={Selector} />;
       break;
-    case "Docker":
-      View = <ServerDockerResources id={id} titleOther={Selector} />;
+    case "Containers":
+      View = <ServerContainers id={id} titleOther={Selector} />;
       break;
     case "Resources":
       View = (
         <ServerHostedResourcesSection serverId={id} titleOther={Selector} />
       );
-      break;
-    case "Terminals":
-      View = <TerminalSection target={target} titleOther={Selector} />;
       break;
   }
 

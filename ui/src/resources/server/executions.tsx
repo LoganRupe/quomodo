@@ -15,7 +15,7 @@ export const Prune = ({
   type,
 }: {
   serverId: string;
-  type: "Containers" | "Networks" | "Images" | "Volumes" | "Buildx" | "System";
+  type: "Images" | "System";
 }) => {
   const server = useServer(serverId);
   const invalidate = useInvalidate();
@@ -35,28 +35,14 @@ export const Prune = ({
 
   if (!server) return;
 
-  const pruningKey =
-    type === "Containers"
-      ? "pruning_containers"
-      : type === "Images"
-        ? "pruning_images"
-        : type === "Networks"
-          ? "pruning_networks"
-          : type === "Volumes"
-            ? "pruning_volumes"
-            : type === "Buildx"
-              ? "pruning_buildx"
-              : type === "System"
-                ? "pruning_system"
-                : "";
+  const pruning =
+    type === "Images"
+      ? action_state?.pruning_images
+      : action_state?.pruning_system;
 
-  const pending =
-    isPending ||
-    (pruningKey && action_state?.[pruningKey]
-      ? action_state?.[pruningKey]
-      : undefined);
+  const pending = isPending || !!pruning;
 
-  if (type === "Images" || type === "Networks" || type === "Buildx") {
+  if (type === "Images") {
     return (
       <ConfirmButton
         icon={<ICONS.Prune size="1rem" />}

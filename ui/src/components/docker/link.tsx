@@ -28,17 +28,23 @@ export default function DockerResourceLink({
   if (!name) return "Unknown";
 
   const Icon = DOCKER_LINK_ICONS[type];
+  // Only containers have a page of their own.
+  const linked = type === "Container";
 
   return (
     <Group
       title={`${type} - ${name}`}
-      renderRoot={(props) => (
-        <Link
-          to={`/servers/${serverId}/${type.toLowerCase()}/${encodeURIComponent(name)}`}
-          {...props}
-        />
-      )}
-      className="hover-underline"
+      renderRoot={
+        linked
+          ? (props) => (
+              <Link
+                to={`/servers/${serverId}/container/${encodeURIComponent(name)}`}
+                {...props}
+              />
+            )
+          : undefined
+      }
+      className={linked ? "hover-underline" : undefined}
       c={dimmed ? "dimmed" : undefined}
       wrap="nowrap"
       gap="xs"

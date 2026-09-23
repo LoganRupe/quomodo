@@ -43,7 +43,6 @@ export default function Resources({ _type }: { _type?: UsableResource }) {
         onQueryChange={setQuery}
         showTagsQuery
         showTemplateQuery
-        showAvailableUpdatesQuery
       />
     </Page>
   );

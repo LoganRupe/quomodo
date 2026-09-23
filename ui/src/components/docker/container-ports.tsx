@@ -95,7 +95,7 @@ export function ContainerPort({
   const uniqueHostPorts = Array.from(
     new Set(
       ports
-        .map((p) => p.PublicPort)
+        .map((p) => p.public_port)
         .filter((p): p is number => typeof p === "number")
         .map((n) => Number(n))
         .filter((n) => !Number.isNaN(n)),

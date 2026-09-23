@@ -1,12 +1,12 @@
 import { serverStateIntention } from "@/lib/color";
-import { useExecute, useListItem, useRead } from "@/lib/hooks";
+import { useListItem, useRead } from "@/lib/hooks";
 import { ICONS } from "@/lib/icons";
 import { RequiredResourceComponents } from "..";
 import { Types } from "komodo_client";
 import { StatusBadge } from "mogh_ui";
 import ServerTable from "./table";
 import NewResource from "@/resources/new";
-import { ConfirmButton, hexColorByIntention } from "mogh_ui";
+import { hexColorByIntention } from "mogh_ui";
 import { Prune } from "./executions";
 import ServerVersion from "./version";
 import { Box, Group, HoverCard } from "@mantine/core";
@@ -14,7 +14,6 @@ import { notifications } from "@mantine/notifications";
 import ConfirmServerPubkey from "./confirm-pubkey";
 import ServerTabs from "./tabs";
 import { fmtUpperCamelcase } from "mogh_ui";
-import ConfirmModalWithDisable from "@/components/confirm-modal-with-disable";
 import ResourceHeader from "../header";
 import { useIsServerAvailable } from "./hooks";
 import BatchExecutions from "@/resources/batch-executions";
@@ -80,7 +79,7 @@ export const ServerComponents: RequiredResourceComponents<
   },
 
   Description: () => (
-    <>Connect servers for alerting, building, and deploying.</>
+    <>Connect servers for alerting and deploying.</>
   ),
 
   New: () => <NewResource type="Server" />,
@@ -89,13 +88,8 @@ export const ServerComponents: RequiredResourceComponents<
     <BatchExecutions
       type="Server"
       executions={[
-        ["PruneContainers", ICONS.Container],
-        ["PruneNetworks", ICONS.Network],
-        ["PruneVolumes", ICONS.Volume],
         ["PruneImages", ICONS.Image],
         ["PruneSystem", ICONS.System],
-        ["RestartAllContainers", ICONS.Restart],
-        ["StopAllContainers", ICONS.Stop],
       ]}
     />
   ),
@@ -307,155 +301,7 @@ export const ServerComponents: RequiredResourceComponents<
   },
 
   Executions: {
-    StartAll: ({ id }) => {
-      const server = useServer(id);
-      const { mutate, isPending } = useExecute("StartAllContainers");
-      const starting = useRead(
-        "GetServerActionState",
-        { server: id },
-        { refetchInterval: 5_000 },
-      ).data?.starting_containers;
-      const dontShow =
-        useRead("ListContainers", {
-          server: id,
-        }).data?.every(
-          (container) =>
-            container.state === Types.ContainerStateStatusEnum.Running,
-        ) ?? true;
-      if (dontShow) {
-        return null;
-      }
-      const pending = isPending || !!starting;
-      return (
-        server && (
-          <ConfirmButton
-            icon={<ICONS.Start size="1rem" />}
-            onClick={() => mutate({ server: id })}
-            loading={pending}
-            disabled={pending}
-          >
-            Start Containers
-          </ConfirmButton>
-        )
-      );
-    },
-    RestartAll: ({ id }) => {
-      const server = useServer(id);
-      const { mutateAsync: restart, isPending } = useExecute(
-        "RestartAllContainers",
-      );
-      const restarting = useRead(
-        "GetServerActionState",
-        { server: id },
-        { refetchInterval: 5_000 },
-      ).data?.restarting_containers;
-      const pending = isPending || !!restarting;
-      return (
-        server && (
-          <ConfirmModalWithDisable
-            confirmText={server?.name}
-            icon={<ICONS.Restart size="1rem" />}
-            onConfirm={() => restart({ server: id })}
-            disabled={pending}
-            loading={pending}
-          >
-            Restart Containers
-          </ConfirmModalWithDisable>
-        )
-      );
-    },
-    PauseAll: ({ id }) => {
-      const server = useServer(id);
-      const { mutateAsync: pause, isPending } =
-        useExecute("PauseAllContainers");
-      const pausing = useRead(
-        "GetServerActionState",
-        { server: id },
-        { refetchInterval: 5_000 },
-      ).data?.pausing_containers;
-      const dontShow =
-        useRead("ListContainers", {
-          server: id,
-        }).data?.every(
-          (container) =>
-            container.state !== Types.ContainerStateStatusEnum.Running,
-        ) ?? true;
-      if (dontShow) {
-        return null;
-      }
-      const pending = isPending || !!pausing;
-      return (
-        server && (
-          <ConfirmModalWithDisable
-            confirmText={server?.name}
-            icon={<ICONS.Pause size="1rem" />}
-            onConfirm={() => pause({ server: id })}
-            disabled={pending}
-            loading={pending}
-          >
-            Pause Containers
-          </ConfirmModalWithDisable>
-        )
-      );
-    },
-    UnpauseAll: ({ id }) => {
-      const server = useServer(id);
-      const { mutateAsync: unpause, isPending } = useExecute(
-        "UnpauseAllContainers",
-      );
-      const unpausing = useRead(
-        "GetServerActionState",
-        { server: id },
-        { refetchInterval: 5_000 },
-      ).data?.unpausing_containers;
-      const dontShow =
-        useRead("ListContainers", {
-          server: id,
-        }).data?.every(
-          (container) =>
-            container.state !== Types.ContainerStateStatusEnum.Paused,
-        ) ?? true;
-      if (dontShow) {
-        return null;
-      }
-      const pending = isPending || !!unpausing;
-      return (
-        server && (
-          <ConfirmButton
-            icon={<ICONS.Start size="1rem" />}
-            onClick={() => unpause({ server: id })}
-            loading={pending}
-            disabled={pending}
-          >
-            Unpause Containers
-          </ConfirmButton>
-        )
-      );
-    },
-    StopAll: ({ id }) => {
-      const server = useServer(id);
-      const { mutateAsync: stop, isPending } = useExecute("StopAllContainers");
-      const stopping = useRead(
-        "GetServerActionState",
-        { server: id },
-        { refetchInterval: 5_000 },
-      ).data?.stopping_containers;
-      const pending = isPending || !!stopping;
-      return (
-        server && (
-          <ConfirmModalWithDisable
-            confirmText={server.name}
-            icon={<ICONS.Stop size="1rem" />}
-            onConfirm={() => stop({ server: id })}
-            disabled={pending}
-            loading={pending}
-          >
-            Stop Containers
-          </ConfirmModalWithDisable>
-        )
-      );
-    },
-    PruneBuildx: ({ id }) => <Prune serverId={id} type="Buildx" />,
+    PruneImages: ({ id }) => <Prune serverId={id} type="Images" />,
     PruneSystem: ({ id }) => <Prune serverId={id} type="System" />,
   },
 

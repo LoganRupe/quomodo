@@ -84,13 +84,7 @@ export const DeployStack = ({
   );
 };
 
-export const DestroyStack = ({
-  id,
-  service,
-}: {
-  id: string;
-  service?: string;
-}) => {
+export const DestroyStack = ({ id }: { id: string }) => {
   const stack = useStack(id);
   const state = stack?.info.state;
   const { mutateAsync: destroy, isPending } = useExecute(
@@ -102,28 +96,20 @@ export const DestroyStack = ({
     { stack: id },
     { refetchInterval: 5_000 },
   ).data?.destroying;
-  const services = useRead("ListStackServices", { stack: id }).data;
-  const container_state =
-    (service
-      ? services?.find((s) => s.service === service)?.container?.state
-      : undefined) ?? Types.ContainerStateStatusEnum.Empty;
 
   if (
-    !stack || service !== undefined
-      ? container_state === Types.ContainerStateStatusEnum.Empty
-      : state === undefined ||
-        [Types.StackState.Unknown, Types.StackState.Down].includes(state!)
+    !stack ||
+    state === undefined ||
+    [Types.StackState.Unknown, Types.StackState.Down].includes(state)
   ) {
     return null;
   }
 
   return (
     <ConfirmModalWithDisable
-      confirmText={`${stack?.name}${service ? ` - ${service}` : ""}`}
+      confirmText={stack.name}
       icon={<ICONS.Destroy size="1rem" />}
-      onConfirm={() =>
-        destroy({ stack: id, services: service ? [service] : [] })
-      }
+      onConfirm={() => destroy({ stack: id })}
       disabled={isPending}
       loading={isPending || destroying}
     >
@@ -150,11 +136,7 @@ export const PullStack = ({
     { refetchInterval: 5_000 },
   ).data;
 
-  if (
-    !stack ||
-    stack.info.swarm_id ||
-    (stack?.info.missing_files.length ?? 0) > 0
-  ) {
+  if (!stack || stack.info.missing_units) {
     return null;
   }
 
@@ -196,8 +178,6 @@ export const RestartStack = ({
 
   if (
     !stack ||
-    stack.info.swarm_id ||
-    stack?.info.project_missing ||
     (service && container_state !== Types.ContainerStateStatusEnum.Running) ||
     // Only show if running or unhealthy
     (state !== Types.StackState.Running && state !== Types.StackState.Unhealthy)
@@ -250,7 +230,6 @@ export const StartStopStack = ({
 
   if (
     !stack ||
-    stack.info.swarm_id ||
     [Types.StackState.Down, Types.StackState.Unknown].includes(state)
   ) {
     return null;
@@ -296,73 +275,4 @@ export const StartStopStack = ({
       )}
     </>
   );
-};
-
-export const PauseUnpauseStack = ({
-  id,
-  service,
-}: {
-  id: string;
-  service?: string;
-}) => {
-  const stack = useStack(id);
-  const state = stack?.info.state;
-  const { mutate: unpause, isPending: unpausePending } = useExecute(
-    "UnpauseStack",
-    useInvalidateActionState(),
-  );
-  const { mutateAsync: pause, isPending: pausePending } = useExecute(
-    "PauseStack",
-    useInvalidateActionState(),
-  );
-  const actionState = useRead(
-    "GetStackActionState",
-    { stack: id },
-    { refetchInterval: 5_000 },
-  ).data;
-  const services = useRead("ListStackServices", { stack: id }).data;
-  const container_state =
-    (service
-      ? services?.find((s) => s.service === service)?.container?.state
-      : undefined) ?? Types.ContainerStateStatusEnum.Empty;
-
-  if (!stack || stack.info.swarm_id || stack?.info.project_missing) {
-    return null;
-  }
-
-  if (
-    (service && container_state === Types.ContainerStateStatusEnum.Paused) ||
-    state === Types.StackState.Paused
-  ) {
-    return (
-      <ConfirmButton
-        icon={<ICONS.Start size="1rem" />}
-        onClick={() =>
-          unpause({ stack: id, services: service ? [service] : [] })
-        }
-        disabled={unpausePending}
-        loading={unpausePending || actionState?.unpausing}
-      >
-        Unpause
-      </ConfirmButton>
-    );
-  }
-  if (
-    (service && container_state === Types.ContainerStateStatusEnum.Running) ||
-    state === Types.StackState.Running
-  ) {
-    return (
-      <ConfirmModalWithDisable
-        confirmText={`${stack?.name}${service ? ` - ${service}` : ""}`}
-        icon={<ICONS.Pause size="1rem" />}
-        onConfirm={() =>
-          pause({ stack: id, services: service ? [service] : [] })
-        }
-        disabled={pausePending}
-        loading={pausePending || actionState?.pausing}
-      >
-        Pause
-      </ConfirmModalWithDisable>
-    );
-  }
 };

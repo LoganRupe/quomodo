@@ -9,9 +9,8 @@ import NewResource from "@/resources/new";
 import ResourceHeader from "@/resources/header";
 import RepoTabs from "./tabs";
 import BatchExecutions from "@/resources/batch-executions";
-import { BuildRepo, CloneRepo, PullRepo } from "./executions";
+import { CloneRepo, PullRepo } from "./executions";
 import { useServer } from "../server";
-import { useBuilder } from "../builder";
 import { Box, Group } from "@mantine/core";
 import ResourceLink from "../link";
 import RepoLink from "@/components/repo-link";
@@ -78,7 +77,6 @@ export const RepoComponents: RequiredResourceComponents<
       executions={[
         ["PullRepo", ICONS.PullRepo],
         ["CloneRepo", ICONS.CloneRepo],
-        ["BuildRepo", ICONS.Build],
       ]}
     />
   ),
@@ -116,23 +114,13 @@ export const RepoComponents: RequiredResourceComponents<
     Target: ({ id }) => {
       const info = useRepo(id)?.info;
       const server = useServer(info?.server_id);
-      const builder = useBuilder(info?.builder_id);
 
-      if (!info?.server_id && !info?.builder_id) return null;
+      if (!server?.id) return null;
 
       return (
-        <>
-          {server?.id && (
-            <Box>
-              <ResourceLink type="Server" id={server.id} />
-            </Box>
-          )}
-          {builder?.id && (
-            <Box>
-              <ResourceLink type="Builder" id={builder.id} />
-            </Box>
-          )}
-        </>
+        <Box>
+          <ResourceLink type="Server" id={server.id} />
+        </Box>
       );
     },
     Source: ({ id }) => {
@@ -156,7 +144,6 @@ export const RepoComponents: RequiredResourceComponents<
   Executions: {
     CloneRepo,
     PullRepo,
-    BuildRepo,
   },
 
   Config: RepoTabs,

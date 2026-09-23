@@ -183,29 +183,11 @@ export function logToHtml(log: string) {
   return convert_ansi.toHtml(sanitized);
 }
 
-export function getUpdateQuery(target: Types.ResourceTarget, buildId?: string) {
-  if (buildId) {
-    return {
-      $or: [
-        {
-          "target.type": target.type,
-          "target.id": target.id,
-        },
-        {
-          "target.type": "Build",
-          "target.id": buildId,
-          operation: {
-            $in: [Types.Operation.RunBuild, Types.Operation.CancelBuild],
-          },
-        },
-      ],
-    };
-  } else {
-    return {
-      "target.type": target.type,
-      "target.id": target.id,
-    };
-  }
+export function getUpdateQuery(target: Types.ResourceTarget) {
+  return {
+    "target.type": target.type,
+    "target.id": target.id,
+  };
 }
 
 /** This does NOT include pending deploys, which are only for Execute direction. */
@@ -236,40 +218,6 @@ export function fileContentsEmpty(contents?: string) {
       .map((line) => line.trim())
       .filter((line) => line.length !== 0 && !line.startsWith("#")).length === 0
   );
-}
-
-export function resourceTargetFromTerminalTarget(
-  target: Types.TerminalTarget,
-): Types.ResourceTarget {
-  switch (target.type) {
-    case "Server":
-      return { type: "Server", id: target.params.server! };
-    case "Container":
-      return { type: "Server", id: target.params.server };
-    case "Stack":
-      return { type: "Stack", id: target.params.stack };
-    case "Deployment":
-      return { type: "Deployment", id: target.params.deployment };
-  }
-}
-
-export function terminalLink({
-  target,
-  name,
-}: {
-  target: Types.TerminalTarget;
-  name: string;
-}) {
-  switch (target.type) {
-    case "Server":
-      return `/servers/${target.params.server}/terminal/${name}`;
-    case "Container":
-      return `/servers/${target.params.server}/container/${target.params.container}/terminal/${name}`;
-    case "Stack":
-      return `/stacks/${target.params.stack}/service/${target.params.service}/terminal/${name}`;
-    case "Deployment":
-      return `/deployments/${target.params.deployment}/terminal/${name}`;
-  }
 }
 
 export function listsEqual(a: string[], b: string[]) {

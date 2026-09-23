@@ -4,11 +4,12 @@ import { useRead } from "@/lib/hooks";
 import { Types } from "komodo_client";
 import { Section } from "mogh_ui";
 import { DataTable, SortableHeader } from "mogh_ui";
-import StackServiceLink from "@/components/stack-service-link";
+import StackServiceLink, {
+  stackServiceStateIntention,
+} from "@/components/stack-service-link";
 import { StatusBadge } from "mogh_ui";
-import { containerStateIntention, swarmStateIntention } from "@/lib/color";
 import DockerResourceLink from "@/components/docker/link";
-import { Group } from "@mantine/core";
+import { Group, Text } from "@mantine/core";
 import ContainerPorts from "@/components/docker/container-ports";
 
 export default function StackServices({
@@ -25,10 +26,8 @@ export default function StackServices({
 
   return (
     <Section titleOther={titleOther} mb="md">
-      {info?.swarm_id ? (
-        <StackServicesSwarm stackId={id} services={services} />
-      ) : info?.server_id ? (
-        <StackServicesServer
+      {info?.server_id ? (
+        <StackServicesTable
           stackId={id}
           serverId={info.server_id}
           services={services}
@@ -40,77 +39,7 @@ export default function StackServices({
   );
 }
 
-function StackServicesSwarm({
-  stackId,
-  services,
-}: {
-  stackId: string;
-  services: Types.ListStackServicesResponse;
-}) {
-  const isUnknown = useStack(stackId)?.info.state === Types.StackState.Unknown;
-  return (
-    <DataTable
-      tableKey="StackServices"
-      data={services}
-      columns={[
-        {
-          accessorKey: "service",
-          header: ({ column }) => (
-            <SortableHeader column={column} title="Service" />
-          ),
-          cell: ({ row }) => (
-            <StackServiceLink id={stackId} service={row.original.service} />
-          ),
-        },
-        {
-          accessorKey: "swarm_service.State",
-          header: ({ column }) => (
-            <SortableHeader column={column} title="State" />
-          ),
-          cell: ({ row }) => {
-            const state = row.original.swarm_service?.State;
-            return (
-              <StatusBadge
-                text={state ?? (isUnknown ? "Unknown" : "Down")}
-                intent={
-                  state
-                    ? swarmStateIntention(state)
-                    : isUnknown
-                      ? "Unknown"
-                      : "Neutral"
-                }
-              />
-            );
-          },
-        },
-        {
-          accessorKey: "swarm_service.Runtime",
-          header: ({ column }) => (
-            <SortableHeader column={column} title="Runtime" />
-          ),
-        },
-        {
-          accessorKey: "swarm_service.Image",
-          header: ({ column }) => (
-            <SortableHeader column={column} title="Image" />
-          ),
-          cell: ({ row }) => {
-            // It usually returns the image hash after the @, its very long so removed here
-            return row.original.swarm_service?.Image?.split("@")?.[0];
-          },
-        },
-        {
-          accessorKey: "swarm_service.Replicas",
-          header: ({ column }) => (
-            <SortableHeader column={column} title="Replicas" />
-          ),
-        },
-      ]}
-    />
-  );
-}
-
-function StackServicesServer({
+function StackServicesTable({
   stackId,
   serverId,
   services,
@@ -119,7 +48,6 @@ function StackServicesServer({
   serverId: string;
   services: Types.ListStackServicesResponse;
 }) {
-  const isUnknown = useStack(stackId)?.info.state === Types.StackState.Unknown;
   return (
     <DataTable
       tableKey="StackServices"
@@ -128,32 +56,29 @@ function StackServicesServer({
         {
           accessorKey: "service",
           header: ({ column }) => (
-            <SortableHeader column={column} title="Service" />
+            <SortableHeader column={column} title="Unit" />
           ),
           cell: ({ row }) => (
             <StackServiceLink id={stackId} service={row.original.service} />
           ),
         },
         {
-          accessorKey: "container.state",
+          accessorKey: "unit.kind",
+          header: ({ column }) => (
+            <SortableHeader column={column} title="Kind" />
+          ),
+        },
+        {
+          accessorKey: "state",
           header: ({ column }) => (
             <SortableHeader column={column} title="State" />
           ),
-          cell: ({ row }) => {
-            const state = row.original.container?.state;
-            return (
-              <StatusBadge
-                text={state ?? (isUnknown ? "Unknown" : "Down")}
-                intent={
-                  state
-                    ? containerStateIntention(state)
-                    : isUnknown
-                      ? "Unknown"
-                      : "Neutral"
-                }
-              />
-            );
-          },
+          cell: ({ row }) => (
+            <StatusBadge
+              text={row.original.state}
+              intent={stackServiceStateIntention(row.original.state)}
+            />
+          ),
         },
         {
           accessorKey: "container.image",
@@ -161,15 +86,24 @@ function StackServicesServer({
             <SortableHeader column={column} title="Image" />
           ),
           cell: ({ row }) =>
-            serverId && (
+            row.original.container ? (
               <DockerResourceLink
                 type="Image"
                 serverId={serverId}
-                name={row.original.container?.image}
-                id={row.original.container?.image_id}
+                name={row.original.container.image}
+                id={row.original.container.image_id}
               />
+            ) : (
+              row.original.unit.image && (
+                <Text c="dimmed">{row.original.unit.image}</Text>
+              )
             ),
-          // size: 200,
+        },
+        {
+          accessorKey: "unit.pod",
+          header: ({ column }) => (
+            <SortableHeader column={column} title="Pod" />
+          ),
         },
         {
           accessorKey: "container.networks.0",
@@ -177,31 +111,21 @@ function StackServicesServer({
             <SortableHeader column={column} title="Networks" />
           ),
           cell: ({ row }) =>
-            (row.original.container?.networks?.length ?? 0) > 0 ? (
+            (row.original.container?.networks?.length ?? 0) > 0 && (
               <Group>
-                {serverId &&
-                  row.original.container?.networks?.map((network, i) => (
-                    <Fragment key={network}>
-                      <DockerResourceLink
-                        type="Network"
-                        serverId={serverId}
-                        name={network}
-                      />
-                      {i !== row.original.container!.networks!.length - 1 && (
-                        <div className="text-muted-foreground">|</div>
-                      )}
-                    </Fragment>
-                  ))}
+                {row.original.container?.networks?.map((network, i) => (
+                  <Fragment key={network}>
+                    <DockerResourceLink
+                      type="Network"
+                      serverId={serverId}
+                      name={network}
+                    />
+                    {i !== row.original.container!.networks!.length - 1 && (
+                      <div className="text-muted-foreground">|</div>
+                    )}
+                  </Fragment>
+                ))}
               </Group>
-            ) : (
-              serverId &&
-              row.original.container?.network_mode && (
-                <DockerResourceLink
-                  type="Network"
-                  serverId={serverId}
-                  name={row.original.container.network_mode}
-                />
-              )
             ),
         },
         {

@@ -1,5 +1,6 @@
 import { ContainerPort } from "@/components/docker/container-ports";
 import DockerResourceLink from "@/components/docker/link";
+import LogSection from "@/components/log-section";
 import { containerStateIntention } from "@/lib/color";
 import {
   useContainerPortsMap,
@@ -14,10 +15,7 @@ import { Section } from "mogh_ui";
 import { Center, Text } from "@mantine/core";
 import { Types } from "komodo_client";
 import { useParams } from "react-router-dom";
-import { ContainerExecutions } from "./executions";
 import { DataTable } from "mogh_ui";
-import DockerLabelsSection from "@/components/docker/labels-section";
-import ContainerTabs from "./tabs";
 import ResourceLink from "@/resources/link";
 import ResourceSubPage from "@/resources/sub-page";
 
@@ -50,7 +48,7 @@ function ContainerInner({
 }) {
   const server = useServer(serverId);
   useSetTitle(`${server?.name} | Container | ${containerName}`);
-  const { specific } = usePermissions({
+  const { specificLogs } = usePermissions({
     type: "Server",
     id: serverId,
   });
@@ -61,14 +59,6 @@ function ContainerInner({
     },
     { refetchInterval: 10_000 },
   ).data?.find((container) => container.name === containerName);
-  const inspect = useRead(
-    "InspectContainer",
-    {
-      server: serverId,
-      container: containerName,
-    },
-    { enabled: specific.includes(Types.SpecificPermission.Inspect) },
-  ).data;
   const { data: attached } = useRead(
     "GetResourceMatchingContainer",
     { server: serverId, container: containerName },
@@ -96,6 +86,9 @@ function ContainerInner({
               type={attached.resource.type as UsableResource}
               id={attached.resource.id}
             />
+          )}
+          {listContainer?.unit && (
+            <Text ff="monospace">{listContainer.unit}</Text>
           )}
           {listContainer?.image && (
             <DockerResourceLink
@@ -131,23 +124,14 @@ function ContainerInner({
           ))}
         </>
       }
-      executions={
-        <>
-          {Object.entries(ContainerExecutions).map(([key, Execution]) => (
-            <Execution
-              key={key}
-              serverId={serverId}
-              container={containerName}
-            />
-          ))}
-        </>
-      }
     >
-      <ContainerTabs
-        server={serverId}
-        container={containerName}
-        state={state}
-        inspect={inspect}
+      <LogSection
+        title="Log"
+        icon={<ICONS.Log size="1.3rem" />}
+        target={{ type: "Container", serverId, container: containerName }}
+        disabled={
+          !specificLogs || state === Types.ContainerStateStatusEnum.Empty
+        }
       />
 
       {/* TOP LEVEL CONTAINER INFO */}
@@ -166,8 +150,12 @@ function ContainerInner({
                 accessorKey: "image",
               },
               {
-                header: "Network Mode",
-                accessorKey: "network_mode",
+                header: "Unit",
+                accessorKey: "unit",
+              },
+              {
+                header: "Pod",
+                accessorKey: "pod",
               },
               {
                 header: "Networks",
@@ -177,8 +165,6 @@ function ContainerInner({
           />
         </Section>
       )}
-
-      <DockerLabelsSection labels={inspect?.Config?.Labels} />
     </ResourceSubPage>
   );
 }

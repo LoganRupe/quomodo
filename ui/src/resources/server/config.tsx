@@ -46,8 +46,6 @@ export default function ServerConfig({
   if (!config) return null;
 
   const disabled = globalDisabled || !canWrite;
-  const address = update.address ?? config.address;
-  const tlsAddress = !!address && !address.startsWith("ws://");
 
   return (
     <Config
@@ -122,18 +120,9 @@ export default function ServerConfig({
             label: "Address",
             labelHidden: true,
             fields: {
-              address: {
-                description:
-                  "For Core -> Periphery connection mode, specify address of periphery in your network.",
-                placeholder: "12.34.56.78:8120",
-              },
-              insecure_tls: {
-                hidden: !tlsAddress,
-                description: "Skip Periphery TLS certificate validation.",
-              },
               external_address: {
                 description:
-                  "Optional. The address of the server used in container links, if different than the Address.",
+                  "Optional. The address of the server used in container links.",
                 placeholder: "my.server.int",
               },
               region: {

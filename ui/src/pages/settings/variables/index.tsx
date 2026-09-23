@@ -9,7 +9,7 @@ import {
 import { filterBySplit } from "mogh_ui";
 import { CopyButton } from "mogh_ui";
 import { DataTable, SortableHeader } from "mogh_ui";
-import { Badge, Button, Group, Stack, Switch, Text } from "@mantine/core";
+import { Button, Group, Stack, Switch, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useState } from "react";
 import DeleteVariable from "./delete";
@@ -26,7 +26,6 @@ export default function SettingsVariables() {
   const [search, setSearch] = useState("");
 
   const variables = useRead("ListVariables", {}).data ?? [];
-  const secrets = useRead("ListSecrets", {}).data ?? [];
 
   const filtered = filterBySplit(variables, search, (item) => item.name);
 
@@ -171,19 +170,6 @@ export default function SettingsVariables() {
             },
           ]}
         />
-
-        {secrets?.length ? (
-          <Group>
-            <Text c="dimmed">Core Secrets:</Text>
-            <Group gap="xs">
-              {secrets.map((secret) => (
-                <Badge key={secret} tt="none">
-                  {secret}
-                </Badge>
-              ))}
-            </Group>
-          </Group>
-        ) : undefined}
       </Stack>
 
       <SharedTextUpdate

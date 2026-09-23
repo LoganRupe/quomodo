@@ -139,23 +139,6 @@ export default function SettingsOnboardingKeys() {
         ),
       },
       {
-        accessorKey: "create_builder",
-        header: ({ column }) => (
-          <SortableHeader column={column} title="Create Builder" />
-        ),
-        cell: ({ row }) => (
-          <Switch
-            checked={row.original.create_builder}
-            onChange={(e) =>
-              mutate({
-                public_key: row.original.public_key,
-                create_builder: e.target.checked,
-              })
-            }
-          />
-        ),
-      },
-      {
         accessorKey: "enabled",
         header: ({ column }) => (
           <SortableHeader column={column} title="Enabled" />

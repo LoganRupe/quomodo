@@ -19,8 +19,6 @@ import DashboardSummary from "@/components/dashboard-summary";
 import { TemplateMarker } from "@/components/template-marker";
 import Tags from "@/components/tags";
 import ResourceName from "@/resources/name";
-import DeploymentUpdateAvailable from "@/resources/deployment/update-available";
-import StackUpdateAvailable from "@/resources/stack/update-available";
 import DashboardNoResources from "./no-resources";
 import ServerStatsCard from "@/resources/server/stats-card";
 import { FancyCard } from "mogh_ui";
@@ -153,8 +151,6 @@ function RecentCard({
           <ResourceName type={type} id={id} />
           {resource.template && <TemplateMarker type={type} />}
         </Group>
-        {type === "Deployment" && <DeploymentUpdateAvailable id={id} small />}
-        {type === "Stack" && <StackUpdateAvailable id={id} small />}
       </Group>
 
       {type === "Server" && (

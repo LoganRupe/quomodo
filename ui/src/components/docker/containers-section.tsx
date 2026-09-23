@@ -1,7 +1,4 @@
-import { useDockerSelectionState, useRead } from "@/lib/hooks";
 import { filterBySplit } from "mogh_ui";
-import { Prune } from "@/resources/server/executions";
-import DockerBatchExecutions from "./batch-executions";
 import { ICONS } from "@/lib/icons";
 import { DataTable, SortableHeader } from "mogh_ui";
 import { Section, SectionProps } from "mogh_ui";
@@ -20,11 +17,8 @@ export interface ContainersSectionProps extends SectionProps {
   containers: Types.ListContainersResponse;
   show?: boolean;
   setShow?: (show: boolean) => void;
-  pruneButton?: boolean;
   forceTall?: boolean;
   _search?: [string, (search: string) => void];
-  /** Enables multi select of containers for batch executions. */
-  selectable?: boolean;
 }
 
 export default function ContainersSection({
@@ -32,19 +26,11 @@ export default function ContainersSection({
   containers,
   show = true,
   setShow,
-  pruneButton,
   forceTall,
   _search,
-  selectable,
   titleOther,
   ...sectionProps
 }: ContainersSectionProps) {
-  const selectionState = useDockerSelectionState("Container");
-  const allRunning = useRead("ListContainers", {
-    server: serverId,
-  }).data?.every(
-    (container) => container.state === Types.ContainerStateStatusEnum.Running,
-  );
   const filtered = _search
     ? filterBySplit(containers, _search[0], (container) => container.name)
     : containers;
@@ -58,24 +44,12 @@ export default function ContainersSection({
     >
       {show && (
         <>
-          {(selectable ||
-            (pruneButton && !allRunning) ||
-            _search ||
-            setShow) && (
-            <Group justify="space-between">
-              <Group>
-                {selectable && <DockerBatchExecutions type="Container" />}
-                {pruneButton && !allRunning && (
-                  <Prune serverId={serverId} type="Containers" />
-                )}
-              </Group>
-
-              <Group>
-                {_search && (
-                  <SearchInput value={_search[0]} onSearch={_search[1]} />
-                )}
-                {setShow && <ShowHideButton show={show} setShow={setShow} />}
-              </Group>
+          {(_search || setShow) && (
+            <Group justify="end">
+              {_search && (
+                <SearchInput value={_search[0]} onSearch={_search[1]} />
+              )}
+              {setShow && <ShowHideButton show={show} setShow={setShow} />}
             </Group>
           )}
 
@@ -83,14 +57,6 @@ export default function ContainersSection({
             mih={forceTall ? "60vh" : undefined}
             tableKey="server-containers"
             data={filtered}
-            selectOptions={
-              selectable
-                ? {
-                    selectKey: ({ name }) => `${serverId} ${name}`,
-                    state: selectionState,
-                  }
-                : undefined
-            }
             columns={[
               {
                 accessorKey: "name",
@@ -121,6 +87,12 @@ export default function ContainersSection({
                 },
               },
               {
+                accessorKey: "unit",
+                header: ({ column }) => (
+                  <SortableHeader column={column} title="Unit" />
+                ),
+              },
+              {
                 accessorKey: "image",
                 header: ({ column }) => (
                   <SortableHeader column={column} title="Image" />
@@ -140,7 +112,7 @@ export default function ContainersSection({
                   <SortableHeader column={column} title="Networks" />
                 ),
                 cell: ({ row }) =>
-                  (row.original.networks?.length ?? 0) > 0 ? (
+                  (row.original.networks?.length ?? 0) > 0 && (
                     <DividedChildren wrap="nowrap">
                       {row.original.networks?.map((network) => (
                         <DockerResourceLink
@@ -151,14 +123,6 @@ export default function ContainersSection({
                         />
                       ))}
                     </DividedChildren>
-                  ) : (
-                    row.original.network_mode && (
-                      <DockerResourceLink
-                        type="Network"
-                        serverId={serverId}
-                        name={row.original.network_mode}
-                      />
-                    )
                   ),
               },
               {
@@ -168,7 +132,7 @@ export default function ContainersSection({
                     const ports = row.original.ports ?? [];
                     if (!ports.length) return Number.POSITIVE_INFINITY;
                     const nums = ports
-                      .map((p) => p.PublicPort)
+                      .map((p) => p.public_port)
                       .filter((p): p is number => typeof p === "number")
                       .map((n) => Number(n));
                     if (!nums.length || nums.some((n) => Number.isNaN(n))) {

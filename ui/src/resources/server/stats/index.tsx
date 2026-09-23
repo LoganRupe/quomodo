@@ -3,7 +3,6 @@ import { usePermissions, useRead } from "@/lib/hooks";
 import { Types } from "komodo_client";
 import { Section } from "mogh_ui";
 import ServerProcesses from "./processes";
-import ServerContainerStats from "./containers";
 import ServerDisks from "./disks";
 import ServerCurrentStats from "./current";
 import ServerSystemInfo from "./system-info";
@@ -40,8 +39,6 @@ export default function ServerStats({
       <Suspense fallback={null}>
         <ServerHistoricalStats id={id} />
       </Suspense>
-
-      <ServerContainerStats id={id} />
 
       <ServerDisks stats={stats} />
 

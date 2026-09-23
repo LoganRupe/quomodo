@@ -1,6 +1,6 @@
-# Komodo UI
+# Quomodo UI
 
-Komodo UI uses Yarn + Vite + React + Mantine UI
+The UI uses Yarn + Vite + React + Mantine UI
 
 ## Setup Dev Environment
 

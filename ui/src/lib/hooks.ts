@@ -24,12 +24,10 @@ import {
 import { RowSelectionState } from "@tanstack/react-table";
 import { atom, useAtom } from "jotai";
 import { atomFamily } from "jotai-family";
-import { atomWithHash } from "jotai-location";
 import { useParams } from "react-router-dom";
 import { UsableResource, RESOURCE_TARGETS } from "@/resources";
 import {
   hasMinimumPermissions,
-  resourceTargetFromTerminalTarget,
   setSelectedStateHandler,
   termMatchesTypeKeyword,
 } from "@/lib/utils";
@@ -339,24 +337,6 @@ export function useAllResources(
   enabled?: boolean,
 ): ResourceMap {
   return {
-    Swarm: useRead(
-      "ListSwarms",
-      {
-        query: {
-          terms: terms?.filter(
-            (term) => !termMatchesTypeKeyword("swarms", term),
-          ),
-        },
-        limit,
-      },
-      {
-        refetchInterval,
-        enabled,
-        // Keep the previous results visible while fetching after a search
-        // change to prevent resource flashing.
-        placeholderData: keepPreviousData,
-      },
-    ).data,
     Server: useRead(
       "ListServers",
       {
@@ -375,30 +355,6 @@ export function useAllResources(
         query: {
           terms: terms?.filter(
             (term) => !termMatchesTypeKeyword("stacks", term),
-          ),
-        },
-        limit,
-      },
-      { refetchInterval, enabled, placeholderData: keepPreviousData },
-    ).data,
-    Deployment: useRead(
-      "ListDeployments",
-      {
-        query: {
-          terms: terms?.filter(
-            (term) => !termMatchesTypeKeyword("deployments", term),
-          ),
-        },
-        limit,
-      },
-      { refetchInterval, enabled, placeholderData: keepPreviousData },
-    ).data,
-    Build: useRead(
-      "ListBuilds",
-      {
-        query: {
-          terms: terms?.filter(
-            (term) => !termMatchesTypeKeyword("builds", term),
           ),
         },
         limit,
@@ -435,30 +391,6 @@ export function useAllResources(
         query: {
           terms: terms?.filter(
             (term) => !termMatchesTypeKeyword("actions", term),
-          ),
-        },
-        limit,
-      },
-      { refetchInterval, enabled, placeholderData: keepPreviousData },
-    ).data,
-    Builder: useRead(
-      "ListBuilders",
-      {
-        query: {
-          terms: terms?.filter(
-            (term) => !termMatchesTypeKeyword("builders", term),
-          ),
-        },
-        limit,
-      },
-      { refetchInterval, enabled, placeholderData: keepPreviousData },
-    ).data,
-    Alerter: useRead(
-      "ListAlerters",
-      {
-        query: {
-          terms: terms?.filter(
-            (term) => !termMatchesTypeKeyword("alerters", term),
           ),
         },
         limit,
@@ -649,15 +581,6 @@ function useSelectionState(
   );
 }
 
-const filterByUpdateAvailable = atomWithHash<boolean>(
-  "filter-update-available",
-  false,
-);
-export function useFilterByUpdateAvailable(): [boolean, () => void] {
-  const [filter, set] = useAtom<boolean>(filterByUpdateAvailable);
-  return [filter, () => set(!filter)];
-}
-
 export function usePermissions({ type, id }: Types.ResourceTarget) {
   const user = useUser().data;
   const perms = useRead(
@@ -681,7 +604,6 @@ export function usePermissions({ type, id }: Types.ResourceTarget) {
       specific: Object.values(Types.SpecificPermission),
       specificLogs: true,
       specificInspect: true,
-      specificTerminal: true,
       specificAttach: true,
       specificProcesses: true,
     };
@@ -704,16 +626,9 @@ export function usePermissions({ type, id }: Types.ResourceTarget) {
     Types.PermissionLevel.Execute,
   );
 
-  const [
-    specificLogs,
-    specificInspect,
-    specificTerminal,
-    specificAttach,
-    specificProcesses,
-  ] = [
+  const [specificLogs, specificInspect, specificAttach, specificProcesses] = [
     specific.includes(Types.SpecificPermission.Logs),
     specific.includes(Types.SpecificPermission.Inspect),
-    specific.includes(Types.SpecificPermission.Terminal),
     specific.includes(Types.SpecificPermission.Attach),
     specific.includes(Types.SpecificPermission.Processes),
   ];
@@ -722,15 +637,9 @@ export function usePermissions({ type, id }: Types.ResourceTarget) {
     type === "Server"
       ? user?.admin ||
         (!disable_non_admin_create && user?.create_server_permissions)
-      : type === "Build"
-        ? user?.admin ||
-          (!disable_non_admin_create && user?.create_build_permissions)
-        : type === "Alerter" ||
-            type === "Builder" ||
-            type === "Procedure" ||
-            type === "Action"
-          ? user?.admin
-          : user?.admin || !disable_non_admin_create;
+      : type === "Procedure" || type === "Action"
+        ? user?.admin
+        : user?.admin || !disable_non_admin_create;
 
   return {
     canWrite,
@@ -739,15 +648,9 @@ export function usePermissions({ type, id }: Types.ResourceTarget) {
     specific,
     specificLogs,
     specificInspect,
-    specificTerminal,
     specificAttach,
     specificProcesses,
   };
-}
-
-export function useTerminalTargetPermissions(target: Types.TerminalTarget) {
-  const resourceTarget = resourceTargetFromTerminalTarget(target);
-  return usePermissions(resourceTarget);
 }
 
 const templatesQueryBehaviorAtom =
@@ -763,8 +666,6 @@ export function useTemplatesQueryBehavior() {
 export type SettingsView =
   | "Variables"
   | "Tags"
-  | "Builders"
-  | "Alerters"
   | "Providers"
   | "Users"
   | "Onboarding";
@@ -784,11 +685,11 @@ export function useContainerPortsMap(ports: Types.Port[]) {
   return useMemo(() => {
     const map: PortsMap = {};
     for (const port of ports) {
-      if (!port.PublicPort || !port.PrivatePort) continue;
-      if (map[port.PublicPort]) {
-        map[port.PublicPort].push(port);
+      if (!port.public_port || !port.private_port) continue;
+      if (map[port.public_port]) {
+        map[port.public_port].push(port);
       } else {
-        map[port.PublicPort] = [port];
+        map[port.public_port] = [port];
       }
     }
     for (const key in map) {

@@ -22,13 +22,6 @@ export default function ServerHostedResourcesSection({
           specific={{ server_ids: [serverId] }}
         />
       </Section>
-      <Section title="Deployments" icon={<ICONS.Deployment size="1.3rem" />}>
-        <ResourceTable
-          type="Deployment"
-          newProps={{ serverId }}
-          specific={{ server_ids: [serverId] }}
-        />
-      </Section>
       <Section title="Repos" icon={<ICONS.Repo size="1.3rem" />}>
         <ResourceTable
           type="Repo"
