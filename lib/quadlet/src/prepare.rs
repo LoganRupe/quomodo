@@ -96,6 +96,14 @@ pub fn prepare(
     };
 
     if skip {
+      let contents =
+        if QuadletKind::from_file_name(base_name(&file.path))
+          == Some(QuadletKind::Container)
+        {
+          with_userns_auto(&contents)
+        } else {
+          contents
+        };
       prepared.write.insert(file.path.clone(), contents);
       continue;
     }
@@ -398,7 +406,7 @@ mod tests {
     let p = prepare(&stack(true), &files, &vars, &secrets).unwrap();
     assert_eq!(
       p.write["web.container"],
-      "[Container]\nImage=x\nEnvironment=A=[[NOPE]]\n"
+      "[Container]\nUserNS=auto\nImage=x\nEnvironment=A=[[NOPE]]\n"
     );
     assert!(p.secrets.is_empty());
   }

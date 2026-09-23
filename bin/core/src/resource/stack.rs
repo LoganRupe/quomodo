@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use database::mungos::mongodb::Collection;
 use formatting::format_serror;
 use indexmap::IndexSet;
@@ -28,7 +28,7 @@ use crate::{
   config::core_config,
   helpers::{
     periphery_client,
-    query::{get_cached_stack_state, get_stack_state},
+    query::{get_cached_stack_state, get_stack_state, get_variables},
     repo_link,
   },
   monitor::refresh_server_cache,
@@ -220,6 +220,28 @@ impl super::KomodoResource for Stack {
         format_serror(&e.error.context("The stack cache has failed to refresh. This may be due to a misconfiguration of the Stack").into())
       );
     };
+    // A stack that references a secret must name its collection.
+    // Checked here so a Resource Sync fails on the Stack, not the deploy.
+    if !created.config.skip_secret_interp
+      && created.config.secrets_collection.is_empty()
+      && let Ok(fresh) = super::get::<Stack>(&created.id).await
+      && let Some(files) = fresh.info.remote_contents.as_ref()
+    {
+      let variables = get_variables().await.unwrap_or_default();
+      let mut names = files
+        .iter()
+        .flat_map(|f| quadlet::prepare::referenced_names(&f.contents))
+        .filter(|n| !variables.contains_key(n))
+        .collect::<Vec<_>>();
+      names.sort();
+      names.dedup();
+      if !names.is_empty() {
+        return Err(anyhow!(
+          "Stack files reference secret/s [[{}]] but 'secrets_collection' is not set",
+          names.join("]], [[")
+        ));
+      }
+    }
     if created.config.server_id.is_empty() {
       return Ok(());
     }

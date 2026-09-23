@@ -1,2 +1,0 @@
-[      59ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:9121/login:0
-[   19423ms] [INFO] 0 | Logged into Update websocket @ http://127.0.0.1:9121/assets/index-C19HAVmj.js:77

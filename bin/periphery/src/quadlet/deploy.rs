@@ -55,16 +55,18 @@ pub fn plan(
     .collect::<BTreeMap<_, _>>();
 
   let Some(previous) = previous else {
+    // No saved state: either a first deploy or the state file was lost while
+    // units may still be running. Restart, which also starts inactive units.
     plan.reasons.push(String::from(
-      "First deploy: starting every runnable unit",
+      "No deploy state for this stack: restarting every runnable unit",
     ));
-    plan.start = units
+    plan.restart = units
       .iter()
       .filter(|u| u.unit.kind.is_runnable())
       .map(|u| u.unit.service.clone())
       .collect();
-    plan.start.sort();
-    plan.start.dedup();
+    plan.restart.sort();
+    plan.restart.dedup();
     return plan;
   };
 
@@ -94,6 +96,34 @@ pub fn plan(
         changed_units.insert(file);
         plan.reasons.push(format!("{file}: new unit"));
       }
+    }
+  }
+
+  // Changed config files restart the units that bind-mount them.
+  for (path, hash) in &new_hashes {
+    if by_file.contains_key(path.as_str())
+      || previous.files.get(path) == Some(hash)
+    {
+      continue;
+    }
+    let mut mounted = false;
+    for u in units.iter().filter(|u| {
+      u.mounts
+        .iter()
+        .any(|m| path == m || path.starts_with(&format!("{m}/")))
+    }) {
+      mounted = true;
+      if changed_units.insert(u.unit.file.as_str()) {
+        plan.reasons.push(format!(
+          "{}: mounts changed file {path}",
+          u.unit.file
+        ));
+      }
+    }
+    if !mounted {
+      plan.warnings.push(format!(
+        "{path}: changed, but no unit in this stack mounts it, so nothing restarts for it"
+      ));
     }
   }
 
@@ -510,11 +540,11 @@ mod tests {
   }
 
   #[test]
-  fn first_deploy_starts_runnable_units() {
+  fn first_deploy_or_lost_state_restarts_runnable_units() {
     let p = base();
     let plan = plan(&p, None, &[]);
     assert_eq!(
-      plan.start,
+      plan.restart,
       vec![
         "app-pod.service",
         "db.service",
@@ -522,7 +552,30 @@ mod tests {
         "web.service"
       ]
     );
-    assert!(plan.restart.is_empty());
+    assert!(plan.start.is_empty());
+  }
+
+  #[test]
+  fn changed_config_file_restarts_mounting_unit() {
+    let mut p = base();
+    p.write.insert(
+      "caddy.container".into(),
+      "[Container]\nImage=caddy\nVolume=./Caddyfile:/etc/caddy/Caddyfile:ro\n".into(),
+    );
+    p.write.insert("Caddyfile".into(), "v1".into());
+    p.write.insert("notes.txt".into(), "a".into());
+    p.units = p
+      .write
+      .iter()
+      .filter_map(|(k, v)| parse_unit(k, v))
+      .collect();
+    let s = state(&p);
+    let mut p2 = p;
+    p2.write.insert("Caddyfile".into(), "v2".into());
+    p2.write.insert("notes.txt".into(), "b".into());
+    let plan = plan(&p2, Some(&s), &[]);
+    assert_eq!(plan.restart, vec!["caddy.service"]);
+    assert!(plan.warnings.iter().any(|w| w.starts_with("notes.txt")));
   }
 
   #[test]

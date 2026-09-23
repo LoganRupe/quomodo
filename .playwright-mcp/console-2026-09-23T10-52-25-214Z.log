@@ -1,3 +1,0 @@
-[      25ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:9121/stacks/6ab3af18eb32fab37373409f:0
-[     202ms] [INFO] 0 | Logged into Update websocket @ http://127.0.0.1:9121/assets/index-C19HAVmj.js:77
-[     679ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:9121/read/ListGitProvidersFromConfig:0

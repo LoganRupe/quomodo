@@ -52,6 +52,7 @@ impl Resolve<WriteArgs> for CreateVariable {
       .status_code(StatusCode::BAD_REQUEST)?;
     validate_variable_value(&value)
       .status_code(StatusCode::BAD_REQUEST)?;
+    refuse_secret(is_secret)?;
 
     let variable = Variable {
       name,
@@ -206,6 +207,7 @@ impl Resolve<WriteArgs> for UpdateVariableIsSecret {
           .status_code(StatusCode::FORBIDDEN),
       );
     }
+    refuse_secret(self.is_secret)?;
 
     db_client()
       .variables
@@ -261,5 +263,19 @@ impl Resolve<WriteArgs> for DeleteVariable {
     add_update(update).await?;
 
     Ok(variable)
+  }
+}
+
+/// Secrets live in the secret store, never in the database.
+pub fn refuse_secret(is_secret: bool) -> mogh_error::Result<()> {
+  if is_secret {
+    Err(
+      anyhow!(
+        "Secret Variables are not supported. Put the value in the secret store and reference it from the Stack."
+      )
+      .status_code(StatusCode::BAD_REQUEST),
+    )
+  } else {
+    Ok(())
   }
 }

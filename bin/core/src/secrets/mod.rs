@@ -110,18 +110,17 @@ pub async fn resolve_stack_secrets(
         )
       })?;
 
-  let prefix = quadlet::secret_prefix(&stack.name);
-  let hashes = secrets
-    .iter()
-    .map(|(name, value)| {
-      (
-        format!("{prefix}_{}", quadlet::secret_safe(name)),
-        quadlet::sha256_hex(value),
-      )
-    })
-    .collect();
+  // Run the same preparation the agent runs, so the secret hashes
+  // (including config files mounted with `Secret=file:`) match exactly,
+  // and so a rule violation fails here instead of on the host.
+  let prepared =
+    quadlet::prepare::prepare(stack, files, variables, &secrets)
+      .context("Stack files failed secret validation")?;
 
-  Ok(ResolvedSecrets { secrets, hashes })
+  Ok(ResolvedSecrets {
+    secrets,
+    hashes: prepared.secret_hashes,
+  })
 }
 
 /// Only used at startup to fail fast on a broken provider config.

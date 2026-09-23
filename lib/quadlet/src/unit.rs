@@ -13,6 +13,9 @@ pub struct ParsedUnit {
   pub deps: Vec<String>,
   /// Podman secret names referenced with `Secret=`.
   pub secrets: Vec<String>,
+  /// Relative bind-mount sources from `Volume=` (files or directories
+  /// inside the stack directory), with any leading `./` removed.
+  pub mounts: Vec<String>,
 }
 
 /// The quadlet section holding the object keys for this kind.
@@ -89,6 +92,7 @@ pub fn parse_unit(path: &str, contents: &str) -> Option<ParsedUnit> {
   let default_name = format!("systemd-{stem}");
 
   let mut deps = Vec::new();
+  let mut mounts = Vec::new();
   let mut image = String::new();
   let mut pod = None;
 
@@ -142,6 +146,8 @@ pub fn parse_unit(path: &str, contents: &str) -> Option<ParsedUnit> {
     let target = value.split(':').next().unwrap_or(value);
     if target.ends_with(".volume") {
       deps.push(target.to_string());
+    } else if let Some(rel) = relative_mount(target) {
+      mounts.push(rel);
     }
   }
 
@@ -164,7 +170,31 @@ pub fn parse_unit(path: &str, contents: &str) -> Option<ParsedUnit> {
     },
     deps,
     secrets,
+    mounts,
   })
+}
+
+/// A `Volume=` source that lives inside the stack directory:
+/// quadlet resolves relative sources against the unit's directory.
+/// Absolute paths, systemd specifiers and named volumes are not.
+fn relative_mount(source: &str) -> Option<String> {
+  let source = source.trim();
+  if source.is_empty()
+    || source.starts_with('/')
+    || source.starts_with('%')
+    || source.starts_with('$')
+  {
+    return None;
+  }
+  let rel = source.strip_prefix("./").unwrap_or(source);
+  // A bare word with no slash or dot is a named volume, not a path.
+  if !source.starts_with("./")
+    && !rel.contains('/')
+    && !rel.contains('.')
+  {
+    return None;
+  }
+  Some(rel.trim_end_matches('/').to_string())
 }
 
 /// Every `.container` gets `UserNS=auto` so root inside the container
@@ -213,6 +243,14 @@ mod tests {
       vec!["app.pod", "app.network", "data.volume"]
     );
     assert_eq!(parsed.secrets, vec!["DB_PASSWORD", "app-config"]);
+    assert!(parsed.mounts.is_empty());
+  }
+
+  #[test]
+  fn records_relative_bind_mounts() {
+    let unit = "[Container]\nImage=x\nVolume=./Caddyfile:/etc/caddy/Caddyfile:ro\nVolume=config/:/config\nVolume=named:/data\nVolume=/abs/path:/abs\nVolume=%h/x:/x\n";
+    let parsed = parse_unit("caddy.container", unit).unwrap();
+    assert_eq!(parsed.mounts, vec!["Caddyfile", "config"]);
   }
 
   #[test]

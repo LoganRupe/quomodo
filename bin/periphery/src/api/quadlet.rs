@@ -216,8 +216,22 @@ impl Resolve<crate::api::Args> for DeployStack {
       }
     }
 
-    // 5. Plan, write, secrets, apply
+    // 5. Plan, secrets, files, apply.
+    // Secrets go first: a failed secret leaves the quadlet directory untouched,
+    // so nothing can start against a secret that does not exist.
     let plan = deploy::plan(&prepared, previous.as_ref(), &services);
+    if let Err(e) = deploy::create_secrets(
+      &prepared,
+      previous.as_ref(),
+      &mut res.logs,
+    )
+    .await
+    {
+      res
+        .logs
+        .push(Log::error("Podman Secrets", format_serror(&e.into())));
+      return Ok(res);
+    }
     let target = stack_quadlet_dir(&stack.name);
     let file_hashes =
       match deploy::write_files(&target, &prepared, &mut res.logs)
@@ -232,18 +246,6 @@ impl Resolve<crate::api::Args> for DeployStack {
           return Ok(res);
         }
       };
-    if let Err(e) = deploy::create_secrets(
-      &prepared,
-      previous.as_ref(),
-      &mut res.logs,
-    )
-    .await
-    {
-      res
-        .logs
-        .push(Log::error("Podman Secrets", format_serror(&e.into())));
-      return Ok(res);
-    }
     let applied = deploy::apply(&plan, &mut res.logs).await?;
     for log in res.logs.iter_mut() {
       log.sanitize(&replacers);
