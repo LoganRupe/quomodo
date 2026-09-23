@@ -13,6 +13,8 @@ path = "src/main.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# Vendored openssl for portable release binaries
+openssl-sys.workspace = true
 # local
 komodo_client = { workspace = true, features = ["core"] }
 periphery_client.workspace = true

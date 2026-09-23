@@ -50,6 +50,10 @@ mogh_pki = "1.1.3"
 mungos = "3.7.0"
 svi = "1.2.0"
 
+# BUILD ENV
+# Vendored so release binaries do not depend on the host libssl version.
+openssl-sys = { version = "0.9", features = ["vendored"] }
+
 # ASYNC
 reqwest = { version = "0.13.4", default-features = false, features = ["json", "stream", "form", "query", "rustls"] }
 tokio = { version = "1.53.1", features = ["full"] }

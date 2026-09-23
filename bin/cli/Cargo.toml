@@ -12,6 +12,8 @@ name = "km"
 path = "src/main.rs"
 
 [dependencies]
+# Vendored openssl for portable release binaries
+openssl-sys.workspace = true
 # local
 komodo_client = { workspace = true, features = ["cli"] }
 mogh_secret_file.workspace = true
