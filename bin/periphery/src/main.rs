@@ -10,25 +10,28 @@ use crate::{
 #[macro_use]
 extern crate tracing;
 
+// Vendored openssl is linked for the whole graph; keep the dependency live.
+use openssl_sys as _;
+
 mod api;
 mod config;
 mod connection;
-mod docker;
 mod helpers;
-mod stack;
+mod podman;
+mod quadlet;
 mod state;
 mod stats;
-mod terminal;
+mod systemd;
 
 async fn app() -> anyhow::Result<()> {
   dotenvy::dotenv().ok();
   let config = config::periphery_config();
   mogh_logger::init(&config.logging)?;
 
-  let startup_span = info_span!("PeripheryStartup");
+  let startup_span = info_span!("AgentStartup");
 
   let mut handles = async {
-    info!("Komodo Periphery version: v{}", env!("CARGO_PKG_VERSION"));
+    info!("Quomodo Agent version: v{}", env!("CARGO_PKG_VERSION"));
 
     if config.pretty_startup_config {
       info!("{:#?}", config.sanitized());
@@ -46,16 +49,24 @@ async fn app() -> anyhow::Result<()> {
       .install_default()
       .expect("Failed to install default crypto provider");
 
+    match podman::version().await {
+      Ok(version) => info!("podman {version}"),
+      Err(e) => warn!(
+        "podman is not reachable, stack operations will fail | {e:#}"
+      ),
+    }
+
     stats::spawn_polling_thread();
-    docker::stats::spawn_polling_thread();
 
     let handles = FuturesUnordered::new();
 
-    // Spawn client side connections
-    if !config.core_addresses.is_empty() && config.connect_as.is_empty()
-    {
-      warn!(
-        "'core_addresses' are defined for outbound connection, but missing 'connect_as' (PERIPHERY_CONNECT_AS)."
+    if config.core_addresses.is_empty() {
+      error!(
+        "No 'core_addresses' configured (PERIPHERY_CORE_ADDRESSES). The agent only dials out to Core, so there is nothing to do."
+      );
+    } else if config.connect_as.is_empty() {
+      error!(
+        "'core_addresses' are defined, but 'connect_as' (PERIPHERY_CONNECT_AS) is missing."
       );
     } else {
       for address in &config.core_addresses {
@@ -64,16 +75,6 @@ async fn app() -> anyhow::Result<()> {
           Err(e) => {
             error!("Failed to start outbound connection to {address} | {e:#}");
           }
-        }
-      }
-    }
-
-    // Spawn server connection handler.
-    if config.server_enabled() {
-      match connection::server::run().await {
-        Ok(handle) => handles.push(handle),
-        Err(e) => {
-          error!("Failed to run inbound connection server | {e:#}");
         }
       }
     }
@@ -99,7 +100,7 @@ async fn app() -> anyhow::Result<()> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-  // Handle `periphery key gen` and `periphery key compute <private-key>`
+  // Handle `quomodo-agent key gen` and `quomodo-agent key compute <private-key>`
   if let Some(Command::Key { command }) = &periphery_args().command {
     return mogh_pki::cli::handle(command, mogh_pki::PkiKind::Mutual)
       .await;
@@ -109,10 +110,9 @@ async fn main() -> anyhow::Result<()> {
     tokio::signal::unix::SignalKind::terminate(),
   )?;
   tokio::select! {
-    res = tokio::spawn(app()) => return res?,
+    res = tokio::spawn(app()) => res?,
     _ = term_signal.recv() => {
-      info!("Exiting all active Terminals for shutdown");
-      terminal::delete_all_terminals().await;
+      info!("Received SIGTERM, exiting");
       Ok(())
     },
   }

@@ -7,9 +7,7 @@ use komodo_client::entities::{
   logger::{LogConfig, LogLevel},
 };
 use mogh_config::ConfigLoader;
-use mogh_secret_file::{
-  maybe_read_item_from_file, maybe_read_list_from_file,
-};
+use mogh_secret_file::maybe_read_item_from_file;
 
 pub fn periphery_args() -> &'static CliArgs {
   static PERIPHERY_ARGS: OnceLock<CliArgs> = OnceLock::new();
@@ -20,16 +18,14 @@ pub fn periphery_config() -> &'static PeripheryConfig {
   static PERIPHERY_CONFIG: OnceLock<PeripheryConfig> =
     OnceLock::new();
   PERIPHERY_CONFIG.get_or_init(|| {
-    let env: Env = envy::from_env()
-      .expect("failed to parse periphery environment");
+    let env: Env =
+      envy::from_env().expect("failed to parse agent environment");
     let args = periphery_args();
 
     let config_paths = args
       .config_path
       .as_ref()
       .unwrap_or(&env.periphery_config_paths);
-
-    println!("{config_paths:?}");
 
     let config = if config_paths.is_empty() {
       println!(
@@ -50,7 +46,7 @@ pub fn periphery_config() -> &'static PeripheryConfig {
           .iter()
           .map(String::as_str)
           .collect::<Vec<_>>(),
-        include_file_name: ".peripheryinclude",
+        include_file_name: ".quomodoinclude",
         merge_nested: args
           .merge_nested_config
           .unwrap_or(env.periphery_merge_nested_config),
@@ -83,11 +79,6 @@ pub fn periphery_config() -> &'static PeripheryConfig {
       core_public_keys: env
         .periphery_core_public_keys
         .or(config.core_public_keys),
-      passkeys: maybe_read_list_from_file(
-        env.periphery_passkeys_file,
-        env.periphery_passkeys,
-      )
-      .or(config.passkeys),
       core_addresses: env
         .periphery_core_addresses
         .unwrap_or(config.core_addresses),
@@ -97,35 +88,19 @@ pub fn periphery_config() -> &'static PeripheryConfig {
       connect_as: env
         .periphery_connect_as
         .unwrap_or(config.connect_as),
-      server_enabled: env
-        .periphery_server_enabled
-        .or(config.server_enabled),
-      port: env.periphery_port.unwrap_or(config.port),
-      bind_ip: env.periphery_bind_ip.unwrap_or(config.bind_ip),
+      config_directory: env
+        .periphery_config_directory
+        .unwrap_or(config.config_directory),
       root_directory: env
         .periphery_root_directory
         .unwrap_or(config.root_directory),
       repo_dir: env.periphery_repo_dir.or(config.repo_dir),
-      stack_dir: env.periphery_stack_dir.or(config.stack_dir),
-      build_dir: env.periphery_build_dir.or(config.build_dir),
-      default_terminal_command: env
-        .periphery_default_terminal_command
-        .unwrap_or(config.default_terminal_command),
-      disable_terminals: env
-        .periphery_disable_terminals
-        .unwrap_or(config.disable_terminals),
-      disable_container_terminals: env
-        .periphery_disable_container_terminals
-        .unwrap_or(config.disable_container_terminals),
+      quadlet_dir: env
+        .periphery_quadlet_dir
+        .unwrap_or(config.quadlet_dir),
       stats_polling_rate: env
         .periphery_stats_polling_rate
         .unwrap_or(config.stats_polling_rate),
-      container_stats_polling_rate: env
-        .periphery_container_stats_polling_rate
-        .unwrap_or(config.container_stats_polling_rate),
-      legacy_compose_cli: env
-        .periphery_legacy_compose_cli
-        .unwrap_or(config.legacy_compose_cli),
       logging: LogConfig {
         level: args
           .log_level
@@ -160,25 +135,12 @@ pub fn periphery_config() -> &'static PeripheryConfig {
       pretty_startup_config: env
         .periphery_pretty_startup_config
         .unwrap_or(config.pretty_startup_config),
-      allowed_ips: env
-        .periphery_allowed_ips
-        .unwrap_or(config.allowed_ips),
       include_disk_mounts: env
         .periphery_include_disk_mounts
         .unwrap_or(config.include_disk_mounts),
       exclude_disk_mounts: env
         .periphery_exclude_disk_mounts
         .unwrap_or(config.exclude_disk_mounts),
-      ssl_enabled: env
-        .periphery_ssl_enabled
-        .unwrap_or(config.ssl_enabled),
-      ssl_key_file: env
-        .periphery_ssl_key_file
-        .or(config.ssl_key_file),
-      ssl_cert_file: env
-        .periphery_ssl_cert_file
-        .or(config.ssl_cert_file),
-      secrets: config.secrets,
       git_providers: config.git_providers,
       image_registries: config.image_registries,
     }

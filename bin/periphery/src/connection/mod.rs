@@ -27,7 +27,6 @@ use crate::{
 };
 
 pub mod client;
-pub mod server;
 
 impl PublicKeyValidator for &CorePublicKeys {
   type ValidationResult = ();
@@ -69,7 +68,7 @@ async fn handle_socket<W: Websocket>(
 ) {
   let config = periphery_config();
   info!(
-    "Logged in to Komodo Core {core} websocket{}",
+    "Logged in to Core {core} websocket{}",
     if !config.core_addresses.is_empty()
       && !config.connect_as.is_empty()
     {
@@ -121,15 +120,9 @@ async fn handle_socket<W: Websocket>(
           break;
         }
       };
-      match message {
-        TransportMessage::Request(message) => {
-          handle_request(core.to_string(), sender.clone(), message)
-        }
-        TransportMessage::Terminal(message) => {
-          crate::terminal::handle_message(message).await
-        }
-        // Rest shouldn't be received by Periphery
-        _ => {}
+      // Only requests are expected from Core.
+      if let TransportMessage::Request(message) = message {
+        handle_request(core.to_string(), sender.clone(), message)
       }
     }
   };

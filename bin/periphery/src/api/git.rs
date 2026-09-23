@@ -64,13 +64,13 @@ impl Resolve<crate::api::Args> for CloneRepo {
 
     let res = git::clone(args, &root_repo_dir, token).await?;
 
+    let _ = skip_secret_interp;
     handle_post_repo_execution(
       res,
       environment,
       &env_file_path,
       on_clone,
       on_pull,
-      skip_secret_interp,
       replacers,
     )
     .await
@@ -109,13 +109,13 @@ impl Resolve<crate::api::Args> for PullRepo {
 
     let res = git::pull(args, &parent_dir, token).await?;
 
+    let _ = skip_secret_interp;
     handle_post_repo_execution(
       res,
       environment,
       &env_file_path,
       None,
       on_pull,
-      skip_secret_interp,
       replacers,
     )
     .await
@@ -156,13 +156,13 @@ impl Resolve<crate::api::Args> for PullOrCloneRepo {
     let (res, cloned) =
       git::pull_or_clone(args, &parent_dir, token).await?;
 
+    let _ = skip_secret_interp;
     handle_post_repo_execution(
       res,
       environment,
       &env_file_path,
       cloned.then_some(on_clone).flatten(),
       on_pull,
-      skip_secret_interp,
       replacers,
     )
     .await
@@ -222,11 +222,8 @@ impl Resolve<crate::api::Args> for DeleteRepo {
     let DeleteRepo { name, is_build } = self;
     // If using custom clone path, it will be passed by core instead of name.
     // So the join will resolve to just the absolute path.
-    let root = if is_build {
-      periphery_config().build_dir()
-    } else {
-      periphery_config().repo_dir()
-    };
+    let _ = is_build;
+    let root = periphery_config().repo_dir();
     let full_path = root.join(&name);
     let deleted =
       fs::remove_dir_all(&full_path).await.with_context(|| {
@@ -248,8 +245,9 @@ fn default_folder(
   default_folder: DefaultRepoFolder,
 ) -> anyhow::Result<PathBuf> {
   match default_folder {
-    DefaultRepoFolder::Stacks => Ok(periphery_config().stack_dir()),
-    DefaultRepoFolder::Builds => Ok(periphery_config().build_dir()),
+    DefaultRepoFolder::Stacks => {
+      Ok(crate::quadlet::stack_clone_root())
+    }
     DefaultRepoFolder::Repos => Ok(periphery_config().repo_dir()),
     DefaultRepoFolder::NotApplicable => Err(anyhow!(
       "The clone args should not have a default_folder of NotApplicable using this method."

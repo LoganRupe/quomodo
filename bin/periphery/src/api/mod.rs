@@ -7,8 +7,7 @@ use komodo_client::entities::{
 };
 use mogh_resolver::Resolve;
 use periphery_client::api::{
-  build::*, compose::*, container::*, docker::*, git::*, keys::*,
-  poll::*, stats::*, swarm::*, terminal::*, *,
+  container::*, git::*, keys::*, poll::*, quadlet::*, stats::*, *,
 };
 use serde::{Deserialize, Serialize};
 use strum::EnumDiscriminants;
@@ -16,16 +15,11 @@ use uuid::Uuid;
 
 use crate::{config::periphery_config, state::stats_client};
 
-pub mod terminal;
-
-mod build;
-mod compose;
 mod container;
-mod docker;
 mod git;
 mod keys;
 mod poll;
-mod swarm;
+mod quadlet;
 
 #[derive(Debug)]
 pub struct Args {
@@ -55,7 +49,6 @@ pub enum PeripheryRequest {
   // Config (Read)
   ListGitProviders(ListGitProviders),
   ListImageRegistries(ListImageRegistries),
-  ListSecrets(ListSecrets),
 
   // Repo (Write)
   CloneRepo(CloneRepo),
@@ -64,116 +57,25 @@ pub enum PeripheryRequest {
   RenameRepo(RenameRepo),
   DeleteRepo(DeleteRepo),
 
-  // Build
-  GetDockerfileContentsOnHost(GetDockerfileContentsOnHost),
-  WriteDockerfileContentsToHost(WriteDockerfileContentsToHost),
-  Build(Build),
-  CancelBuild(CancelBuild),
-  PruneBuilders(PruneBuilders),
-  PruneBuildx(PruneBuildx),
-
-  // Compose (Read)
-  GetComposeContentsOnHost(GetComposeContentsOnHost),
-  GetComposeLog(GetComposeLog),
-  GetComposeLogSearch(GetComposeLogSearch),
-
-  // Compose (Write)
-  WriteComposeContentsToHost(WriteComposeContentsToHost),
-  WriteCommitComposeContents(WriteCommitComposeContents),
-  ComposePull(ComposePull),
-  ComposeUp(ComposeUp),
-  ComposeExecution(ComposeExecution),
-  ComposeRun(ComposeRun),
-
   // Container (Read)
-  InspectContainer(InspectContainer),
+  ListContainers(ListContainers),
   GetContainerLog(GetContainerLog),
   GetContainerLogSearch(GetContainerLogSearch),
-  GetContainerStats(GetContainerStats),
-  GetContainerStatsList(GetContainerStatsList),
-  GetFullContainerStats(GetFullContainerStats),
 
-  // Container (Write)
-  RunContainer(RunContainer),
-  StartContainer(StartContainer),
-  RestartContainer(RestartContainer),
-  PauseContainer(PauseContainer),
-  UnpauseContainer(UnpauseContainer),
-  StopContainer(StopContainer),
-  StartAllContainers(StartAllContainers),
-  RestartAllContainers(RestartAllContainers),
-  PauseAllContainers(PauseAllContainers),
-  UnpauseAllContainers(UnpauseAllContainers),
-  StopAllContainers(StopAllContainers),
-  RemoveContainer(RemoveContainer),
-  RenameContainer(RenameContainer),
-  PruneContainers(PruneContainers),
+  // Stack (Read)
+  ReadStack(ReadStack),
+  GetStackLog(GetStackLog),
+  GetStackLogSearch(GetStackLogSearch),
 
-  // Networks (Read)
-  InspectNetwork(InspectNetwork),
+  // Stack (Write)
+  DeployStack(DeployStack),
+  PullStack(PullStack),
+  StackUnits(StackUnits),
+  DestroyStack(DestroyStack),
 
-  // Networks (Write)
-  CreateNetwork(CreateNetwork),
-  DeleteNetwork(DeleteNetwork),
-  PruneNetworks(PruneNetworks),
-
-  // Image (Read)
-  InspectImage(InspectImage),
-  ImageHistory(ImageHistory),
-  GetLatestImageDigest(GetLatestImageDigest),
-
-  // Image (Write)
-  PullImage(PullImage),
-  DeleteImage(DeleteImage),
+  // Podman (Write)
   PruneImages(PruneImages),
-
-  // Volume (Read)
-  InspectVolume(InspectVolume),
-
-  // Volume (Write)
-  DeleteVolume(DeleteVolume),
-  PruneVolumes(PruneVolumes),
-
-  // All in one (Write)
   PruneSystem(PruneSystem),
-
-  // Swarm (Read)
-  PollSwarmStatus(PollSwarmStatus),
-  InspectSwarmNode(InspectSwarmNode),
-  InspectSwarmStack(InspectSwarmStack),
-  InspectSwarmService(InspectSwarmService),
-  GetSwarmServiceLog(GetSwarmServiceLog),
-  GetSwarmServiceLogSearch(GetSwarmServiceLogSearch),
-  InspectSwarmTask(InspectSwarmTask),
-  InspectSwarmConfig(InspectSwarmConfig),
-  InspectSwarmSecret(InspectSwarmSecret),
-
-  // Swarm (Write)
-  UpdateSwarmNode(UpdateSwarmNode),
-  RemoveSwarmNodes(RemoveSwarmNodes),
-  DeploySwarmStack(DeploySwarmStack),
-  RemoveSwarmStacks(RemoveSwarmStacks),
-  CreateSwarmService(CreateSwarmService),
-  UpdateSwarmService(UpdateSwarmService),
-  RollbackSwarmService(RollbackSwarmService),
-  RemoveSwarmServices(RemoveSwarmServices),
-  CreateSwarmConfig(CreateSwarmConfig),
-  RotateSwarmConfig(RotateSwarmConfig),
-  RemoveSwarmConfigs(RemoveSwarmConfigs),
-  CreateSwarmSecret(CreateSwarmSecret),
-  RotateSwarmSecret(RotateSwarmSecret),
-  RemoveSwarmSecrets(RemoveSwarmSecrets),
-
-  // Terminal
-  ListTerminals(ListTerminals),
-  CreateServerTerminal(CreateServerTerminal),
-  CreateContainerExecTerminal(CreateContainerExecTerminal),
-  CreateContainerAttachTerminal(CreateContainerAttachTerminal),
-  DeleteTerminal(DeleteTerminal),
-  DeleteAllTerminals(DeleteAllTerminals),
-  ConnectTerminal(ConnectTerminal),
-  DisconnectTerminal(DisconnectTerminal),
-  ExecuteTerminal(ExecuteTerminal),
 
   // Keys
   RotatePrivateKey(RotatePrivateKey),
@@ -237,14 +139,20 @@ impl Resolve<Args> for ListImageRegistries {
 
 //
 
-impl Resolve<Args> for ListSecrets {
-  async fn resolve(self, _: &Args) -> anyhow::Result<Vec<String>> {
+impl Resolve<Args> for PruneImages {
+  #[instrument(
+    "PruneImages",
+    skip_all,
+    fields(id = args.id.to_string(), core = args.core)
+  )]
+  async fn resolve(self, args: &Args) -> anyhow::Result<Log> {
     Ok(
-      periphery_config()
-        .secrets
-        .keys()
-        .cloned()
-        .collect::<Vec<_>>(),
+      run_komodo_standard_command(
+        "Prune Images",
+        "podman image prune -a -f",
+        CommandOptions::default(),
+      )
+      .await,
     )
   }
 }
@@ -253,17 +161,13 @@ impl Resolve<Args> for PruneSystem {
   #[instrument(
     "PruneSystem",
     skip_all,
-    fields(
-      id = args.id.to_string(),
-      core = args.core
-    )
+    fields(id = args.id.to_string(), core = args.core)
   )]
   async fn resolve(self, args: &Args) -> anyhow::Result<Log> {
-    let command = String::from("docker system prune -a -f --volumes");
     Ok(
       run_komodo_standard_command(
         "Prune System",
-        command,
+        "podman system prune -a -f --volumes",
         CommandOptions::default(),
       )
       .await,

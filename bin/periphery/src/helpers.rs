@@ -1,22 +1,17 @@
 use std::{
-  fmt::Write, net::IpAddr, path::PathBuf, str::FromStr as _,
-  sync::OnceLock, time::Duration,
+  net::IpAddr, path::PathBuf, str::FromStr as _, sync::OnceLock,
+  time::Duration,
 };
 
 use anyhow::Context;
 use command::{
   CommandOptions, KomodoCommandMode,
-  run_komodo_command_with_sanitization, run_standard_command,
+  run_komodo_command_with_sanitization,
 };
 use environment::write_env_file;
-use interpolate::Interpolator;
-use komodo_client::{
-  entities::{
-    EnvironmentVar, RepoExecutionArgs, RepoExecutionResponse,
-    SearchCombinator, SystemCommand, all_logs_success,
-    deployment::Conversion,
-  },
-  parsers::QUOTE_PATTERN,
+use komodo_client::entities::{
+  EnvironmentVar, RepoExecutionArgs, RepoExecutionResponse,
+  SearchCombinator, SystemCommand, all_logs_success,
 };
 use periphery_client::api::git::PeripheryRepoExecutionResponse;
 use shell_escape::unix::escape;
@@ -26,93 +21,6 @@ use crate::config::periphery_config;
 // ============
 //  Formatting
 // ============
-
-pub fn format_extra_args(extra_args: &[String]) -> String {
-  let args = extra_args.join(" ");
-  if !args.is_empty() {
-    format!(" {args}")
-  } else {
-    args
-  }
-}
-
-pub fn push_extra_args(
-  command: &mut String,
-  extra_args: &[String],
-) -> anyhow::Result<()> {
-  for arg in extra_args {
-    write!(command, " {arg}")
-      .context("Failed to write extra args to command")?
-  }
-  Ok(())
-}
-
-pub fn format_labels(labels: &[EnvironmentVar]) -> String {
-  labels
-    .iter()
-    .map(|p| {
-      if p.value.starts_with(QUOTE_PATTERN)
-        && p.value.ends_with(QUOTE_PATTERN)
-      {
-        // If the value already wrapped in quotes, don't wrap it again
-        format!(" --label {}={}", p.variable, p.value)
-      } else {
-        format!(" --label {}=\"{}\"", p.variable, p.value)
-      }
-    })
-    .collect::<Vec<_>>()
-    .join("")
-}
-
-pub fn push_labels(
-  command: &mut String,
-  labels: &[EnvironmentVar],
-) -> anyhow::Result<()> {
-  for label in labels {
-    if label.value.starts_with(QUOTE_PATTERN)
-      && label.value.ends_with(QUOTE_PATTERN)
-    {
-      write!(command, " --label {}={}", label.variable, label.value)
-    } else {
-      write!(
-        command,
-        " --label {}=\"{}\"",
-        label.variable, label.value
-      )
-    }
-    .context("Failed to write labels to command")?;
-  }
-  Ok(())
-}
-
-pub fn push_conversions(
-  command: &mut String,
-  conversions: &[Conversion],
-  flag: &str,
-) -> anyhow::Result<()> {
-  for Conversion { local, container } in conversions {
-    write!(command, " {flag} {local}:{container}")
-      .context("Failed to format conversions")?;
-  }
-  Ok(())
-}
-
-pub fn push_environment(
-  command: &mut String,
-  environment: &[EnvironmentVar],
-) -> anyhow::Result<()> {
-  for EnvironmentVar { variable, value } in environment {
-    if value.starts_with(QUOTE_PATTERN)
-      && value.ends_with(QUOTE_PATTERN)
-    {
-      write!(command, " --env {variable}={value}")
-    } else {
-      write!(command, " --env {variable}=\"{value}\"")
-    }
-    .context("Failed to format environment")?;
-  }
-  Ok(())
-}
 
 pub fn format_log_grep(
   terms: &[String],
@@ -140,6 +48,8 @@ pub fn format_log_grep(
 //  Git
 // =====
 
+/// Core has already interpolated variables into the environment
+/// and the on_clone / on_pull commands. The agent only writes and runs them.
 #[instrument(
   "PostRepoExecution",
   skip_all,
@@ -150,26 +60,12 @@ pub fn format_log_grep(
 )]
 pub async fn handle_post_repo_execution(
   mut res: RepoExecutionResponse,
-  mut environment: Vec<EnvironmentVar>,
+  environment: Vec<EnvironmentVar>,
   env_file_path: &str,
-  mut on_clone: Option<SystemCommand>,
-  mut on_pull: Option<SystemCommand>,
-  skip_secret_interp: bool,
-  mut replacers: Vec<(String, String)>,
+  on_clone: Option<SystemCommand>,
+  on_pull: Option<SystemCommand>,
+  replacers: Vec<(String, String)>,
 ) -> anyhow::Result<PeripheryRepoExecutionResponse> {
-  if !skip_secret_interp {
-    let mut interpolotor =
-      Interpolator::new(None, &periphery_config().secrets);
-    interpolotor.interpolate_env_vars(&mut environment)?;
-    if let Some(on_clone) = on_clone.as_mut() {
-      interpolotor.interpolate_string(&mut on_clone.command)?;
-    }
-    if let Some(on_pull) = on_pull.as_mut() {
-      interpolotor.interpolate_string(&mut on_pull.command)?;
-    }
-    replacers.extend(interpolotor.secret_replacers);
-  }
-
   let env_file_path = write_env_file(
     &environment,
     &res.path,
@@ -281,7 +177,7 @@ pub fn registry_token(
     .and_then(|registry| {
       registry.accounts.iter().find(|account| account.username == account_username).map(|account| account.token.as_str())
     })
-    .with_context(|| format!("did not find token in config for docker registry account {account_username} | domain {domain}"))
+    .with_context(|| format!("did not find token in config for image registry account {account_username} | domain {domain}"))
 }
 
 // ====================
@@ -333,53 +229,4 @@ pub async fn resolve_host_public_ip() -> anyhow::Result<String> {
   .await
   .context("OpenDNS call for public IP timed out")
   .flatten()
-}
-
-// =====
-//  SSL
-// =====
-
-pub async fn ensure_ssl_certs() {
-  let config = periphery_config();
-  if !config.ssl_cert_file().is_file()
-    || !config.ssl_key_file().is_file()
-  {
-    generate_self_signed_ssl_certs().await
-  }
-}
-
-#[instrument("GenerateSslCerts")]
-async fn generate_self_signed_ssl_certs() {
-  info!("Generating certs...");
-
-  let config = periphery_config();
-
-  let ssl_key_file = config.ssl_key_file();
-  let ssl_cert_file = config.ssl_cert_file();
-
-  // ensure cert folders exist
-  if let Some(parent) = ssl_key_file.parent() {
-    let _ = std::fs::create_dir_all(parent);
-  }
-  if let Some(parent) = ssl_cert_file.parent() {
-    let _ = std::fs::create_dir_all(parent);
-  }
-
-  let key_path = ssl_key_file.display();
-  let cert_path = ssl_cert_file.display();
-
-  let command = format!(
-    "openssl req -x509 -newkey rsa:4096 -keyout {key_path} -out {cert_path} -sha256 -days 3650 -nodes -subj \"/C=XX/CN=periphery\""
-  );
-  let log =
-    run_standard_command(&command, CommandOptions::default()).await;
-
-  if log.success() {
-    info!("✅ SSL Certs generated");
-  } else {
-    panic!(
-      "🚨 Failed to generate SSL Certs | stdout: {} | stderr: {}",
-      log.stdout, log.stderr
-    );
-  }
 }

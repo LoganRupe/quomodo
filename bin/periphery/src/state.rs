@@ -1,51 +1,29 @@
 use std::{
-  collections::HashMap,
   path::PathBuf,
   sync::{Arc, OnceLock},
 };
 
-use anyhow::{Context, anyhow};
+use anyhow::Context;
 use arc_swap::ArcSwap;
-use komodo_client::entities::{
-  docker::container::ContainerStats, terminal::TerminalStdinMessage,
-};
-use mogh_cache::{CloneCache, CloneVecCache};
+use mogh_cache::CloneCache;
 use mogh_pki::{PkiKind, RotatableKeyPair, SpkiPublicKey};
 use periphery_client::transport::EncodedTransportMessage;
-use tokio::sync::{Mutex, OnceCell, RwLock, mpsc, oneshot};
-use tokio_util::sync::CancellationToken;
+use tokio::sync::{OnceCell, RwLock};
 use transport::channel::BufferedChannel;
-use uuid::Uuid;
 
 use crate::{
-  config::periphery_config, docker::DockerClient,
-  helpers::resolve_host_public_ip, stats::StatsClient,
-  terminal::PeripheryTerminal,
+  config::periphery_config, helpers::resolve_host_public_ip,
+  stats::StatsClient,
 };
 
-/// Should call in startup to ensure Periphery errors without valid private key.
+/// Should call in startup to ensure the agent errors without valid private key.
 pub fn periphery_keys() -> &'static RotatableKeyPair {
   static PERIPHERY_KEYS: OnceLock<RotatableKeyPair> = OnceLock::new();
   PERIPHERY_KEYS.get_or_init(|| {
-    let config = periphery_config();
-    if let Some(private_key_spec) = config.private_key.as_deref() {
-      RotatableKeyPair::from_private_key_spec(
-        PkiKind::Mutual,
-        private_key_spec,
-      )
-    } else {
-      RotatableKeyPair::from_private_key_spec(
-        PkiKind::Mutual,
-        &format!(
-          "file:{}",
-          config
-            .root_directory
-            .join("keys/periphery.key")
-            .to_str()
-            .expect("Invalid root directory")
-        ),
-      )
-    }
+    RotatableKeyPair::from_private_key_spec(
+      PkiKind::Mutual,
+      &periphery_config().private_key_spec(),
+    )
     .unwrap()
   })
 }
@@ -57,9 +35,8 @@ pub fn core_public_keys() -> &'static CorePublicKeys {
 
 pub struct CorePublicKeys {
   keys: ArcSwap<Vec<SpkiPublicKey>>,
-  /// If any keys fail to write, store them here.
-  /// For Periphery -> Core connection, Periphery will
-  /// write the Core pub keys to these files as they connect.
+  /// If any keys fail to read, store the paths here.
+  /// The agent writes the Core pub key to these files as it connects.
   to_write: ArcSwap<Vec<PathBuf>>,
 }
 
@@ -80,8 +57,7 @@ impl CorePublicKeys {
   }
 
   pub async fn is_valid(&self, public_key: &str) -> bool {
-    // For Periphery -> Core connection, maybe init
-    // Core public key file if it doesn't exist.
+    // Maybe init the Core public key file if it doesn't exist.
     self.maybe_write(public_key).await;
     let keys = self.keys.load();
     keys.is_empty() || keys.iter().any(|pk| pk.as_str() == public_key)
@@ -109,6 +85,9 @@ impl CorePublicKeys {
       }
       _ => {}
     }
+    if let Some(parent) = path.parent() {
+      let _ = tokio::fs::create_dir_all(parent).await;
+    }
     if let Err(e) = public_key.write_pem_async(path).await {
       warn!("Failed to pin incoming public key | {e:#}");
     }
@@ -117,29 +96,19 @@ impl CorePublicKeys {
 
   pub fn refresh(&self) {
     let config = periphery_config();
-    let Some(core_public_keys_spec) = config.core_public_keys_spec()
-    else {
-      return;
-    };
     let mut to_write = Vec::new();
-    let core_public_keys = core_public_keys_spec
+    let core_public_keys = config
+      .core_public_keys_spec()
       .iter()
       .flat_map(|public_key| {
-        if let Some(path) = public_key.strip_prefix("file:")
-        {
-          match (SpkiPublicKey::from_file(path), config.server_enabled()) {
-            (Ok(public_key), _) => Some(public_key),
-            (Err(e), false) => {
-              // If only outbound connections, only warn.
-              // It will be written when Core public key received.
+        if let Some(path) = public_key.strip_prefix("file:") {
+          match SpkiPublicKey::from_file(path) {
+            Ok(public_key) => Some(public_key),
+            Err(e) => {
+              // It will be written when the Core public key is received.
               warn!("{e:#}");
               to_write.push(path.into());
               None
-            }
-            (Err(e), true) => {
-              // This is too dangerous to allow if server_enabled.
-              error!("{e:#}");
-              std::process::exit(1)
             }
           }
         } else {
@@ -174,159 +143,6 @@ pub fn stats_client() -> &'static RwLock<StatsClient> {
   STATS_CLIENT.get_or_init(|| RwLock::new(StatsClient::default()))
 }
 
-pub fn terminals() -> &'static CloneVecCache<Arc<PeripheryTerminal>> {
-  static TERMINALS: OnceLock<CloneVecCache<Arc<PeripheryTerminal>>> =
-    OnceLock::new();
-  TERMINALS.get_or_init(Default::default)
-}
-
-#[derive(Default)]
-pub struct TerminalChannels(CloneCache<Uuid, Arc<TerminalChannel>>);
-
-impl TerminalChannels {
-  pub async fn get(
-    &self,
-    channel: &Uuid,
-  ) -> Option<Arc<TerminalChannel>> {
-    self.0.get(channel).await
-  }
-
-  pub async fn insert(
-    &self,
-    channel: Uuid,
-    terminal: Arc<TerminalChannel>,
-  ) -> Option<Arc<TerminalChannel>> {
-    self.0.insert(channel, terminal).await
-  }
-
-  pub async fn remove(&self, channel: &Uuid) {
-    let Some(channel) = self.0.remove(channel).await else {
-      return;
-    };
-    channel.cancel.cancel();
-  }
-}
-
-pub fn terminal_channels() -> &'static TerminalChannels {
-  static TERMINAL_CHANNELS: OnceLock<TerminalChannels> =
-    OnceLock::new();
-  TERMINAL_CHANNELS.get_or_init(Default::default)
-}
-
-#[derive(Debug)]
-pub struct TerminalChannel {
-  pub sender: mpsc::Sender<TerminalStdinMessage>,
-  pub cancel: CancellationToken,
-}
-
-pub fn terminal_triggers() -> &'static TerminalTriggers {
-  static TERMINAL_TRIGGERS: OnceLock<TerminalTriggers> =
-    OnceLock::new();
-  TERMINAL_TRIGGERS.get_or_init(Default::default)
-}
-
-/// Periphery must wait for Core to finish setting
-/// up channel forwarding before sending message,
-/// or the first sent messages may be missed.
-#[derive(Default)]
-pub struct TerminalTriggers(CloneCache<Uuid, Arc<TerminalTrigger>>);
-
-impl TerminalTriggers {
-  #[instrument("InsertTerminalTrigger", skip(self))]
-  pub async fn insert(&self, channel: Uuid) {
-    let (sender, receiver) = oneshot::channel();
-    let trigger = Arc::new(TerminalTrigger {
-      sender: Some(sender).into(),
-      receiver: Some(receiver).into(),
-    });
-    self.0.insert(channel, trigger).await;
-  }
-
-  pub async fn send(&self, channel: &Uuid) -> anyhow::Result<()> {
-    let trigger = self.0.get(channel).await.with_context(|| {
-      format!("No trigger found for channel {channel}")
-    })?;
-    trigger.send().await
-  }
-
-  pub async fn recv(&self, channel: &Uuid) -> anyhow::Result<()> {
-    let trigger = self.0.get(channel).await.with_context(|| {
-      format!("No trigger found for channel {channel}")
-    })?;
-    trigger.wait().await?;
-    self.0.remove(channel).await;
-    Ok(())
-  }
-}
-
-#[derive(Debug)]
-pub struct TerminalTrigger {
-  sender: Mutex<Option<oneshot::Sender<()>>>,
-  receiver: Mutex<Option<oneshot::Receiver<()>>>,
-}
-
-impl TerminalTrigger {
-  /// This consumes the Trigger Sender.
-  pub async fn send(&self) -> anyhow::Result<()> {
-    let mut sender = self.sender.lock().await;
-    let sender = sender
-      .take()
-      .context("Called TerminalTrigger 'send' more than once.")?;
-    sender
-      .send(())
-      .map_err(|_| anyhow!("TerminalTrigger sender already used"))
-  }
-
-  /// This consumes the Trigger Receiver.
-  pub async fn wait(&self) -> anyhow::Result<()> {
-    let mut receiver = self.receiver.lock().await;
-    let receiver = receiver
-      .take()
-      .context("Called TerminalTrigger 'wait' more than once.")?;
-    receiver.await.context("Failed to receive TerminalTrigger")
-  }
-}
-
-pub fn docker_client() -> &'static SwappableDockerClient {
-  static DOCKER_CLIENT: OnceLock<SwappableDockerClient> =
-    OnceLock::new();
-  DOCKER_CLIENT.get_or_init(SwappableDockerClient::init)
-}
-
-#[derive(Default)]
-pub struct SwappableDockerClient(ArcSwap<Option<DockerClient>>);
-
-impl SwappableDockerClient {
-  pub fn init() -> Self {
-    let docker = DockerClient::connect()
-      // Only logs on first init, although keeps trying to connect
-      .inspect_err(|e| warn!("{e:#}"))
-      .ok();
-    Self(ArcSwap::new(Arc::new(docker)))
-  }
-
-  pub fn load(&self) -> arc_swap::Guard<Arc<Option<DockerClient>>> {
-    let res = self.0.load();
-    if res.is_some() {
-      return res;
-    }
-    self.reload();
-    self.0.load()
-  }
-
-  pub fn reload(&self) {
-    self.0.store(Arc::new(DockerClient::connect().ok()));
-  }
-}
-
-pub type ContainerStatsMap = HashMap<String, ContainerStats>;
-
-pub fn container_stats() -> &'static ArcSwap<ContainerStatsMap> {
-  static CONTAINER_STATS: OnceLock<ArcSwap<ContainerStatsMap>> =
-    OnceLock::new();
-  CONTAINER_STATS.get_or_init(Default::default)
-}
-
 pub async fn host_public_ip() -> Option<&'static String> {
   static PUBLIC_IPS: OnceCell<Option<String>> = OnceCell::const_new();
   PUBLIC_IPS
@@ -340,12 +156,4 @@ pub async fn host_public_ip() -> Option<&'static String> {
     })
     .await
     .as_ref()
-}
-
-type CancelCache = CloneCache<String, CancellationToken>;
-
-/// Maps build id => CancellationToken
-pub fn build_cancel_cache() -> &'static CancelCache {
-  static BUILD_CANCEL_CACHE: OnceLock<CancelCache> = OnceLock::new();
-  BUILD_CANCEL_CACHE.get_or_init(Default::default)
 }
