@@ -41,7 +41,9 @@ async fn app() -> anyhow::Result<()> {
     }
 
     // Init + log public key. Will crash if invalid private key here.
-    info!("Public Key: {}", periphery_keys().load().public);
+    // Initialised outside the macro so a disabled log line cannot skip it.
+    let public_key = periphery_keys().load().public.clone();
+    info!("Public Key: {public_key}");
 
     // Init core public keys. Will crash if invalid core public keys here.
     core_public_keys();

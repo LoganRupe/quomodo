@@ -38,7 +38,7 @@ async fn app() -> anyhow::Result<()> {
   let startup_span = info_span!("CoreStartup");
 
   async {
-    info!("Komodo Core version: v{}", env!("CARGO_PKG_VERSION"));
+    info!("Quomodo Core version: v{}", env!("CARGO_PKG_VERSION"));
 
     match (
       config.pretty_startup_config,
@@ -51,7 +51,10 @@ async fn app() -> anyhow::Result<()> {
     }
 
     // Init + log public key. Will crash if invalid private key here.
-    info!("Public Key: {}", core_keys().load().public);
+    // Initialised outside the macro: a disabled log line skips its
+    // arguments, which left the key pair uninitialised until first use.
+    let public_key = core_keys().load().public.clone();
+    info!("Public Key: {public_key}");
 
     rustls::crypto::aws_lc_rs::default_provider()
       .install_default()

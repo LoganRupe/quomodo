@@ -160,6 +160,10 @@ impl mogh_logger::LogConfig for &LogConfig {
 
     static TARGETS: LazyLock<Vec<String>> = LazyLock::new(|| {
       [
+        // Tracing targets are the binary crate names: the renamed bins
+        // (quomodo, quomodo-agent) plus the upstream ones.
+        "quomodo",
+        "quomodo_agent",
         "km",
         "core",
         "periphery",
