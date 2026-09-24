@@ -7,7 +7,7 @@ import {
   Center,
   Group,
   SimpleGrid,
-  Text,
+  useComputedColorScheme,
 } from "@mantine/core";
 import { Link } from "react-router-dom";
 import { ThemeToggle } from "mogh_ui";
@@ -29,6 +29,7 @@ const Topbar = ({
 }) => {
   const version = useRead("GetVersion", {}, { refetchInterval: 30_000 }).data
     ?.version;
+  const scheme = useComputedColorScheme("dark");
   return (
     <AppShell.Header
       renderRoot={(props) => (
@@ -52,21 +53,17 @@ const Topbar = ({
           size="lg"
           hiddenFrom="md"
         >
-          <img src="/mogh-512x512.png" width={32} alt="moghtech" />
+          <img src={`/quomodo-mark-${scheme}.svg`} width={32} alt="Quomodo" />
         </ActionIcon>
 
         <Button
           variant="subtle"
           renderRoot={(props) => <Link to="/" {...props} />}
-          leftSection={
-            <img src="/mogh-512x512.png" width={32} alt="moghtech" />
-          }
           size="lg"
           visibleFrom="md"
+          px="xs"
         >
-          <Text fz="h2" fw="450" lts="0.1rem">
-            KOMODO
-          </Text>
+          <img src={`/quomodo-logo-${scheme}.svg`} height={28} alt="Quomodo" />
         </Button>
       </Group>
 

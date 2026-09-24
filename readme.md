@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="ui/public/quomodo-logo-dark.svg">
+  <img alt="Quomodo" src="ui/public/quomodo-logo-light.svg" width="360">
+</picture>
+
 # Quomodo
 
 A hard fork of [Komodo](https://github.com/moghtech/komodo) v2.3.3 stripped

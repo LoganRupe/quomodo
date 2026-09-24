@@ -1,21 +1,21 @@
 {
-  "name": "Komodo",
-  "short_name": "Komodo",
+  "name": "Quomodo",
+  "short_name": "Quomodo",
   "icons": [
     {
-      "src": "/mogh-192x192.png",
+      "src": "/quomodo-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/mogh-512x512.png",
+      "src": "/quomodo-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
     }
   ],
-  "theme_color": "#ffffff",
-  "background_color": "#000000",
+  "theme_color": "#15201A",
+  "background_color": "#15201A",
   "display": "standalone"
 }

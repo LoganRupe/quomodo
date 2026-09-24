@@ -41,11 +41,11 @@ pub struct LogConfig {
 }
 
 fn default_opentelemetry_service_name() -> String {
-  String::from("Komodo")
+  String::from("Quomodo")
 }
 
 fn default_opentelemetry_scope_name() -> String {
-  String::from("Komodo")
+  String::from("Quomodo")
 }
 
 fn default_location() -> bool {

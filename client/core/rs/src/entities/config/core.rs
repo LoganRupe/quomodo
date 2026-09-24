@@ -314,7 +314,7 @@ pub struct CoreConfig {
   // = General =
   // ===========
   /// The title of this Komodo Core deployment. Will be used in the browser page title.
-  /// Default: 'Komodo'
+  /// Default: 'Quomodo'
   #[serde(default = "default_title")]
   pub title: String,
 
@@ -773,7 +773,7 @@ pub struct CoreConfig {
 }
 
 fn default_title() -> String {
-  String::from("Komodo")
+  String::from("Quomodo")
 }
 
 fn default_host() -> String {
