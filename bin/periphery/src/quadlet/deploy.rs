@@ -10,11 +10,7 @@ use std::{
 use anyhow::{Context, anyhow};
 use komodo_client::entities::{stack::QuadletKind, update::Log};
 
-use super::{
-  sha256_hex,
-  state::StackState,
-  unit::{base_name, covers},
-};
+use super::{sha256_hex, state::StackState, unit::base_name};
 use crate::{podman, systemd};
 use quadlet::prepare::Prepared;
 
@@ -45,8 +41,9 @@ pub struct Plan {
 ///   unit referencing it, plus its own service.
 /// - a changed `.container` / `.kube` restarts only itself.
 /// - a changed or removed non-unit file restarts the units that read it:
-///   bind-mount sources, and `.build` contexts (which rebuilds the image
-///   and restarts its dependents).
+///   bind-mount sources, and `.build` contexts minus what the build's
+///   `.containerignore` / `.dockerignore` leaves out (a rebuild restarts
+///   the image's dependents).
 /// - a unit referencing a changed podman secret restarts.
 pub fn plan(
   prepared: &Prepared,
@@ -131,10 +128,7 @@ pub fn plan(
     .collect::<BTreeSet<_>>();
   for path in changed_files {
     let mut mounted = false;
-    for u in units
-      .iter()
-      .filter(|u| u.mounts.iter().any(|m| covers(m, path)))
-    {
+    for u in units.iter().filter(|u| u.reads(path, &prepared.write)) {
       mounted = true;
       if changed_units.insert(u.unit.file.as_str()) {
         plan.reasons.push(format!(
@@ -854,6 +848,29 @@ mod tests {
 
     let d = plan(&build_stack(), Some(&s), &[]);
     assert!(d.restart.is_empty() && d.start.is_empty());
+  }
+
+  #[test]
+  fn ignored_build_file_does_not_rebuild() {
+    let mut p = build_stack();
+    p.write
+      .insert(".containerignore".into(), "*.md\nassets\n".into());
+    p.write.insert("README.md".into(), "v1".into());
+    let s = state(&p);
+
+    let mut docs = p;
+    docs.write.insert("README.md".into(), "v2".into());
+    docs.blobs.insert("assets/logo.png".into(), "h2".into());
+    let a = plan(&docs, Some(&s), &[]);
+    assert!(a.restart.is_empty(), "{:?}", a.restart);
+    assert_eq!(a.warnings.len(), 2, "{:?}", a.warnings);
+
+    let mut rules = docs;
+    rules
+      .write
+      .insert(".containerignore".into(), "*.md\n".into());
+    let b = plan(&rules, Some(&s), &[]);
+    assert_eq!(b.restart, vec!["app-build.service", "app.service"]);
   }
 
   #[test]

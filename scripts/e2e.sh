@@ -18,7 +18,8 @@
 #   7. a changed text file in the build context rebuilds the image and
 #      restarts its container, and nothing else
 #   8. a changed binary file in the build context does the same
-#   9. DestroyStack removes units and the directory
+#   9. a changed file the build's .containerignore excludes does not rebuild
+#  10. DestroyStack removes units and the directory
 #
 # Usage: scripts/e2e.sh              (from the repo root; needs docker, cargo, python3)
 #        KEEP=1 scripts/e2e.sh       (leave everything running for a look)
@@ -274,6 +275,8 @@ CF
 printf '#!/bin/sh\nexec sleep infinity\n' > "$WORK/git/work/$STACK/app/entry.sh"
 chmod +x "$WORK/git/work/$STACK/app/entry.sh"
 echo v1 > "$WORK/git/work/$STACK/app/version"
+printf '*.md\n' > "$WORK/git/work/$STACK/app/.containerignore"
+echo "notes v1" > "$WORK/git/work/$STACK/app/README.md"
 python3 -c 'import sys; sys.stdout.buffer.write(bytes(range(256)) * 8)' > "$WORK/git/work/$STACK/app/logo.png"
 head -c 1100000 /dev/urandom > "$WORK/git/work/$STACK/app/big.bin"
 publish "v4 app"
@@ -310,7 +313,16 @@ $API DeployStackIfChanged
 [ "$(hexec podman exec e2e-app sha256sum /app/logo.png | cut -d' ' -f1)" = "$(local_sha app/logo.png)" ] || fail "image has the old logo.png"
 echo "rebuilt with the new binary"
 
-log "9. destroy"
+log "9. a changed file the .containerignore excludes does not rebuild"
+APP_ID_BEFORE=$(hexec podman inspect -f '{{.Id}}' e2e-app)
+echo "notes v2" > "$WORK/git/work/$STACK/app/README.md"
+publish "v7 readme"
+$API DeployStackIfChanged
+[ "$(hexec podman inspect -f '{{.Id}}' e2e-app)" = "$APP_ID_BEFORE" ] || fail "app was rebuilt for an ignored file"
+hexec podman exec e2e-app test ! -e /app/README.md || fail "README.md is in the image despite .containerignore"
+echo "app untouched"
+
+log "10. destroy"
 $API DestroyStack
 hexec systemctl is-active web.service >/dev/null 2>&1 && fail "web.service still active after destroy"
 hexec test ! -e /etc/containers/systemd/$STACK || fail "stack directory still present"

@@ -3,7 +3,11 @@
 //! Quadlet files are systemd-style INI: `[Section]` headers and `Key=Value`
 //! lines, `#` / `;` comments, keys may repeat.
 
+use std::collections::BTreeMap;
+
 use komodo_client::entities::stack::{QuadletKind, QuadletUnit};
+
+use crate::ignore::IgnoreRules;
 
 /// A unit file parsed far enough for deploy planning.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -15,9 +19,113 @@ pub struct ParsedUnit {
   pub secrets: Vec<String>,
   /// Files or directories inside the stack directory this unit reads at
   /// start: relative `Volume=` bind-mount sources, and for a `.build` its
-  /// `File=` and build context. Relative to the stack directory; an empty
-  /// string is the whole stack directory.
+  /// `File=`, `IgnoreFile=` and build context. Relative to the stack
+  /// directory; an empty string is the whole stack directory.
   pub mounts: Vec<String>,
+  /// For a `.build`: the inputs inside the stack directory.
+  pub build: Option<BuildInputs>,
+}
+
+impl ParsedUnit {
+  /// Whether a change to the stack file at `path` affects this unit.
+  /// `files` is the stack's text files by path, for a `.build`'s ignore
+  /// file.
+  pub fn reads(
+    &self,
+    path: &str,
+    files: &BTreeMap<String, String>,
+  ) -> bool {
+    if !self.mounts.iter().any(|m| covers(m, path)) {
+      return false;
+    }
+    match &self.build {
+      Some(build) => build.reads(path, files),
+      None => true,
+    }
+  }
+}
+
+/// A `.build`'s inputs, relative to the stack directory. None where the
+/// value is absent or points outside the stack directory.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BuildInputs {
+  /// The build context directory; empty for the whole stack directory.
+  pub context: Option<String>,
+  /// `File=`
+  pub file: Option<String>,
+  /// `IgnoreFile=`. Without it podman reads `.containerignore`, else
+  /// `.dockerignore`, from the context root.
+  pub ignore_file: Option<String>,
+}
+
+impl BuildInputs {
+  fn mounts(&self) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Some(context) = &self.context {
+      out.push(context.clone());
+    }
+    for path in [&self.file, &self.ignore_file].into_iter().flatten()
+    {
+      if !out.iter().any(|c| covers(c, path)) {
+        out.push(path.clone());
+      }
+    }
+    out
+  }
+
+  /// The ignore file podman reads, if it exists in `files`.
+  pub fn active_ignore_file(
+    &self,
+    files: &BTreeMap<String, String>,
+  ) -> Option<String> {
+    if let Some(file) = &self.ignore_file {
+      return Some(file.clone());
+    }
+    let context = self.context.as_deref()?;
+    [".containerignore", ".dockerignore"]
+      .into_iter()
+      .filter_map(|name| join(context, name))
+      .find(|path| files.contains_key(path))
+  }
+
+  /// Whether the build sees the stack file at `path`. The Containerfile
+  /// and the ignore file always count, as podman reads both even when a
+  /// pattern excludes them.
+  pub fn reads(
+    &self,
+    path: &str,
+    files: &BTreeMap<String, String>,
+  ) -> bool {
+    let ignore_file = self.active_ignore_file(files);
+    if self.file.as_deref() == Some(path)
+      || ignore_file.as_deref() == Some(path)
+    {
+      return true;
+    }
+    let Some(context) = self.context.as_deref() else {
+      return false;
+    };
+    let Some(rel) = relative_to(context, path) else {
+      return false;
+    };
+    if self.file.is_none()
+      && matches!(rel, "Containerfile" | "Dockerfile")
+    {
+      return true;
+    }
+    match ignore_file.and_then(|f| files.get(&f)) {
+      Some(rules) => !IgnoreRules::parse(rules).excludes(rel),
+      None => true,
+    }
+  }
+}
+
+/// `path` relative to `dir`, if it is under it.
+fn relative_to<'a>(dir: &str, path: &'a str) -> Option<&'a str> {
+  if dir.is_empty() {
+    return Some(path);
+  }
+  path.strip_prefix(dir)?.strip_prefix('/')
 }
 
 /// The quadlet section holding the object keys for this kind.
@@ -110,6 +218,7 @@ pub fn parse_unit(path: &str, contents: &str) -> Option<ParsedUnit> {
 
   let mut deps = Vec::new();
   let mut mounts = Vec::new();
+  let mut build = None;
   let mut image = String::new();
   let mut pod = None;
 
@@ -147,7 +256,9 @@ pub fn parse_unit(path: &str, contents: &str) -> Option<ParsedUnit> {
       image.clone()
     }
     QuadletKind::Build => {
-      mounts.extend(build_inputs(contents, unit_dir));
+      let inputs = build_inputs(contents, unit_dir);
+      mounts.extend(inputs.mounts());
+      build = Some(inputs);
       get_value(contents, section, "ImageTag")
         .map(str::to_string)
         .unwrap_or_else(|| format!("localhost/{stem}"))
@@ -193,6 +304,7 @@ pub fn parse_unit(path: &str, contents: &str) -> Option<ParsedUnit> {
     deps,
     secrets,
     mounts,
+    build,
   })
 }
 
@@ -227,32 +339,40 @@ fn relative_mount(source: &str) -> Option<String> {
 /// - `SetWorkingDirectory=<relative path>`: context is that path under
 ///   the unit's directory.
 /// - A relative `File=` counts too, in case it sits outside the context.
+/// - A relative `IgnoreFile=` resolves against the service's working
+///   directory: the directory of `File=` for `SetWorkingDirectory=file`,
+///   the unit's directory otherwise. Without `SetWorkingDirectory=` there
+///   is none, so it is outside the stack directory.
 ///
 /// Absolute paths, URLs and specifiers are outside the stack directory.
-fn build_inputs(contents: &str, unit_dir: &str) -> Vec<String> {
-  let local = |value: &str| {
-    relative_path(value).and_then(|rel| join(unit_dir, rel))
+fn build_inputs(contents: &str, unit_dir: &str) -> BuildInputs {
+  let local = |dir: &str, value: &str| {
+    relative_path(value).and_then(|rel| join(dir, rel))
   };
-  let file = get_value(contents, "Build", "File").and_then(local);
-  let context =
-    match get_value(contents, "Build", "SetWorkingDirectory") {
-      Some("unit") => Some(unit_dir.to_string()),
-      Some("file") => {
-        file.as_deref().map(|f| dir_name(f).to_string())
-      }
-      Some(other) => local(other),
-      None => None,
-    };
-  let mut out = Vec::new();
-  if let Some(context) = context {
-    out.push(context);
+  let file = get_value(contents, "Build", "File")
+    .and_then(|f| local(unit_dir, f));
+  let working_dir =
+    get_value(contents, "Build", "SetWorkingDirectory");
+  let context = match working_dir {
+    Some("unit") => Some(unit_dir.to_string()),
+    Some("file") => file.as_deref().map(|f| dir_name(f).to_string()),
+    Some(other) => local(unit_dir, other),
+    None => None,
+  };
+  let ignore_file = match working_dir {
+    Some("file") => file.as_deref().map(dir_name),
+    Some(_) => Some(unit_dir),
+    None => None,
   }
-  if let Some(file) = file
-    && !out.iter().any(|c| covers(c, &file))
-  {
-    out.push(file);
+  .and_then(|dir| {
+    get_value(contents, "Build", "IgnoreFile")
+      .and_then(|f| local(dir, f))
+  });
+  BuildInputs {
+    context,
+    file,
+    ignore_file,
   }
-  out
 }
 
 /// A path value quadlet resolves against the unit's directory.
@@ -390,6 +510,20 @@ mod tests {
       ),
       Vec::<String>::new()
     );
+    assert_eq!(
+      inputs(
+        "app.build",
+        "SetWorkingDirectory=unit\nIgnoreFile=../outside\n"
+      ),
+      vec![""]
+    );
+    assert_eq!(
+      inputs(
+        "sub/app.build",
+        "SetWorkingDirectory=ctx\nIgnoreFile=.ign\n"
+      ),
+      vec!["sub/ctx", "sub/.ign"]
+    );
     assert!(covers("", "anything/at/all"));
     assert!(covers("src", "src/main.go"));
     assert!(!covers("src", "srcs/main.go"));
@@ -426,5 +560,55 @@ mod tests {
       with_userns_auto("[Unit]\nDescription=x\n"),
       "[Unit]\nDescription=x\n[Container]\nUserNS=auto\n"
     );
+  }
+
+  #[test]
+  fn build_reads_respects_the_ignore_file() {
+    let files = |list: &[(&str, &str)]| {
+      list
+        .iter()
+        .map(|(p, c)| (p.to_string(), c.to_string()))
+        .collect::<BTreeMap<_, _>>()
+    };
+    let unit = parse_unit(
+      "app.build",
+      "[Build]\nSetWorkingDirectory=app\nFile=app/Containerfile\n",
+    )
+    .unwrap();
+    let docker = files(&[(
+      "app/.dockerignore",
+      "*.md\nContainerfile\n.dockerignore\n",
+    )]);
+    assert!(unit.reads("app/main.go", &docker));
+    assert!(!unit.reads("app/README.md", &docker));
+    // podman reads these even when a pattern excludes them.
+    assert!(unit.reads("app/Containerfile", &docker));
+    assert!(unit.reads("app/.dockerignore", &docker));
+    assert!(!unit.reads("other/main.go", &docker));
+
+    // .containerignore wins over .dockerignore.
+    let both = files(&[
+      ("app/.dockerignore", "*.md\n"),
+      ("app/.containerignore", "*.go\n"),
+    ]);
+    assert!(unit.reads("app/README.md", &both));
+    assert!(!unit.reads("app/main.go", &both));
+    // Neither file: everything in the context counts.
+    assert!(unit.reads("app/README.md", &files(&[])));
+
+    // IgnoreFile= overrides both, and may sit outside the context.
+    let custom = parse_unit(
+      "app.build",
+      "[Build]\nSetWorkingDirectory=app\nIgnoreFile=build.ignore\n",
+    )
+    .unwrap();
+    let with_custom = files(&[
+      ("build.ignore", "tests\n"),
+      ("app/.containerignore", "*\n"),
+    ]);
+    assert!(custom.reads("app/src/lib.rs", &with_custom));
+    assert!(!custom.reads("app/tests/a.rs", &with_custom));
+    assert!(custom.reads("build.ignore", &with_custom));
+    assert!(custom.reads("app/Containerfile", &with_custom));
   }
 }

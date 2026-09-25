@@ -18,8 +18,9 @@ at rest. GPL-3.0-or-later, same as upstream.
   `.volume`, `.build`, `.image` or `.kube` files plus config files. Deploying
   copies the directory to `/etc/containers/systemd/<stack>/`, reloads systemd
   and restarts the units whose files changed. A changed file restarts the
-  units that bind-mount it, and a change anywhere in a `.build` context
-  rebuilds the image and restarts its containers. Binary files and files
+  units that bind-mount it, and a change to a file a `.build` context
+  sends (minus its `.containerignore` / `.dockerignore`) rebuilds the image
+  and restarts its containers. Binary files and files
   over 1 MiB are copied as is, never interpolated. Every `.container` gets
   `UserNS=auto`.
 - **Secrets**: `[[NAME]]` resolves from non-secret Variables first, then from
