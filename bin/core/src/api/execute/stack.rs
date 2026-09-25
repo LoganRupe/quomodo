@@ -179,8 +179,13 @@ impl Resolve<ExecuteArgs> for DeployStack {
     let resolved = if stack.config.skip_secret_interp {
       Default::default()
     } else {
-      resolve_stack_secrets(&stack, &contents.files, &variables)
-        .await?
+      resolve_stack_secrets(
+        &stack,
+        &contents.files,
+        &contents.blobs,
+        &variables,
+      )
+      .await?
     };
     if !resolved.secrets.is_empty() {
       update.logs.push(Log::simple(
@@ -387,11 +392,17 @@ impl Resolve<ExecuteArgs> for DeployStackIfChanged {
         let resolved = if stack.config.skip_secret_interp {
           Default::default()
         } else {
-          resolve_stack_secrets(&stack, &contents.files, &variables)
-            .await?
+          resolve_stack_secrets(
+            &stack,
+            &contents.files,
+            &contents.blobs,
+            &variables,
+          )
+          .await?
         };
         Some(quadlet_lib::contents_hash(
           &contents.files,
+          &contents.blobs,
           &resolved.hashes,
         ))
       } else {

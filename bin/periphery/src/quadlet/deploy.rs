@@ -2,14 +2,19 @@
 
 use std::{
   collections::{BTreeMap, BTreeSet},
-  path::Path,
+  os::unix::fs::PermissionsExt,
+  path::{Path, PathBuf},
   time::Duration,
 };
 
 use anyhow::{Context, anyhow};
 use komodo_client::entities::{stack::QuadletKind, update::Log};
 
-use super::{sha256_hex, state::StackState, unit::base_name};
+use super::{
+  sha256_hex,
+  state::StackState,
+  unit::{base_name, covers},
+};
 use crate::{podman, systemd};
 use quadlet::prepare::Prepared;
 
@@ -22,6 +27,10 @@ pub struct Plan {
   pub start: Vec<String>,
   /// Services to `systemctl restart` (changed runnable units, or dependents of changed ones).
   pub restart: Vec<String>,
+  /// Services among `start` / `restart` which must stay active: the
+  /// runnable ones. A `.build` / `.image` service is a oneshot that exits
+  /// when done; `systemctl` already fails if it fails.
+  pub wait: Vec<String>,
   /// Human readable reasons, for the log.
   pub reasons: Vec<String>,
   /// Warnings about changes systemd will not apply on its own.
@@ -35,6 +44,9 @@ pub struct Plan {
 /// - a changed `.network` / `.volume` / `.image` / `.build` restarts every
 ///   unit referencing it, plus its own service.
 /// - a changed `.container` / `.kube` restarts only itself.
+/// - a changed or removed non-unit file restarts the units that read it:
+///   bind-mount sources, and `.build` contexts (which rebuilds the image
+///   and restarts its dependents).
 /// - a unit referencing a changed podman secret restarts.
 pub fn plan(
   prepared: &Prepared,
@@ -52,6 +64,7 @@ pub fn plan(
     .write
     .iter()
     .map(|(p, c)| (p.clone(), sha256_hex(c)))
+    .chain(prepared.blobs.iter().map(|(p, h)| (p.clone(), h.clone())))
     .collect::<BTreeMap<_, _>>();
 
   let Some(previous) = previous else {
@@ -67,6 +80,7 @@ pub fn plan(
       .collect();
     plan.restart.sort();
     plan.restart.dedup();
+    plan.wait = plan.restart.clone();
     return plan;
   };
 
@@ -99,30 +113,44 @@ pub fn plan(
     }
   }
 
-  // Changed config files restart the units that bind-mount them.
-  for (path, hash) in &new_hashes {
-    if by_file.contains_key(path.as_str())
-      || previous.files.get(path) == Some(hash)
-    {
-      continue;
-    }
+  // Changed or removed non-unit files restart the units that read them.
+  let changed_files = new_hashes
+    .iter()
+    .filter(|(path, hash)| previous.files.get(*path) != Some(*hash))
+    .map(|(path, _)| path.as_str())
+    .chain(
+      previous
+        .files
+        .keys()
+        .filter(|path| !new_hashes.contains_key(*path))
+        .map(String::as_str),
+    )
+    .filter(|path| {
+      QuadletKind::from_file_name(base_name(path)).is_none()
+    })
+    .collect::<BTreeSet<_>>();
+  for path in changed_files {
     let mut mounted = false;
-    for u in units.iter().filter(|u| {
-      u.mounts
-        .iter()
-        .any(|m| path == m || path.starts_with(&format!("{m}/")))
-    }) {
+    for u in units
+      .iter()
+      .filter(|u| u.mounts.iter().any(|m| covers(m, path)))
+    {
       mounted = true;
       if changed_units.insert(u.unit.file.as_str()) {
         plan.reasons.push(format!(
-          "{}: mounts changed file {path}",
-          u.unit.file
+          "{}: {} changed file {path}",
+          u.unit.file,
+          if u.unit.kind == QuadletKind::Build {
+            "build context has"
+          } else {
+            "mounts"
+          }
         ));
       }
     }
     if !mounted {
       plan.warnings.push(format!(
-        "{path}: changed, but no unit in this stack mounts it, so nothing restarts for it"
+        "{path}: changed, but no unit in this stack mounts or builds from it, so nothing restarts for it"
       ));
     }
   }
@@ -241,6 +269,9 @@ pub fn plan(
   for file in to_restart {
     let Some(u) = by_file.get(file) else { continue };
     let service = u.unit.service.clone();
+    if u.unit.kind.is_runnable() {
+      plan.wait.push(service.clone());
+    }
     if previous.units.iter().any(|f| f == file) {
       plan.restart.push(service);
     } else {
@@ -251,13 +282,19 @@ pub fn plan(
   plan.start.dedup();
   plan.restart.sort();
   plan.restart.dedup();
+  plan.wait.sort();
+  plan.wait.dedup();
   plan
 }
 
-/// Write the prepared files under the target directory, removing files
-/// which are no longer part of the stack. Returns the written file hashes.
+/// Write the prepared files under the target directory, copy the blobs
+/// from the run directory, and remove files which are no longer part of
+/// the stack. Every file takes its mode from the run directory, so an
+/// executable in a build context stays executable.
+/// Returns the installed file hashes.
 pub async fn write_files(
   target: &Path,
+  source: &Path,
   prepared: &Prepared,
   logs: &mut Vec<Log>,
 ) -> anyhow::Result<BTreeMap<String, String>> {
@@ -266,36 +303,37 @@ pub async fn write_files(
   })?;
 
   // Remove stale files.
-  let (existing, _) = super::read_stack_files(target).await?;
+  let existing = super::read_stack_files(target).await?;
   let mut removed = Vec::new();
-  for file in existing {
-    if !prepared.write.contains_key(&file.path) {
-      let path = target.join(&file.path);
+  for rel in existing
+    .files
+    .iter()
+    .map(|f| &f.path)
+    .chain(existing.blobs.iter().map(|b| &b.path))
+  {
+    if !prepared.write.contains_key(rel)
+      && !prepared.blobs.contains_key(rel)
+    {
+      let path = target.join(rel);
       tokio::fs::remove_file(&path).await.with_context(|| {
         format!("Failed to remove {}", path.display())
       })?;
-      removed.push(file.path);
+      removed.push(rel.clone());
     }
   }
+  let existing_blobs = existing
+    .blobs
+    .iter()
+    .map(|b| (b.path.as_str(), b.sha256.as_str()))
+    .collect::<BTreeMap<_, _>>();
 
   let mut hashes = BTreeMap::new();
   let mut written = Vec::new();
   for (rel, contents) in &prepared.write {
-    if rel.contains("..") {
-      return Err(anyhow!("Refusing to write path with '..': {rel}"));
-    }
-    let path = target.join(rel);
-    if let Some(parent) = path.parent() {
-      tokio::fs::create_dir_all(parent).await.with_context(|| {
-        format!("Failed to create {}", parent.display())
-      })?;
-    }
+    let path = target_path(target, rel).await?;
     let current = tokio::fs::read_to_string(&path).await.ok();
     if current.as_deref() != Some(contents.as_str()) {
-      let tmp = path.with_extension(format!(
-        "{}.quomodo-tmp",
-        path.extension().and_then(|e| e.to_str()).unwrap_or("")
-      ));
+      let tmp = tmp_path(&path);
       tokio::fs::write(&tmp, contents).await.with_context(|| {
         format!("Failed to write {}", tmp.display())
       })?;
@@ -304,7 +342,28 @@ pub async fn write_files(
       })?;
       written.push(rel.clone());
     }
+    copy_mode(&source.join(rel), &path).await?;
     hashes.insert(rel.clone(), sha256_hex(contents));
+  }
+  for (rel, sha256) in &prepared.blobs {
+    let path = target_path(target, rel).await?;
+    if existing_blobs.get(rel.as_str()) != Some(&sha256.as_str()) {
+      let from = source.join(rel);
+      let tmp = tmp_path(&path);
+      tokio::fs::copy(&from, &tmp).await.with_context(|| {
+        format!(
+          "Failed to copy {} to {}",
+          from.display(),
+          tmp.display()
+        )
+      })?;
+      tokio::fs::rename(&tmp, &path).await.with_context(|| {
+        format!("Failed to move {} into place", tmp.display())
+      })?;
+      written.push(rel.clone());
+    }
+    copy_mode(&source.join(rel), &path).await?;
+    hashes.insert(rel.clone(), sha256.clone());
   }
 
   let mut msg = format!("Target directory: {}", target.display());
@@ -319,6 +378,53 @@ pub async fn write_files(
   }
   logs.push(Log::simple("Write Stack Files", msg));
   Ok(hashes)
+}
+
+/// The install path for a stack file, with its parent directory created.
+async fn target_path(
+  target: &Path,
+  rel: &str,
+) -> anyhow::Result<PathBuf> {
+  if rel.contains("..") {
+    return Err(anyhow!("Refusing to write path with '..': {rel}"));
+  }
+  let path = target.join(rel);
+  if let Some(parent) = path.parent() {
+    tokio::fs::create_dir_all(parent).await.with_context(|| {
+      format!("Failed to create {}", parent.display())
+    })?;
+  }
+  Ok(path)
+}
+
+fn tmp_path(path: &Path) -> PathBuf {
+  path.with_extension(format!(
+    "{}.quomodo-tmp",
+    path.extension().and_then(|e| e.to_str()).unwrap_or("")
+  ))
+}
+
+/// Give `to` the permission bits of `from`, if they differ.
+async fn copy_mode(from: &Path, to: &Path) -> anyhow::Result<()> {
+  let Ok(from_meta) = tokio::fs::metadata(from).await else {
+    return Ok(());
+  };
+  let mode = from_meta.permissions().mode() & 0o7777;
+  let current = tokio::fs::metadata(to)
+    .await
+    .with_context(|| format!("Failed to stat {}", to.display()))?
+    .permissions()
+    .mode()
+    & 0o7777;
+  if current != mode {
+    tokio::fs::set_permissions(
+      to,
+      std::fs::Permissions::from_mode(mode),
+    )
+    .await
+    .with_context(|| format!("Failed to chmod {}", to.display()))?;
+  }
+  Ok(())
 }
 
 /// Create / replace the stack's podman secrets. Values never touch the log.
@@ -444,11 +550,18 @@ pub async fn apply(
     return Ok(true);
   }
   let failed =
-    systemd::wait_active(&touched, Duration::from_secs(20)).await;
+    systemd::wait_active(&plan.wait, Duration::from_secs(20)).await;
   if failed.is_empty() {
     logs.push(Log::simple(
       "Units",
-      format!("Active: {}", touched.join(", ")),
+      format!(
+        "Active: {}",
+        if plan.wait.is_empty() {
+          String::from("-")
+        } else {
+          plan.wait.join(", ")
+        }
+      ),
     ));
     Ok(true)
   } else {
@@ -513,6 +626,7 @@ mod tests {
       p.write
         .iter()
         .map(|(k, v)| (k.clone(), sha256_hex(v)))
+        .chain(p.blobs.iter().map(|(k, v)| (k.clone(), v.clone())))
         .collect(),
       p,
     )
@@ -695,5 +809,123 @@ mod tests {
       .collect();
     let plan = plan(&p2, Some(&s), &["db.container".to_string()]);
     assert_eq!(plan.restart, vec!["db.service"]);
+  }
+
+  const APP_BUILD: &str = "[Build]\nImageTag=localhost/app\nSetWorkingDirectory=unit\nFile=Dockerfile\n";
+  const APP: &str = "[Container]\nImage=app.build\n";
+
+  fn build_stack() -> Prepared {
+    let mut p = prepared(
+      &[
+        ("app.build", APP_BUILD),
+        ("app.container", APP),
+        ("Dockerfile", "FROM alpine\n"),
+        ("main.go", "package main\n"),
+      ],
+      &[],
+    );
+    p.blobs.insert("assets/logo.png".into(), "h1".into());
+    p
+  }
+
+  #[test]
+  fn changed_build_context_rebuilds_and_restarts_dependents() {
+    let p = build_stack();
+    let s = state(&p);
+
+    let mut dockerfile = build_stack();
+    dockerfile
+      .write
+      .insert("Dockerfile".into(), "FROM alpine:3\n".into());
+    let a = plan(&dockerfile, Some(&s), &[]);
+    assert_eq!(a.restart, vec!["app-build.service", "app.service"]);
+    assert_eq!(a.wait, vec!["app.service"]);
+    assert!(a.warnings.is_empty(), "{:?}", a.warnings);
+
+    let mut blob = build_stack();
+    blob.blobs.insert("assets/logo.png".into(), "h2".into());
+    let b = plan(&blob, Some(&s), &[]);
+    assert_eq!(b.restart, vec!["app-build.service", "app.service"]);
+
+    let mut removed = build_stack();
+    removed.write.remove("main.go");
+    let c = plan(&removed, Some(&s), &[]);
+    assert_eq!(c.restart, vec!["app-build.service", "app.service"]);
+
+    let d = plan(&build_stack(), Some(&s), &[]);
+    assert!(d.restart.is_empty() && d.start.is_empty());
+  }
+
+  #[test]
+  fn changed_blob_restarts_mounting_unit() {
+    let mut p = prepared(
+      &[(
+        "caddy.container",
+        "[Container]\nImage=caddy\nVolume=./assets:/srv/assets:ro\n",
+      )],
+      &[],
+    );
+    p.blobs.insert("assets/bg.png".into(), "h1".into());
+    let s = state(&p);
+    p.blobs.insert("assets/bg.png".into(), "h2".into());
+    let plan = plan(&p, Some(&s), &[]);
+    assert_eq!(plan.restart, vec!["caddy.service"]);
+  }
+
+  #[tokio::test]
+  async fn write_files_copies_blobs_keeps_modes_and_removes_stale() {
+    let root = std::env::temp_dir()
+      .join(format!("quomodo-write-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let (source, target) = (root.join("src"), root.join("dst"));
+    std::fs::create_dir_all(source.join("assets")).unwrap();
+    std::fs::create_dir_all(&target).unwrap();
+    let png = [0x89, b'P', b'N', b'G', 0xff, 0x00];
+    std::fs::write(source.join("assets/logo.png"), png).unwrap();
+    std::fs::write(source.join("entrypoint.sh"), "#!/bin/sh\n")
+      .unwrap();
+    std::fs::set_permissions(
+      source.join("entrypoint.sh"),
+      std::fs::Permissions::from_mode(0o755),
+    )
+    .unwrap();
+    std::fs::write(target.join("old.txt"), "stale").unwrap();
+    std::fs::write(target.join("old.bin"), [0xffu8, 0xfe]).unwrap();
+
+    let mut p = Prepared::default();
+    p.write.insert("entrypoint.sh".into(), "#!/bin/sh\n".into());
+    p.blobs.insert(
+      "assets/logo.png".into(),
+      quadlet::sha256_file(&source.join("assets/logo.png")).unwrap(),
+    );
+    let mut logs = Vec::new();
+    let hashes =
+      write_files(&target, &source, &p, &mut logs).await.unwrap();
+
+    assert_eq!(
+      std::fs::read(target.join("assets/logo.png")).unwrap(),
+      png
+    );
+    assert_eq!(
+      std::fs::metadata(target.join("entrypoint.sh"))
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777,
+      0o755
+    );
+    assert!(!target.join("old.txt").exists());
+    assert!(!target.join("old.bin").exists());
+    assert_eq!(hashes["assets/logo.png"], p.blobs["assets/logo.png"]);
+
+    // A second run with nothing changed writes nothing.
+    let mut logs = Vec::new();
+    write_files(&target, &source, &p, &mut logs).await.unwrap();
+    assert!(
+      logs[0].stdout.contains("No file changes"),
+      "{}",
+      logs[0].stdout
+    );
+    std::fs::remove_dir_all(&root).unwrap();
   }
 }

@@ -13,8 +13,10 @@ pub struct ParsedUnit {
   pub deps: Vec<String>,
   /// Podman secret names referenced with `Secret=`.
   pub secrets: Vec<String>,
-  /// Relative bind-mount sources from `Volume=` (files or directories
-  /// inside the stack directory), with any leading `./` removed.
+  /// Files or directories inside the stack directory this unit reads at
+  /// start: relative `Volume=` bind-mount sources, and for a `.build` its
+  /// `File=` and build context. Relative to the stack directory; an empty
+  /// string is the whole stack directory.
   pub mounts: Vec<String>,
 }
 
@@ -34,6 +36,20 @@ pub fn section_name(kind: QuadletKind) -> &'static str {
 /// The file name without directories.
 pub fn base_name(path: &str) -> &str {
   path.rsplit('/').next().unwrap_or(path)
+}
+
+/// The directory holding a stack file, relative to the stack directory.
+/// Empty for a file at the top level.
+pub fn dir_name(path: &str) -> &str {
+  path.rsplit_once('/').map(|(d, _)| d).unwrap_or("")
+}
+
+/// Whether a changed stack file at `path` falls under `mount`
+/// (see `ParsedUnit::mounts`).
+pub fn covers(mount: &str, path: &str) -> bool {
+  mount.is_empty()
+    || path == mount
+    || path.strip_prefix(mount).is_some_and(|r| r.starts_with('/'))
 }
 
 pub fn stem(file_name: &str) -> &str {
@@ -87,6 +103,7 @@ pub fn get_value<'a>(
 pub fn parse_unit(path: &str, contents: &str) -> Option<ParsedUnit> {
   let file_name = base_name(path);
   let kind = QuadletKind::from_file_name(file_name)?;
+  let unit_dir = dir_name(path);
   let stem = stem(file_name);
   let section = section_name(kind);
   let default_name = format!("systemd-{stem}");
@@ -129,9 +146,12 @@ pub fn parse_unit(path: &str, contents: &str) -> Option<ParsedUnit> {
         .to_string();
       image.clone()
     }
-    QuadletKind::Build => get_value(contents, section, "ImageTag")
-      .map(str::to_string)
-      .unwrap_or_else(|| format!("localhost/{stem}")),
+    QuadletKind::Build => {
+      mounts.extend(build_inputs(contents, unit_dir));
+      get_value(contents, section, "ImageTag")
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("localhost/{stem}"))
+    }
     QuadletKind::Kube => stem.to_string(),
   };
 
@@ -146,7 +166,9 @@ pub fn parse_unit(path: &str, contents: &str) -> Option<ParsedUnit> {
     let target = value.split(':').next().unwrap_or(value);
     if target.ends_with(".volume") {
       deps.push(target.to_string());
-    } else if let Some(rel) = relative_mount(target) {
+    } else if let Some(rel) = relative_mount(target)
+      && let Some(rel) = join(unit_dir, &rel)
+    {
       mounts.push(rel);
     }
   }
@@ -195,6 +217,72 @@ fn relative_mount(source: &str) -> Option<String> {
     return None;
   }
   Some(rel.trim_end_matches('/').to_string())
+}
+
+/// What a `.build` reads from the stack directory, as quadlet resolves it
+/// (checked against `podman-system-generator --dryrun`, podman 5.7):
+/// - `SetWorkingDirectory=unit`: context is the unit's directory.
+/// - `SetWorkingDirectory=file`: context is the directory of `File=`,
+///   itself relative to the unit's directory.
+/// - `SetWorkingDirectory=<relative path>`: context is that path under
+///   the unit's directory.
+/// - A relative `File=` counts too, in case it sits outside the context.
+///
+/// Absolute paths, URLs and specifiers are outside the stack directory.
+fn build_inputs(contents: &str, unit_dir: &str) -> Vec<String> {
+  let local = |value: &str| {
+    relative_path(value).and_then(|rel| join(unit_dir, rel))
+  };
+  let file = get_value(contents, "Build", "File").and_then(local);
+  let context =
+    match get_value(contents, "Build", "SetWorkingDirectory") {
+      Some("unit") => Some(unit_dir.to_string()),
+      Some("file") => {
+        file.as_deref().map(|f| dir_name(f).to_string())
+      }
+      Some(other) => local(other),
+      None => None,
+    };
+  let mut out = Vec::new();
+  if let Some(context) = context {
+    out.push(context);
+  }
+  if let Some(file) = file
+    && !out.iter().any(|c| covers(c, &file))
+  {
+    out.push(file);
+  }
+  out
+}
+
+/// A path value quadlet resolves against the unit's directory.
+fn relative_path(value: &str) -> Option<&str> {
+  let value = value.trim();
+  if value.is_empty()
+    || value.starts_with('/')
+    || value.starts_with('%')
+    || value.starts_with('$')
+    || value.contains("://")
+  {
+    return None;
+  }
+  Some(value)
+}
+
+/// `rel` under `dir`, both relative to the stack directory, with `.` and
+/// `..` resolved. None if it climbs out of the stack directory.
+fn join(dir: &str, rel: &str) -> Option<String> {
+  let mut parts = Vec::new();
+  for part in dir.split('/').chain(rel.split('/')) {
+    match part {
+      "" | "." => {}
+      ".." => {
+        parts.pop()?;
+      }
+      part => parts.push(part),
+    }
+  }
+  Some(parts.join("/"))
 }
 
 /// Every `.container` gets `UserNS=auto` so root inside the container
@@ -251,6 +339,60 @@ mod tests {
     let unit = "[Container]\nImage=x\nVolume=./Caddyfile:/etc/caddy/Caddyfile:ro\nVolume=config/:/config\nVolume=named:/data\nVolume=/abs/path:/abs\nVolume=%h/x:/x\n";
     let parsed = parse_unit("caddy.container", unit).unwrap();
     assert_eq!(parsed.mounts, vec!["Caddyfile", "config"]);
+  }
+
+  #[test]
+  fn bind_mounts_resolve_against_the_unit_directory() {
+    let unit = "[Container]\nImage=x\nVolume=./conf:/c\nVolume=../shared/a.yml:/a\nVolume=../../out:/o\n";
+    let parsed = parse_unit("web/web.container", unit).unwrap();
+    assert_eq!(parsed.mounts, vec!["web/conf", "shared/a.yml"]);
+  }
+
+  #[test]
+  fn build_context_counts_as_mounts() {
+    let inputs = |path: &str, body: &str| {
+      parse_unit(
+        path,
+        &format!("[Build]\nImageTag=localhost/a\n{body}"),
+      )
+      .unwrap()
+      .mounts
+    };
+    assert_eq!(
+      inputs(
+        "app.build",
+        "SetWorkingDirectory=unit\nFile=Dockerfile\n"
+      ),
+      vec![""]
+    );
+    assert_eq!(
+      inputs("sub/app.build", "SetWorkingDirectory=unit\n"),
+      vec!["sub"]
+    );
+    assert_eq!(
+      inputs(
+        "app.build",
+        "File=docker/Containerfile\nSetWorkingDirectory=file\n"
+      ),
+      vec!["docker"]
+    );
+    assert_eq!(
+      inputs(
+        "app.build",
+        "SetWorkingDirectory=src\nFile=Dockerfile\n"
+      ),
+      vec!["src", "Dockerfile"]
+    );
+    assert_eq!(
+      inputs(
+        "app.build",
+        "SetWorkingDirectory=https://git.example/x.git\nFile=/abs/Dockerfile\n"
+      ),
+      Vec::<String>::new()
+    );
+    assert!(covers("", "anything/at/all"));
+    assert!(covers("src", "src/main.go"));
+    assert!(!covers("src", "srcs/main.go"));
   }
 
   #[test]

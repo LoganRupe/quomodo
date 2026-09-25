@@ -79,6 +79,7 @@ pub struct ResolvedSecrets {
 pub async fn resolve_stack_secrets(
   stack: &Stack,
   files: &[FileContents],
+  blobs: &[quadlet::Blob],
   variables: &HashMap<String, String>,
 ) -> anyhow::Result<ResolvedSecrets> {
   let mut names = files
@@ -113,9 +114,10 @@ pub async fn resolve_stack_secrets(
   // Run the same preparation the agent runs, so the secret hashes
   // (including config files mounted with `Secret=file:`) match exactly,
   // and so a rule violation fails here instead of on the host.
-  let prepared =
-    quadlet::prepare::prepare(stack, files, variables, &secrets)
-      .context("Stack files failed secret validation")?;
+  let prepared = quadlet::prepare::prepare(
+    stack, files, blobs, variables, &secrets,
+  )
+  .context("Stack files failed secret validation")?;
 
   Ok(ResolvedSecrets {
     secrets,

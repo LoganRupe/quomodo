@@ -14,6 +14,8 @@
 //! - A config file containing a secret reference that no unit mounts with
 //!   `Secret=file:<path>`: error.
 //! - Anything else is written as is. Every `.container` gets `UserNS=auto`.
+//! - Blobs (binary, or text over 1 MiB) are copied byte for byte and never
+//!   interpolated, so one cannot be a `Secret=file:`.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -25,7 +27,7 @@ use komodo_client::entities::{
 use regex::Regex;
 
 use crate::{
-  ParsedUnit, secret_prefix, secret_safe, sha256_hex,
+  Blob, ParsedUnit, secret_prefix, secret_safe, sha256_hex,
   unit::{base_name, parse_unit, with_userns_auto},
 };
 
@@ -59,6 +61,9 @@ fn replace_tokens(
 pub struct Prepared {
   /// Relative path -> contents to write under the quadlet dir.
   pub write: BTreeMap<String, String>,
+  /// Relative path -> sha256 of a blob to copy verbatim from the run
+  /// directory into the quadlet dir.
+  pub blobs: BTreeMap<String, String>,
   /// Podman secret name -> value to create.
   pub secrets: BTreeMap<String, String>,
   /// Podman secret name -> sha256 of value.
@@ -70,13 +75,20 @@ pub struct Prepared {
 pub fn prepare(
   stack: &Stack,
   files: &[FileContents],
+  blobs: &[Blob],
   variables: &HashMap<String, String>,
   secrets: &HashMap<String, String>,
 ) -> anyhow::Result<Prepared> {
   let prefix = secret_prefix(&stack.name);
   let skip = stack.config.skip_secret_interp;
 
-  let mut prepared = Prepared::default();
+  let mut prepared = Prepared {
+    blobs: blobs
+      .iter()
+      .map(|b| (b.path.clone(), b.sha256.clone()))
+      .collect(),
+    ..Default::default()
+  };
   // Config files referenced with `Secret=file:<path>`, by relative path.
   let mut file_secret_refs = BTreeSet::<String>::new();
   // Config files (after variable interpolation) which still reference a secret.
@@ -128,7 +140,13 @@ pub fn prepare(
               None => (rest.trim(), None),
             };
             let path = path.trim_start_matches("./").to_string();
-            if !files.iter().any(|f| f.path == path) {
+            if prepared.blobs.contains_key(&path) {
+              errors.push(format!(
+                "{}:{}: Secret=file:{path} is binary or over 1 MiB, so it cannot be a secret file",
+                file.path,
+                idx + 1
+              ));
+            } else if !files.iter().any(|f| f.path == path) {
               errors.push(format!(
                 "{}:{}: Secret=file:{path} does not match any file in the stack directory",
                 file.path,
@@ -330,7 +348,8 @@ mod tests {
       ("config.yml", "domain: [[DOMAIN]]\napi_key: [[API_KEY]]\n"),
       ("plain.txt", "hello [[DOMAIN]]\n"),
     ]);
-    let p = prepare(&stack(false), &files, &vars, &secrets).unwrap();
+    let p =
+      prepare(&stack(false), &files, &[], &vars, &secrets).unwrap();
     let web = &p.write["web.container"];
     assert!(web.contains("Environment=DOMAIN=example.com"));
     assert!(web.contains(
@@ -362,7 +381,7 @@ mod tests {
       "web.container",
       "[Container]\nImage=x\nEnvironment=PW=[[DB_PASSWORD]]\n",
     )]);
-    let err = prepare(&stack(false), &files, &vars, &secrets)
+    let err = prepare(&stack(false), &files, &[], &vars, &secrets)
       .unwrap_err()
       .to_string();
     assert!(err.contains("may only be referenced on a Secret= line"));
@@ -375,7 +394,7 @@ mod tests {
       ("web.container", "[Container]\nImage=x\n"),
       ("config.yml", "api_key: [[API_KEY]]\n"),
     ]);
-    let err = prepare(&stack(false), &files, &vars, &secrets)
+    let err = prepare(&stack(false), &files, &[], &vars, &secrets)
       .unwrap_err()
       .to_string();
     assert!(
@@ -390,7 +409,7 @@ mod tests {
       "web.container",
       "[Container]\nImage=x\nEnvironment=A=[[NOPE]]\n",
     )]);
-    let err = prepare(&stack(false), &files, &vars, &secrets)
+    let err = prepare(&stack(false), &files, &[], &vars, &secrets)
       .unwrap_err()
       .to_string();
     assert!(err.contains("unresolved reference [[NOPE]]"));
@@ -403,11 +422,35 @@ mod tests {
       "web.container",
       "[Container]\nImage=x\nEnvironment=A=[[NOPE]]\n",
     )]);
-    let p = prepare(&stack(true), &files, &vars, &secrets).unwrap();
+    let p =
+      prepare(&stack(true), &files, &[], &vars, &secrets).unwrap();
     assert_eq!(
       p.write["web.container"],
       "[Container]\nUserNS=auto\nImage=x\nEnvironment=A=[[NOPE]]\n"
     );
     assert!(p.secrets.is_empty());
+  }
+
+  #[test]
+  fn blobs_pass_through_and_cannot_be_secret_files() {
+    let (vars, secrets) = maps();
+    let blobs = [Blob {
+      path: "assets/logo.png".into(),
+      sha256: "abc".into(),
+    }];
+    let ok = files(&[("web.container", "[Container]\nImage=x\n")]);
+    let p =
+      prepare(&stack(false), &ok, &blobs, &vars, &secrets).unwrap();
+    assert_eq!(p.blobs["assets/logo.png"], "abc");
+    assert!(!p.write.contains_key("assets/logo.png"));
+
+    let bad = files(&[(
+      "web.container",
+      "[Container]\nImage=x\nSecret=file:assets/logo.png,type=mount\n",
+    )]);
+    let err = prepare(&stack(false), &bad, &blobs, &vars, &secrets)
+      .unwrap_err()
+      .to_string();
+    assert!(err.contains("cannot be a secret file"), "{err}");
   }
 }

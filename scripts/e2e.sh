@@ -12,10 +12,17 @@
 #   3. DeployStackIfChanged is a no-op with nothing changed
 #   4. a changed unit file redeploys only that unit
 #   5. a changed bind-mounted config file restarts the unit that mounts it
-#   6. DestroyStack removes units and the directory
+#   6. a .build unit builds from its context; binary and >1 MiB files are
+#      installed byte for byte, executables stay executable, and a hash
+#      that counts blobs still short-circuits DeployStackIfChanged
+#   7. a changed text file in the build context rebuilds the image and
+#      restarts its container, and nothing else
+#   8. a changed binary file in the build context does the same
+#   9. DestroyStack removes units and the directory
 #
-# Usage: scripts/e2e.sh            (from the repo root; needs docker, cargo, python3)
-#        KEEP=1 scripts/e2e.sh     (leave everything running for a look)
+# Usage: scripts/e2e.sh              (from the repo root; needs docker, cargo, python3)
+#        KEEP=1 scripts/e2e.sh       (leave everything running for a look)
+#        SKIP_BUILD=1 scripts/e2e.sh (use the binaries already in target/release)
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -48,8 +55,10 @@ trap cleanup EXIT
 teardown
 rm -rf "$WORK"; mkdir -p "$WORK"/{keys,repo-cache,syncs,actions,git}
 
-log "build"
-(cd "$ROOT" && cargo build --release -p komodo_core -p komodo_periphery -q)
+if [ "${SKIP_BUILD:-0}" != "1" ]; then
+  log "build"
+  (cd "$ROOT" && cargo build --release -p komodo_core -p komodo_periphery -q)
+fi
 AGENT_BIN="$ROOT/target/release/quomodo-agent"
 CORE_BIN="$ROOT/target/release/quomodo"
 
@@ -85,7 +94,7 @@ echo "hello v1" > "$WORK/git/work/$STACK/motd.txt"
 GIT="git -C $WORK/git/work -c user.email=e2e@test -c user.name=e2e"
 $GIT init -q -b main && $GIT add -A && $GIT commit -qm "v1"
 git clone -q --bare "$WORK/git/work" "$WORK/git/e2e.git" && git -C "$WORK/git/e2e.git" update-server-info
-(cd "$WORK/git" && python3 -m http.server "$GIT_PORT" --bind "$BRIDGE_IP" > "$WORK/git.log" 2>&1 & echo $! > "$WORK/git.pid")
+python3 -m http.server "$GIT_PORT" --bind "$BRIDGE_IP" --directory "$WORK/git" > "$WORK/git.log" 2>&1 & echo $! > "$WORK/git.pid"
 
 log "core on $CORE_URL"
 (
@@ -236,7 +245,72 @@ $API DeployStackIfChanged
 hexec podman exec e2e-web cat /motd.txt | grep -q "hello v3" || fail "container does not see the new motd"
 echo "web restarted with the new file"
 
-log "6. destroy"
+publish() {
+  $GIT add -A && $GIT commit -qm "$1" && git -C "$WORK/git/e2e.git" fetch -q "$WORK/git/work" main:main && git -C "$WORK/git/e2e.git" update-server-info
+}
+installed_sha() { hexec sha256sum "/etc/containers/systemd/$STACK/$1" | cut -d' ' -f1; }
+local_sha() { sha256sum "$WORK/git/work/$STACK/$1" | cut -d' ' -f1; }
+
+log "6. a .build unit with a binary asset, a large file and an executable"
+mkdir -p "$WORK/git/work/$STACK/app"
+cat > "$WORK/git/work/$STACK/app.build" <<UNIT
+[Build]
+ImageTag=localhost/e2e-app
+SetWorkingDirectory=app
+File=app/Containerfile
+UNIT
+cat > "$WORK/git/work/$STACK/app.container" <<UNIT
+[Container]
+Image=app.build
+ContainerName=e2e-app
+[Install]
+WantedBy=multi-user.target
+UNIT
+cat > "$WORK/git/work/$STACK/app/Containerfile" <<'CF'
+FROM docker.io/library/alpine:3.20
+COPY . /app
+CMD ["/app/entry.sh"]
+CF
+printf '#!/bin/sh\nexec sleep infinity\n' > "$WORK/git/work/$STACK/app/entry.sh"
+chmod +x "$WORK/git/work/$STACK/app/entry.sh"
+echo v1 > "$WORK/git/work/$STACK/app/version"
+python3 -c 'import sys; sys.stdout.buffer.write(bytes(range(256)) * 8)' > "$WORK/git/work/$STACK/app/logo.png"
+head -c 1100000 /dev/urandom > "$WORK/git/work/$STACK/app/big.bin"
+publish "v4 app"
+WEB_ID_BEFORE=$(hexec podman inspect -f '{{.Id}}' e2e-web)
+$API DeployStackIfChanged
+hexec systemctl is-active app.service || { hexec journalctl -u app-build.service -u app.service --no-pager | tail -30; fail "app not active"; }
+for f in app/logo.png app/big.bin; do
+  [ "$(installed_sha $f)" = "$(local_sha $f)" ] || fail "$f was not installed byte for byte"
+done
+hexec test -x "/etc/containers/systemd/$STACK/app/entry.sh" || fail "entry.sh lost its executable bit"
+[ "$(hexec podman exec e2e-app cat /app/version)" = "v1" ] || fail "image was not built from the context"
+[ "$(hexec podman exec e2e-app sha256sum /app/logo.png | cut -d' ' -f1)" = "$(local_sha app/logo.png)" ] || fail "image has the wrong logo.png"
+[ "$(hexec podman inspect -f '{{.Id}}' e2e-web)" = "$WEB_ID_BEFORE" ] || fail "web was recreated by an unrelated change"
+$API DeployStackIfChanged | grep -q '"noop": true' || fail "expected a no-op: Core and agent hashes disagree once blobs are involved"
+echo "built, installed, and the next deploy short-circuited"
+
+log "7. a changed text file in the build context rebuilds"
+APP_ID_BEFORE=$(hexec podman inspect -f '{{.Id}}' e2e-app)
+echo v2 > "$WORK/git/work/$STACK/app/version"
+publish "v5 version"
+$API DeployStackIfChanged
+[ "$(hexec podman inspect -f '{{.Id}}' e2e-app)" != "$APP_ID_BEFORE" ] || fail "app was not recreated"
+[ "$(hexec podman exec e2e-app cat /app/version)" = "v2" ] || fail "app was not rebuilt"
+[ "$(hexec podman inspect -f '{{.Id}}' e2e-web)" = "$WEB_ID_BEFORE" ] || fail "web was recreated by a build context change"
+echo "rebuilt, web untouched"
+
+log "8. a changed binary file in the build context rebuilds"
+APP_ID_BEFORE=$(hexec podman inspect -f '{{.Id}}' e2e-app)
+python3 -c 'import sys; sys.stdout.buffer.write(bytes(range(255, -1, -1)) * 8)' > "$WORK/git/work/$STACK/app/logo.png"
+publish "v6 logo"
+$API DeployStackIfChanged
+[ "$(installed_sha app/logo.png)" = "$(local_sha app/logo.png)" ] || fail "new logo.png was not installed"
+[ "$(hexec podman inspect -f '{{.Id}}' e2e-app)" != "$APP_ID_BEFORE" ] || fail "app was not recreated"
+[ "$(hexec podman exec e2e-app sha256sum /app/logo.png | cut -d' ' -f1)" = "$(local_sha app/logo.png)" ] || fail "image has the old logo.png"
+echo "rebuilt with the new binary"
+
+log "9. destroy"
 $API DestroyStack
 hexec systemctl is-active web.service >/dev/null 2>&1 && fail "web.service still active after destroy"
 hexec test ! -e /etc/containers/systemd/$STACK || fail "stack directory still present"

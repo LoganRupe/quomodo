@@ -17,7 +17,10 @@ at rest. GPL-3.0-or-later, same as upstream.
 - **Stacks**: a directory in git holding raw `.pod`, `.container`, `.network`,
   `.volume`, `.build`, `.image` or `.kube` files plus config files. Deploying
   copies the directory to `/etc/containers/systemd/<stack>/`, reloads systemd
-  and restarts the units whose files changed. Every `.container` gets
+  and restarts the units whose files changed. A changed file restarts the
+  units that bind-mount it, and a change anywhere in a `.build` context
+  rebuilds the image and restarts its containers. Binary files and files
+  over 1 MiB are copied as is, never interpolated. Every `.container` gets
   `UserNS=auto`.
 - **Secrets**: `[[NAME]]` resolves from non-secret Variables first, then from
   the secret store named by the Stack's `secrets_collection`. Core fetches the

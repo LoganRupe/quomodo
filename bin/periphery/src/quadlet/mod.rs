@@ -6,23 +6,20 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, anyhow};
 use formatting::format_serror;
 use komodo_client::entities::{
-  FileContents, RepoExecutionArgs, repo::Repo, stack::Stack,
+  RepoExecutionArgs, repo::Repo, stack::Stack,
   to_path_compatible_name, update::Log,
 };
 use mogh_resolver::Resolve as _;
 use periphery_client::api::git::{CloneRepo, PullOrCloneRepo};
 pub use quadlet::{
-  ParsedUnit, contents_hash, parse_units, secret_prefix, sha256_hex,
-  unit, units_only,
+  ParsedUnit, StackDir, contents_hash, parse_units, read_stack_dir,
+  secret_prefix, sha256_hex, unit, units_only,
 };
 
 use crate::{api::Args, config::periphery_config};
 
 pub mod deploy;
 pub mod state;
-
-/// Largest file the agent will read out of a stack directory.
-const MAX_FILE_BYTES: u64 = 1024 * 1024;
 
 /// Where stacks with their own (non linked) repo are cloned.
 pub fn stack_clone_root() -> PathBuf {
@@ -155,83 +152,14 @@ pub struct PulledStack {
   pub commit_message: Option<String>,
 }
 
-/// Read every regular file under the run directory, recursively,
-/// skipping `.git`. Paths are relative to the run directory with `/` separators.
+/// Read the run directory off the async runtime. See `quadlet::read`.
 pub async fn read_stack_files(
   run_directory: &Path,
-) -> anyhow::Result<(Vec<FileContents>, Vec<FileContents>)> {
-  let run_directory =
-    run_directory.canonicalize().with_context(|| {
-      format!(
-        "Stack run directory does not exist on host: {}",
-        run_directory.display()
-      )
-    })?;
-  let mut files = Vec::new();
-  let mut errors = Vec::new();
-  let mut stack = vec![run_directory.clone()];
-  while let Some(dir) = stack.pop() {
-    let mut entries = match tokio::fs::read_dir(&dir).await {
-      Ok(entries) => entries,
-      Err(e) => {
-        errors.push(FileContents {
-          path: rel(&run_directory, &dir),
-          contents: format!("Failed to read directory: {e}"),
-        });
-        continue;
-      }
-    };
-    while let Ok(Some(entry)) = entries.next_entry().await {
-      let path = entry.path();
-      let name = entry.file_name().to_string_lossy().to_string();
-      if name == ".git" {
-        continue;
-      }
-      let Ok(meta) = entry.metadata().await else {
-        continue;
-      };
-      if meta.is_dir() {
-        stack.push(path);
-        continue;
-      }
-      if !meta.is_file() {
-        continue;
-      }
-      let rel_path = rel(&run_directory, &path);
-      if meta.len() > MAX_FILE_BYTES {
-        errors.push(FileContents {
-          path: rel_path,
-          contents: format!(
-            "File is larger than {MAX_FILE_BYTES} bytes, not read"
-          ),
-        });
-        continue;
-      }
-      match tokio::fs::read_to_string(&path).await {
-        Ok(contents) => files.push(FileContents {
-          path: rel_path,
-          contents,
-        }),
-        Err(e) => errors.push(FileContents {
-          path: rel_path,
-          contents: format!("Failed to read file: {e}"),
-        }),
-      }
-    }
-  }
-  files.sort_by(|a, b| a.path.cmp(&b.path));
-  errors.sort_by(|a, b| a.path.cmp(&b.path));
-  Ok((files, errors))
-}
-
-fn rel(root: &Path, path: &Path) -> String {
-  path
-    .strip_prefix(root)
-    .unwrap_or(path)
-    .components()
-    .map(|c| c.as_os_str().to_string_lossy().to_string())
-    .collect::<Vec<_>>()
-    .join("/")
+) -> anyhow::Result<StackDir> {
+  let run_directory = run_directory.to_path_buf();
+  tokio::task::spawn_blocking(move || read_stack_dir(&run_directory))
+    .await
+    .context("Stack directory reader panicked")?
 }
 
 /// The units currently installed for a stack, read from the quadlet dir.
@@ -242,8 +170,7 @@ pub async fn installed_units(
   if !dir.is_dir() {
     return Ok(Vec::new());
   }
-  let (files, _) = read_stack_files(&dir).await?;
-  Ok(parse_units(&files))
+  Ok(parse_units(&read_stack_files(&dir).await?.files))
 }
 
 /// Resolve the requested unit files (eg `web.container`) against the units,

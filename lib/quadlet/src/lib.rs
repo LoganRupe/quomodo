@@ -1,5 +1,6 @@
-//! Shared quadlet stack logic: unit file parsing and the rules for
-//! interpolating variables and secrets into stack files.
+//! Shared quadlet stack logic: reading a stack directory, unit file
+//! parsing and the rules for interpolating variables and secrets into
+//! stack files.
 //! Used by Core (to know which secrets a stack needs, and to list its
 //! units) and by the agent (to prepare the files it installs).
 
@@ -9,8 +10,10 @@ use komodo_client::entities::{FileContents, stack::QuadletUnit};
 use sha2::{Digest, Sha256};
 
 pub mod prepare;
+pub mod read;
 pub mod unit;
 
+pub use read::{Blob, StackDir, read_stack_dir, sha256_file};
 pub use unit::ParsedUnit;
 
 /// Podman secret names allow `[a-zA-Z0-9_.-]`.
@@ -37,10 +40,13 @@ pub fn sha256_hex(input: &str) -> String {
   hex::encode(Sha256::digest(input.as_bytes()))
 }
 
-/// Hash over the raw stack files and the hashes of the resolved secret values.
-/// Core stores this as `deployed_contents_hash`; the agent computes the same.
+/// Hash over the raw stack files, the blob hashes and the hashes of the
+/// resolved secret values. Core stores this as `deployed_contents_hash`;
+/// the agent computes the same. A stack without blobs hashes exactly as it
+/// did before blobs existed.
 pub fn contents_hash(
   files: &[FileContents],
+  blobs: &[Blob],
   secret_hashes: &BTreeMap<String, String>,
 ) -> String {
   let mut files = files.iter().collect::<Vec<_>>();
@@ -50,6 +56,15 @@ pub fn contents_hash(
     hasher.update(file.path.as_bytes());
     hasher.update([0]);
     hasher.update(file.contents.as_bytes());
+    hasher.update([0]);
+  }
+  let mut blobs = blobs.iter().collect::<Vec<_>>();
+  blobs.sort_by(|a, b| a.path.cmp(&b.path));
+  for blob in blobs {
+    hasher.update(b"blob:");
+    hasher.update(blob.path.as_bytes());
+    hasher.update([0]);
+    hasher.update(blob.sha256.as_bytes());
     hasher.update([0]);
   }
   for (name, hash) in secret_hashes {

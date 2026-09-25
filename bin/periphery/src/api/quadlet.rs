@@ -85,19 +85,18 @@ impl Resolve<crate::api::Args> for DeployStack {
     }
 
     // 2. Read + prepare
-    let (files, errors) =
-      match read_stack_files(&pulled.run_directory).await {
-        Ok(r) => r,
-        Err(e) => {
-          res.logs.push(Log::error(
-            "Read Stack Files",
-            format_serror(&e.into()),
-          ));
-          return Ok(res);
-        }
-      };
-    res.file_contents = files.clone();
-    res.remote_errors = errors;
+    let read = match read_stack_files(&pulled.run_directory).await {
+      Ok(r) => r,
+      Err(e) => {
+        res.logs.push(Log::error(
+          "Read Stack Files",
+          format_serror(&e.into()),
+        ));
+        return Ok(res);
+      }
+    };
+    res.file_contents = read.files.clone();
+    res.remote_errors = read.errors;
     if !res.remote_errors.is_empty() {
       res.logs.push(Log::error(
         "Read Stack Files",
@@ -111,7 +110,11 @@ impl Resolve<crate::api::Args> for DeployStack {
       return Ok(res);
     }
     let prepared = match ::quadlet::prepare::prepare(
-      &stack, &files, &variables, &secrets,
+      &stack,
+      &read.files,
+      &read.blobs,
+      &variables,
+      &secrets,
     ) {
       Ok(p) => p,
       Err(e) => {
@@ -133,8 +136,11 @@ impl Resolve<crate::api::Args> for DeployStack {
       return Ok(res);
     }
     res.units = units_only(&prepared.units);
-    res.contents_hash =
-      Some(quadlet::contents_hash(&files, &prepared.secret_hashes));
+    res.contents_hash = Some(quadlet::contents_hash(
+      &read.files,
+      &read.blobs,
+      &prepared.secret_hashes,
+    ));
     res.logs.push(Log::simple(
       "Units",
       prepared
@@ -233,19 +239,23 @@ impl Resolve<crate::api::Args> for DeployStack {
       return Ok(res);
     }
     let target = stack_quadlet_dir(&stack.name);
-    let file_hashes =
-      match deploy::write_files(&target, &prepared, &mut res.logs)
-        .await
-      {
-        Ok(h) => h,
-        Err(e) => {
-          res.logs.push(Log::error(
-            "Write Stack Files",
-            format_serror(&e.into()),
-          ));
-          return Ok(res);
-        }
-      };
+    let file_hashes = match deploy::write_files(
+      &target,
+      &pulled.run_directory,
+      &prepared,
+      &mut res.logs,
+    )
+    .await
+    {
+      Ok(h) => h,
+      Err(e) => {
+        res.logs.push(Log::error(
+          "Write Stack Files",
+          format_serror(&e.into()),
+        ));
+        return Ok(res);
+      }
+    };
     let applied = deploy::apply(&plan, &mut res.logs).await?;
     for log in res.logs.iter_mut() {
       log.sanitize(&replacers);
@@ -330,8 +340,9 @@ impl Resolve<crate::api::Args> for PullStack {
         return Ok(res);
       }
     };
-    let (files, _) = read_stack_files(&pulled.run_directory).await?;
-    let units = parse_units(&files);
+    let units = parse_units(
+      &read_stack_files(&pulled.run_directory).await?.files,
+    );
     let selected = select_units(&units, &services)?;
     if !stack.config.registry_provider.is_empty()
       && !stack.config.registry_account.is_empty()
