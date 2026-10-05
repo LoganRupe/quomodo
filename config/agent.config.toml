@@ -57,7 +57,8 @@ core_tls_insecure_skip_verify = false
 ## Default: /etc/quomodo
 config_directory = "/etc/quomodo"
 
-## Working state: repo clones under ./repos, deploy state under ./state.
+## Working state: repo clones under ./repos, deploy state under ./state,
+## the user namespace slice table in ./idmap.json.
 ## Env: PERIPHERY_ROOT_DIRECTORY
 ## Default: /var/lib/quomodo
 root_directory = "/var/lib/quomodo"

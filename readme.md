@@ -21,8 +21,16 @@ at rest. GPL-3.0-or-later, same as upstream.
   units that bind-mount it, and a change to a file a `.build` context
   sends (minus its `.containerignore` / `.dockerignore`) rebuilds the image
   and restarts its containers. Binary files and files
-  over 1 MiB are copied as is, never interpolated. Every `.container` gets
-  `UserNS=auto`.
+  over 1 MiB are copied as is, never interpolated.
+- **User namespaces**: every `.pod`, and every `.container` outside a pod,
+  runs in its own user namespace on a fixed 65536-id slice of the host's
+  `containers` subordinate range. The agent picks the slice the first time
+  it sees the unit, records it in `/var/lib/quomodo/idmap.json`, and writes
+  it as `UIDMap=` / `GIDMap=`, so a redeploy or a reboot never moves a
+  container's root to another host uid (podman's `UserNS=auto` does, and
+  files in volumes turn into `nobody`). `UserNS=auto:uidmapping=...` keeps
+  its carve-outs; `UserNS=host` and friends are left alone; a pod member
+  shares the pod's namespace.
 - **Secrets**: `[[NAME]]` resolves from non-secret Variables first, then from
   the secret store named by the Stack's `secrets_collection`. Core fetches the
   values at deploy time, sends them to the agent over the key-authenticated

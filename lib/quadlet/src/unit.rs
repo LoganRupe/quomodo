@@ -405,33 +405,6 @@ fn join(dir: &str, rel: &str) -> Option<String> {
   Some(parts.join("/"))
 }
 
-/// Every `.container` gets `UserNS=auto` so root inside the container
-/// is an unprivileged host uid. An explicit `UserNS=` is left alone.
-pub fn with_userns_auto(contents: &str) -> String {
-  if get_value(contents, "Container", "UserNS").is_some() {
-    return contents.to_string();
-  }
-  let mut out = String::with_capacity(contents.len() + 16);
-  let mut injected = false;
-  for line in contents.split_inclusive('\n') {
-    out.push_str(line);
-    if !injected && line.trim() == "[Container]" {
-      if !line.ends_with('\n') {
-        out.push('\n');
-      }
-      out.push_str("UserNS=auto\n");
-      injected = true;
-    }
-  }
-  if !injected {
-    if !out.ends_with('\n') && !out.is_empty() {
-      out.push('\n');
-    }
-    out.push_str("[Container]\nUserNS=auto\n");
-  }
-  out
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -547,19 +520,6 @@ mod tests {
         .unwrap();
     assert_eq!(c.unit.name, "systemd-db");
     assert_eq!(c.deps, vec!["db.build"]);
-  }
-
-  #[test]
-  fn injects_userns_auto_once() {
-    let out = with_userns_auto(WEB);
-    assert!(out.contains("[Container]\nUserNS=auto\nImage="));
-    assert_eq!(with_userns_auto(&out), out);
-    let explicit = "[Container]\nUserNS=keep-id\nImage=x\n";
-    assert_eq!(with_userns_auto(explicit), explicit);
-    assert_eq!(
-      with_userns_auto("[Unit]\nDescription=x\n"),
-      "[Unit]\nDescription=x\n[Container]\nUserNS=auto\n"
-    );
   }
 
   #[test]

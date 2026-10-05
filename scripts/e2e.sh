@@ -8,9 +8,11 @@
 #   - a bare git repo served over HTTP with a small quadlet stack
 # What it proves:
 #   1. the agent dials in and the Server shows Ok
-#   2. DeployStack installs the quadlet units, systemd starts them, podman runs them
+#   2. DeployStack installs the quadlet units, systemd starts them, podman runs
+#      them; every pod and standalone container gets its own fixed user
+#      namespace slice, a pod member shares the pod's
 #   3. DeployStackIfChanged is a no-op with nothing changed
-#   4. a changed unit file redeploys only that unit
+#   4. a changed unit file redeploys only that unit, on the same slice
 #   5. a changed bind-mounted config file restarts the unit that mounts it
 #   6. a .build unit builds from its context; binary and >1 MiB files are
 #      installed byte for byte, executables stay executable, and a hash
@@ -91,6 +93,17 @@ Exec=sleep infinity
 WantedBy=multi-user.target
 UNIT
 printf '[Volume]\n' > "$WORK/git/work/$STACK/e2e-data.volume"
+# A pod with one member: the pod takes the slice, the member joins it.
+printf '[Pod]\nPodName=e2e-pod\n' > "$WORK/git/work/$STACK/e2e.pod"
+cat > "$WORK/git/work/$STACK/podded.container" <<UNIT
+[Container]
+Image=docker.io/library/alpine:3.20
+ContainerName=e2e-podded
+Pod=e2e.pod
+Exec=sleep infinity
+[Install]
+WantedBy=multi-user.target
+UNIT
 echo "hello v1" > "$WORK/git/work/$STACK/motd.txt"
 GIT="git -C $WORK/git/work -c user.email=e2e@test -c user.name=e2e"
 $GIT init -q -b main && $GIT add -A && $GIT commit -qm "v1"
@@ -213,11 +226,23 @@ log "2. deploy"
 $API create-stack; echo
 $API stack
 $API DeployStack
-hexec systemctl is-active web.service worker.service || { hexec journalctl -u web.service -u worker.service --no-pager | tail -30; fail "units not active"; }
+hexec systemctl is-active web.service worker.service e2e-pod.service podded.service || { hexec journalctl -u web.service -u worker.service -u e2e-pod.service -u podded.service --no-pager | tail -30; fail "units not active"; }
 hexec podman ps --format '{{.Names}} {{.Status}}'
 hexec test -f /etc/containers/systemd/$STACK/web.container || fail "unit file not installed"
 hexec test -f /etc/containers/systemd/$STACK/motd.txt || fail "config file not installed"
-hexec grep -q "UserNS=auto" /etc/containers/systemd/$STACK/web.container || fail "UserNS=auto not injected"
+# Slices come off the top of containers:2147483647:2147483648 (minus the top
+# one), 65536 wide, in unit file order: e2e.pod, web.container, worker.container.
+uidmap() { hexec podman inspect -f '{{index .HostConfig.IDMappings.UIDMap 0}}' "$1"; }
+SLICE0=4294836223; SLICE1=$((SLICE0 - 65536)); SLICE2=$((SLICE1 - 65536))
+hexec grep -q "^UIDMap=0:$SLICE0:65536$" /etc/containers/systemd/$STACK/e2e.pod || { hexec cat /etc/containers/systemd/$STACK/e2e.pod; fail "pod did not get slice 0"; }
+hexec grep -q "^GIDMap=0:$SLICE0:65536$" /etc/containers/systemd/$STACK/e2e.pod || fail "pod did not get a gid map"
+hexec grep -q "^UserNS=$" /etc/containers/systemd/$STACK/podded.container || { hexec cat /etc/containers/systemd/$STACK/podded.container; fail "pod member did not get UserNS="; }
+[ "$(hexec grep -c 'UIDMap\|GIDMap' /etc/containers/systemd/$STACK/podded.container)" = 0 ] || fail "pod member got a map of its own"
+[ "$(uidmap e2e-web)" = "0:$SLICE1:65536" ] || fail "web runs on $(uidmap e2e-web), expected 0:$SLICE1:65536"
+[ "$(uidmap e2e-worker)" = "0:$SLICE2:65536" ] || fail "worker runs on $(uidmap e2e-worker), expected 0:$SLICE2:65536"
+[ "$(uidmap e2e-podded)" = "0:$SLICE0:65536" ] || fail "pod member runs on $(uidmap e2e-podded), expected the pod's 0:$SLICE0:65536"
+hexec grep -q '"e2e/web.container": 1' /var/lib/quomodo/idmap.json || { hexec cat /var/lib/quomodo/idmap.json; fail "slice table not recorded"; }
+echo "slices: pod $SLICE0, web $SLICE1, worker $SLICE2, member shares the pod's"
 $API stack; sleep 12
 [ "$($API state)" = "running" ] || fail "stack state is $($API state), expected running"
 $API services
@@ -235,7 +260,8 @@ $GIT commit -qam "v2 web" && git -C "$WORK/git/e2e.git" fetch -q "$WORK/git/work
 $API DeployStackIfChanged
 [ "$(hexec podman inspect -f '{{.Id}}' e2e-web)" != "$WEB_ID_BEFORE" ] || fail "web was not recreated"
 [ "$(hexec podman inspect -f '{{.Id}}' e2e-worker)" = "$WORKER_ID_BEFORE" ] || fail "worker was recreated but its file did not change"
-echo "only web restarted"
+[ "$(uidmap e2e-web)" = "0:$SLICE1:65536" ] || fail "web moved to $(uidmap e2e-web) on redeploy"
+echo "only web restarted, same slice"
 
 log "5. a changed mounted config restarts the mounting unit"
 WEB_ID_BEFORE=$(hexec podman inspect -f '{{.Id}}' e2e-web)
@@ -325,6 +351,7 @@ echo "app untouched"
 log "10. destroy"
 $API DestroyStack
 hexec systemctl is-active web.service >/dev/null 2>&1 && fail "web.service still active after destroy"
+hexec systemctl is-active e2e-pod.service >/dev/null 2>&1 && fail "e2e-pod.service still active after destroy"
 hexec test ! -e /etc/containers/systemd/$STACK || fail "stack directory still present"
 echo "destroyed"
 

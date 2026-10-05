@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use komodo_client::entities::{FileContents, stack::QuadletUnit};
 use sha2::{Digest, Sha256};
 
+pub mod idmap;
 pub mod ignore;
 pub mod prepare;
 pub mod read;

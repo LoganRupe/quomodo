@@ -12,8 +12,10 @@ Files:
   `/etc/quomodo/keys/core.pub`
 - `/var/lib/quomodo/` for repo clones and deploy state
 - `containers:2147483647:2147483648` in `/etc/subuid` and `/etc/subgid`, the
-  range `UserNS=auto` carves per-container uid maps from (without it every
-  unit fails with "not enough unused IDs in user namespace")
+  range the agent carves per-unit uid maps from (the deploy fails without it).
+  The slices it has handed out live in `/var/lib/quomodo/idmap.json`; keep
+  that file with the host, a lost table re-owns every volume on the next
+  deploy
 
 Unit (`/etc/systemd/system/quomodo-agent.service`):
 

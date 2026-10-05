@@ -19,6 +19,7 @@ pub use quadlet::{
 use crate::{api::Args, config::periphery_config};
 
 pub mod deploy;
+pub mod idmap;
 pub mod state;
 
 /// Where stacks with their own (non linked) repo are cloned.

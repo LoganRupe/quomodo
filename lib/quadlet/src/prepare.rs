@@ -13,9 +13,12 @@
 //!   to the quadlet directory.
 //! - A config file containing a secret reference that no unit mounts with
 //!   `Secret=file:<path>`: error.
-//! - Anything else is written as is. Every `.container` gets `UserNS=auto`.
+//! - Anything else is written as is.
 //! - Blobs (binary, or text over 1 MiB) are copied byte for byte and never
 //!   interpolated, so one cannot be a `Secret=file:`.
+//! - A `UserNS=` the agent cannot turn into a fixed map (see `idmap`) is an
+//!   error here, so it fails on Core. The map itself is written by the
+//!   agent, which holds the host's slice table.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -27,8 +30,8 @@ use komodo_client::entities::{
 use regex::Regex;
 
 use crate::{
-  Blob, ParsedUnit, secret_prefix, secret_safe, sha256_hex,
-  unit::{base_name, parse_unit, with_userns_auto},
+  Blob, ParsedUnit, idmap, secret_prefix, secret_safe, sha256_hex,
+  unit::{base_name, parse_unit},
 };
 
 fn token_regex() -> &'static Regex {
@@ -108,14 +111,6 @@ pub fn prepare(
     };
 
     if skip {
-      let contents =
-        if QuadletKind::from_file_name(base_name(&file.path))
-          == Some(QuadletKind::Container)
-        {
-          with_userns_auto(&contents)
-        } else {
-          contents
-        };
       prepared.write.insert(file.path.clone(), contents);
       continue;
     }
@@ -216,13 +211,6 @@ pub fn prepare(
           out.push_str(line);
         }
       }
-      let out = if QuadletKind::from_file_name(base_name(&file.path))
-        == Some(QuadletKind::Container)
-      {
-        with_userns_auto(&out)
-      } else {
-        out
-      };
       prepared.write.insert(file.path.clone(), out);
     } else {
       let names = referenced_names(&contents);
@@ -246,7 +234,15 @@ pub fn prepare(
     }
   }
 
+  errors.extend(idmap::check(&prepared.write));
+
   if skip {
+    if !errors.is_empty() {
+      return Err(anyhow!(
+        "Stack files failed validation:\n  - {}",
+        errors.join("\n  - ")
+      ));
+    }
     prepared.units = crate::parse_units(
       &prepared
         .write
@@ -358,7 +354,10 @@ mod tests {
     assert!(web.contains(
       "Secret=my_stack_config.yml,type=mount,target=/etc/app.yml"
     ));
-    assert!(web.contains("UserNS=auto"));
+    assert!(
+      !web.contains("UserNS"),
+      "the agent writes the map: {web}"
+    );
     assert!(!p.write.contains_key("config.yml"));
     assert_eq!(p.write["plain.txt"], "hello example.com\n");
     assert_eq!(p.secrets["my_stack_DB_PASSWORD"], "hunter2");
@@ -426,9 +425,35 @@ mod tests {
       prepare(&stack(true), &files, &[], &vars, &secrets).unwrap();
     assert_eq!(
       p.write["web.container"],
-      "[Container]\nUserNS=auto\nImage=x\nEnvironment=A=[[NOPE]]\n"
+      "[Container]\nImage=x\nEnvironment=A=[[NOPE]]\n"
     );
     assert!(p.secrets.is_empty());
+  }
+
+  #[test]
+  fn bad_userns_fails_on_core() {
+    let (vars, secrets) = maps();
+    let files = files(&[
+      ("app.pod", "[Pod]\n"),
+      (
+        "web.container",
+        "[Container]\nImage=x\nPod=app.pod\nUserNS=auto\n",
+      ),
+    ]);
+    let err = prepare(&stack(false), &files, &[], &vars, &secrets)
+      .unwrap_err()
+      .to_string();
+    assert!(
+      err.contains("a pod member cannot use UserNS=auto"),
+      "{err}"
+    );
+    let err = prepare(&stack(true), &files, &[], &vars, &secrets)
+      .unwrap_err()
+      .to_string();
+    assert!(
+      err.contains("a pod member cannot use UserNS=auto"),
+      "{err}"
+    );
   }
 
   #[test]

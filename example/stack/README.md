@@ -11,4 +11,7 @@ resource at it with `run_directory = "example/stack"` and it deploys to
 - `config.yml` contains a secret reference, so it is mounted with
   `Secret=file:config.yml` and becomes the podman secret `<stack>_config.yml`.
   It is never written under `/etc`.
-- Every `.container` gets `UserNS=auto` unless it sets `UserNS=` itself.
+- `app.pod` gets a fixed user namespace (`UIDMap=` / `GIDMap=` on a slice
+  the agent picks once per host and keeps); `web` and `db` share it as pod
+  members. A `.container` outside a pod gets its own slice. Set `UserNS=`
+  yourself (`host`, `keep-id`, ...) to opt out.

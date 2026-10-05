@@ -18,9 +18,9 @@ use crate::{
   helpers::format_log_grep,
   podman,
   quadlet::{
-    self, deploy, installed_units, parse_units, pull_or_clone_stack,
-    read_stack_files, secret_prefix, select_units, stack_quadlet_dir,
-    state, units_only,
+    self, deploy, idmap, installed_units, parse_units,
+    pull_or_clone_stack, read_stack_files, secret_prefix,
+    select_units, stack_quadlet_dir, state, units_only,
   },
   systemd,
 };
@@ -109,7 +109,7 @@ impl Resolve<crate::api::Args> for DeployStack {
       ));
       return Ok(res);
     }
-    let prepared = match ::quadlet::prepare::prepare(
+    let mut prepared = match ::quadlet::prepare::prepare(
       &stack,
       &read.files,
       &read.blobs,
@@ -125,6 +125,17 @@ impl Resolve<crate::api::Args> for DeployStack {
         return Ok(res);
       }
     };
+    match idmap::assign(&stack.name, &mut prepared).await {
+      Ok(log) => res.logs.push(log),
+      Err(e) => {
+        res.logs.push(Log::error(
+          "User Namespaces",
+          format_serror(&e.into()),
+        ));
+        return Ok(res);
+      }
+    }
+    let prepared = prepared;
     if prepared.units.is_empty() {
       res.logs.push(Log::error(
         "Prepare Stack",
