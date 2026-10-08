@@ -58,5 +58,6 @@ ENV KOMODO_CLI_CONFIG_KEYWORDS="*config.*,*komodo.cli*.*"
 ENTRYPOINT [ "entrypoint.sh" ]
 CMD [ "quomodo" ]
 
+LABEL org.opencontainers.image.source="https://github.com/LoganRupe/quomodo"
 LABEL org.opencontainers.image.description="Quomodo core"
 LABEL org.opencontainers.image.licenses="GPL-3.0"

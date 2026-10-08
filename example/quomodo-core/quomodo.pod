@@ -1,16 +1,22 @@
 # Root quadlet on the core host: one pod holding core and mongo.
-# Install under /etc/containers/systemd/quomodo/ with the two .container files.
+# Install under /etc/containers/systemd/quomodo/ with the two .container
+# files and the .volume files. See docs/install.md.
 #
-# Mongo publishes nothing. Core publishes only on the tailnet address,
-# and the pod waits for tailscaled so that address exists at boot.
+# Mongo publishes nothing. Core publishes 9120, which the UI, the API and
+# the agents all use. Put it behind a TLS reverse proxy, or bind it to a
+# private address the agents reach over WireGuard/Tailscale, e.g.
+# PublishPort=10.0.0.5:9120:9120. If that address comes from a VPN daemon,
+# order the pod after it so the address exists at boot:
+#   After=tailscaled.service
+#   Wants=tailscaled.service
 [Unit]
 Description=Quomodo core pod
-After=tailscaled.service network-online.target
-Wants=tailscaled.service network-online.target
+After=network-online.target
+Wants=network-online.target
 
 [Pod]
 PodName=quomodo
-PublishPort=10.0.0.5:9120:9120
+PublishPort=9120:9120
 
 [Install]
 WantedBy=multi-user.target

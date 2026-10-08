@@ -9,7 +9,7 @@ UserNS=auto
 Volume=quomodo-mongo-data.volume:/data/db
 Volume=quomodo-mongo-config.volume:/data/configdb
 Environment=MONGO_INITDB_ROOT_USERNAME=quomodo
-# Bootstrap secret created once by Ansible: podman secret create quomodo-mongo-password -
+# Bootstrap secret, created once on the host (docs/install.md).
 Secret=quomodo-mongo-password,type=env,target=MONGO_INITDB_ROOT_PASSWORD
 Exec=--quiet --wiredTigerCacheSizeGB 0.25
 

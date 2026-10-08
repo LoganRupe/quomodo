@@ -4,7 +4,7 @@ After=quomodo-mongo.service
 Requires=quomodo-mongo.service
 
 [Container]
-Image=forgejo.example.com/owner/quomodo:latest
+Image=ghcr.io/loganrupe/quomodo:latest
 Pod=quomodo.pod
 ContainerName=quomodo-core
 UserNS=auto
@@ -12,24 +12,37 @@ AutoUpdate=registry
 Volume=quomodo-repo-cache.volume:/repo-cache
 Volume=quomodo-sync.volume:/syncs
 Volume=quomodo-keys.volume:/config/keys
+# Where the 'Backup Core Database' procedure writes mongo dumps.
+Volume=quomodo-backups.volume:/backups
+# The URL users open Core on. OIDC redirects and webhook URLs use it.
 Environment=KOMODO_HOST=https://quomodo.example.com
 Environment=KOMODO_TITLE=Quomodo
 Environment=KOMODO_DATABASE_ADDRESS=localhost:27017
 Environment=KOMODO_DATABASE_USERNAME=quomodo
-Environment=KOMODO_LOCAL_AUTH=false
-Environment=KOMODO_OIDC_ENABLED=true
-Environment=KOMODO_OIDC_PROVIDER=https://auth.example.com/application/o/quomodo/
-Environment=KOMODO_OIDC_CLIENT_ID=quomodo
-Environment=KOMODO_SECRETS_PROVIDER=vaultwarden
-Environment=KOMODO_VAULTWARDEN_URL=https://vault.example.com
-# Bootstrap secrets are root podman secrets created once by Ansible from the
-# Bitwarden lookup. Nothing with a secret value is written under /etc.
+# Local login, with an admin user created on first start and no further
+# local sign-ups. Other users come in through OIDC, created disabled until
+# an admin enables them.
+Environment=KOMODO_LOCAL_AUTH=true
+Environment=KOMODO_DISABLE_LOCAL_USER_REGISTRATION=true
+Environment=KOMODO_INIT_ADMIN_USERNAME=admin
+# Bootstrap secrets are root podman secrets, created once on the host
+# (docs/install.md). Nothing with a secret value is written under /etc.
 Secret=quomodo-mongo-password,type=env,target=KOMODO_DATABASE_PASSWORD
 Secret=quomodo-jwt-secret,type=env,target=KOMODO_JWT_SECRET
-Secret=quomodo-oidc-client-secret,type=env,target=KOMODO_OIDC_CLIENT_SECRET
-Secret=quomodo-vaultwarden-client-id,type=env,target=KOMODO_VAULTWARDEN_CLIENT_ID
-Secret=quomodo-vaultwarden-client-secret,type=env,target=KOMODO_VAULTWARDEN_CLIENT_SECRET
-Secret=quomodo-vaultwarden-master-password,type=env,target=KOMODO_VAULTWARDEN_MASTER_PASSWORD
+Secret=quomodo-admin-password,type=env,target=KOMODO_INIT_ADMIN_PASSWORD
+
+# OIDC login instead of, or beside, local login:
+# Environment=KOMODO_OIDC_ENABLED=true
+# Environment=KOMODO_OIDC_PROVIDER=https://auth.example.com/application/o/quomodo/
+# Environment=KOMODO_OIDC_CLIENT_ID=quomodo
+# Secret=quomodo-oidc-client-secret,type=env,target=KOMODO_OIDC_CLIENT_SECRET
+
+# Stack secrets from a Vaultwarden or Bitwarden vault (docs/secrets.md):
+# Environment=KOMODO_SECRETS_PROVIDER=vaultwarden
+# Environment=KOMODO_VAULTWARDEN_URL=https://vault.example.com
+# Secret=quomodo-vaultwarden-client-id,type=env,target=KOMODO_VAULTWARDEN_CLIENT_ID
+# Secret=quomodo-vaultwarden-client-secret,type=env,target=KOMODO_VAULTWARDEN_CLIENT_SECRET
+# Secret=quomodo-vaultwarden-master-password,type=env,target=KOMODO_VAULTWARDEN_MASTER_PASSWORD
 
 [Service]
 Restart=always

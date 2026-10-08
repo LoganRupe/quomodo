@@ -5,9 +5,9 @@
 ## Default config file for the Quomodo agent (`quomodo-agent`).
 ## It documents every field. Fields with a "Default" are optional.
 ##
-## The Ansible role writes this file to `/etc/quomodo/config.toml`,
-## the key pair to `/etc/quomodo/keys/agent.key` and Core's public key
-## to `/etc/quomodo/keys/core.pub`.
+## Install it as `/etc/quomodo/config.toml`. The agent keeps its key pair in
+## `/etc/quomodo/keys/agent.key` and pins Core's public key in
+## `/etc/quomodo/keys/core.pub`. See docs/install.md.
 ##
 ## The agent only dials out to Core. There is no inbound listener,
 ## no passkey, and no TLS to configure on the agent.
@@ -20,8 +20,12 @@
 ##############
 
 ## The Core address the agent dials, ws:// or wss://.
+## The key handshake authenticates both ends but does not encrypt the session,
+## and Core sends resolved secrets over it. Use wss:// (TLS on Core or a
+## reverse proxy) unless the path is already encrypted, such as a WireGuard
+## or Tailscale network.
 ## Env: PERIPHERY_CORE_ADDRESSES
-core_addresses = ["ws://10.0.0.5:9120"]
+core_addresses = ["wss://quomodo.example.com"]
 
 ## The Server name (or id) this agent connects as. Must match a Server resource on Core.
 ## Env: PERIPHERY_CONNECT_AS
@@ -135,7 +139,7 @@ pretty_startup_config = false
 ## Agent-side git credentials for cloning private repos.
 ## Core-side provider accounts are used first.
 # [[git_provider]]
-# domain = "forgejo.example.com"
+# domain = "git.example.com"
 # accounts = [
 # 	{ username = "deploy", token = "access_token" },
 # ]

@@ -12,8 +12,8 @@ members = [
 version = "0.1.1"
 edition = "2024"
 license = "GPL-3.0-or-later"
-repository = "https://github.com/moghtech/komodo"
-homepage = "https://komo.do"
+repository = "https://github.com/LoganRupe/quomodo"
+homepage = "https://github.com/LoganRupe/quomodo"
 
 [workspace.dependencies]
 # LOCAL
