@@ -88,6 +88,18 @@ pub fn monitoring_interval() -> async_timing_util::Timelength {
   })
 }
 
+/// `ssl_reload_interval` in milliseconds.
+pub fn ssl_reload_interval() -> u64 {
+  let interval: async_timing_util::Timelength = core_config()
+    .ssl_reload_interval
+    .try_into()
+    .unwrap_or_else(|_| {
+      error!("Invalid 'ssl_reload_interval', using default 5-min");
+      async_timing_util::Timelength::FiveMinutes
+    });
+  async_timing_util::get_timelength_in_ms(interval) as u64
+}
+
 pub fn core_config() -> &'static CoreConfig {
   static CORE_CONFIG: OnceLock<CoreConfig> = OnceLock::new();
   CORE_CONFIG.get_or_init(|| {
@@ -392,6 +404,9 @@ pub fn core_config() -> &'static CoreConfig {
       ssl_cert_file: env
         .komodo_ssl_cert_file
         .unwrap_or(config.ssl_cert_file),
+      ssl_reload_interval: env
+        .komodo_ssl_reload_interval
+        .unwrap_or(config.ssl_reload_interval),
       reporting_enabled: env
         .komodo_reporting_enabled
         .unwrap_or(config.reporting_enabled),

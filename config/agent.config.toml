@@ -19,11 +19,10 @@
 # CONNECTION #
 ##############
 
-## The Core address the agent dials, ws:// or wss://.
-## The key handshake authenticates both ends but does not encrypt the session,
-## and Core sends resolved secrets over it. Use wss:// (TLS on Core or a
-## reverse proxy) unless the path is already encrypted, such as a WireGuard
-## or Tailscale network.
+## The Core address the agent dials. wss:// only: the key handshake
+## authenticates both ends but does not encrypt the session, and Core sends
+## resolved secrets over it. `https://` and a bare host[:port] become wss://.
+## The agent refuses to start on a ws:// or http:// address.
 ## Env: PERIPHERY_CORE_ADDRESSES
 core_addresses = ["wss://quomodo.example.com"]
 
@@ -31,10 +30,12 @@ core_addresses = ["wss://quomodo.example.com"]
 ## Env: PERIPHERY_CONNECT_AS
 connect_as = ""
 
-## Allow connecting to Core without validating its TLS certificate.
-## Env: PERIPHERY_CORE_TLS_INSECURE_SKIP_VERIFY
-## Default: false
-core_tls_insecure_skip_verify = false
+## Verify Core's TLS certificate against the CA certificates in this PEM file
+## instead of the system roots. For a Core with a certificate from a private
+## CA. There is no option to skip verification.
+## Env: PERIPHERY_CORE_TLS_CA_FILE
+## Default: none, the system roots
+# core_tls_ca_file = "/etc/quomodo/ca.pem"
 
 ## The agent private key used with the noise handshake.
 ## Supports openssl generated pem file, `openssl genpkey -algorithm X25519 -out agent.key`.

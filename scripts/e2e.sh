@@ -7,7 +7,11 @@
 #   - a privileged Fedora container with systemd as PID 1 + podman, running the agent
 #   - a bare git repo served over HTTP with a small quadlet stack
 # What it proves:
-#   1. the agent dials in and the Server shows Ok
+#   0. the agent refuses a ws:// Core address
+#   1. the agent dials in over wss:// (Core's cert from a throwaway CA) and
+#      the Server shows Ok
+#  1b. a renewed certificate written over the old files is served without a
+#      Core restart; the connected agent stays Ok and reconnects on the new one
 #   2. DeployStack installs the quadlet units, systemd starts them, podman runs
 #      them; every pod and standalone container gets its own fixed user
 #      namespace slice, a pod member shares the pod's
@@ -23,7 +27,7 @@
 #   9. a changed file the build's .containerignore excludes does not rebuild
 #  10. DestroyStack removes units and the directory
 #
-# Usage: scripts/e2e.sh              (from the repo root; needs docker, cargo, python3)
+# Usage: scripts/e2e.sh              (from the repo root; needs docker, cargo, python3, openssl)
 #        KEEP=1 scripts/e2e.sh       (leave everything running for a look)
 #        SKIP_BUILD=1 scripts/e2e.sh (use the binaries already in target/release)
 set -euo pipefail
@@ -37,7 +41,7 @@ DB_PORT=${DB_PORT:-27127}
 HOST_NAME=quomodo-e2e-host
 DB_NAME=quomodo-e2e-db
 STACK=e2e
-CORE_URL="http://$BRIDGE_IP:$CORE_PORT"
+CORE_URL="https://$BRIDGE_IP:$CORE_PORT"
 
 log() { printf '\n\033[1;34m== %s\033[0m\n' "$*"; }
 fail() { printf '\n\033[1;31mFAIL: %s\033[0m\n' "$*"; exit 1; }
@@ -56,7 +60,7 @@ trap cleanup EXIT
 
 # Always start clean, even after a KEEP=1 run.
 teardown
-rm -rf "$WORK"; mkdir -p "$WORK"/{keys,repo-cache,syncs,actions,git}
+rm -rf "$WORK"; mkdir -p "$WORK"/{keys,repo-cache,syncs,actions,git,tls}
 
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
   log "build"
@@ -110,6 +114,28 @@ $GIT init -q -b main && $GIT add -A && $GIT commit -qm "v1"
 git clone -q --bare "$WORK/git/work" "$WORK/git/e2e.git" && git -C "$WORK/git/e2e.git" update-server-info
 python3 -m http.server "$GIT_PORT" --bind "$BRIDGE_IP" --directory "$WORK/git" > "$WORK/git.log" 2>&1 & echo $! > "$WORK/git.pid"
 
+log "throwaway CA and a Core certificate for $BRIDGE_IP"
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 1 -subj "/CN=quomodo-e2e-ca" \
+  -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" \
+  -keyout "$WORK/tls/ca.key" -out "$WORK/tls/ca.pem" 2>/dev/null
+printf 'subjectAltName=IP:%s\nbasicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=serverAuth\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid\n' \
+  "$BRIDGE_IP" > "$WORK/tls/ext.cnf"
+# A new key and certificate, written beside the live pair and renamed over
+# it, the way ACME clients and rsync replace files.
+issue_core_cert() {
+  openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj "/CN=$BRIDGE_IP" \
+    -keyout "$WORK/tls/key.new" -out "$WORK/tls/core.csr" 2>/dev/null
+  openssl x509 -req -in "$WORK/tls/core.csr" -CA "$WORK/tls/ca.pem" -CAkey "$WORK/tls/ca.key" -CAcreateserial \
+    -days 1 -extfile "$WORK/tls/ext.cnf" -out "$WORK/tls/cert.new" 2>/dev/null
+  mv "$WORK/tls/key.new" "$WORK/tls/key.pem"
+  mv "$WORK/tls/cert.new" "$WORK/tls/cert.pem"
+}
+served_serial() {
+  openssl s_client -connect "$BRIDGE_IP:$CORE_PORT" </dev/null 2>/dev/null | openssl x509 -noout -serial 2>/dev/null
+}
+issue_core_cert
+CURL="curl -sf --cacert $WORK/tls/ca.pem"
+
 log "core on $CORE_URL"
 (
   export KOMODO_HOST="$CORE_URL" KOMODO_PORT="$CORE_PORT" KOMODO_BIND_IP="$BRIDGE_IP"
@@ -117,20 +143,23 @@ log "core on $CORE_URL"
   export KOMODO_JWT_SECRET=e2e_secret KOMODO_LOCAL_AUTH=true KOMODO_ENABLE_NEW_USERS=true
   export KOMODO_UI_PATH="$ROOT/ui/dist" KOMODO_PRIVATE_KEY="file:$WORK/keys/core.key"
   export KOMODO_REPO_DIRECTORY="$WORK/repo-cache" KOMODO_SYNC_DIRECTORY="$WORK/syncs" KOMODO_ACTION_DIRECTORY="$WORK/actions"
-  export KOMODO_SSL_ENABLED=false KOMODO_LOGGING_LEVEL=info
+  export KOMODO_SSL_ENABLED=true KOMODO_SSL_KEY_FILE="$WORK/tls/key.pem" KOMODO_SSL_CERT_FILE="$WORK/tls/cert.pem"
+  export KOMODO_SSL_RELOAD_INTERVAL=5-sec
+  export KOMODO_LOGGING_LEVEL=info
   nohup "$CORE_BIN" > "$WORK/core.log" 2>&1 & echo $! > "$WORK/core.pid"
 )
-for i in $(seq 1 30); do curl -sf "$CORE_URL/version" >/dev/null && break; sleep 1; done
-curl -sf "$CORE_URL/version" >/dev/null || { tail -20 "$WORK/core.log"; fail "core did not start"; }
+for i in $(seq 1 30); do $CURL "$CORE_URL/version" >/dev/null && break; sleep 1; done
+$CURL "$CORE_URL/version" >/dev/null || { tail -20 "$WORK/core.log"; fail "core did not start"; }
 
 log "api helper"
 cat > "$WORK/api.py" <<PY
-import json, sys, time, urllib.request
+import json, ssl, sys, time, urllib.request
 BASE = "$CORE_URL"
+TLS = ssl.create_default_context(cafile="$WORK/tls/ca.pem")
 def post(path, body, jwt=None):
     req = urllib.request.Request(BASE + path, data=json.dumps(body).encode(), headers={"content-type": "application/json", **({"authorization": "Bearer " + jwt} if jwt else {})})
     try:
-        with urllib.request.urlopen(req, timeout=120) as r: return json.loads(r.read())
+        with urllib.request.urlopen(req, timeout=120, context=TLS) as r: return json.loads(r.read())
     except urllib.error.HTTPError as e:
         return {"error": e.read().decode()[:500], "http": e.code}
 def jwt():
@@ -195,8 +224,18 @@ docker run -d --name "$HOST_NAME" --privileged --cgroupns=private --tmpfs /run -
 sleep 4
 docker cp "$AGENT_BIN" "$HOST_NAME:/usr/local/bin/quomodo-agent"
 hexec mkdir -p /etc/quomodo/keys /var/lib/quomodo
+docker cp "$WORK/tls/ca.pem" "$HOST_NAME:/etc/quomodo/ca.pem"
+
+log "0. the agent refuses ws://"
+hexec sh -c "printf 'core_addresses = [\"ws://$BRIDGE_IP:$CORE_PORT\"]\nconnect_as = \"$HOST_NAME\"\n' > /tmp/ws.toml"
+if WS_OUT=$(hexec timeout 10 /usr/local/bin/quomodo-agent --config-path /tmp/ws.toml 2>&1); then
+  fail "agent started with a ws:// Core address"
+fi
+echo "$WS_OUT" | grep -q "only connects to Core over wss://" || { echo "$WS_OUT" | tail -5; fail "agent did not say why it refused ws://"; }
+echo "refused: $(echo "$WS_OUT" | grep -o "'ws://[^']*' is not encrypted")"
 hexec sh -c "cat > /etc/quomodo/config.toml <<CFG
-core_addresses = [\"ws://$BRIDGE_IP:$CORE_PORT\"]
+core_addresses = [\"wss://$BRIDGE_IP:$CORE_PORT\"]
+core_tls_ca_file = \"/etc/quomodo/ca.pem\"
 connect_as = \"$HOST_NAME\"
 logging.level = \"info\"
 CFG"
@@ -221,6 +260,24 @@ $API create-server "$PUBKEY" | head -c 200; echo
 for i in $(seq 1 30); do [ "$($API server-state)" = "Ok" ] && break; sleep 1; done
 [ "$($API server-state)" = "Ok" ] || { hexec journalctl -u quomodo-agent --no-pager | tail -20; fail "server never reached Ok"; }
 echo "server Ok"
+
+log "1b. a renewed certificate is served without a restart"
+SERIAL_BEFORE=$(served_serial); CORE_PID=$(cat "$WORK/core.pid")
+[ -n "$SERIAL_BEFORE" ] || fail "could not read the served certificate"
+sleep 1; issue_core_cert
+for i in $(seq 1 30); do [ "$(served_serial)" != "$SERIAL_BEFORE" ] && break; sleep 1; done
+SERIAL_AFTER=$(served_serial)
+[ "$SERIAL_AFTER" != "$SERIAL_BEFORE" ] || { tail -20 "$WORK/core.log"; fail "Core still serves $SERIAL_BEFORE"; }
+kill -0 "$CORE_PID" 2>/dev/null || fail "Core restarted"
+grep -q "Reloaded TLS certificate" "$WORK/core.log" || fail "Core did not log the reload"
+[ "$($API server-state)" = "Ok" ] || fail "the connected agent dropped on reload"
+RESTART_AT=$(hexec date +%s)
+hexec systemctl restart quomodo-agent
+relogged() { hexec journalctl -u quomodo-agent --no-pager --since "@$RESTART_AT" | grep -q "Logged in to Core"; }
+for i in $(seq 1 30); do relogged && break; sleep 1; done
+relogged || { hexec journalctl -u quomodo-agent --no-pager | tail -20; fail "agent did not reconnect on the new certificate"; }
+[ "$($API server-state)" = "Ok" ] || fail "server not Ok after the agent reconnected"
+echo "served $SERIAL_BEFORE then $SERIAL_AFTER, same Core pid $CORE_PID, agent reconnected"
 
 log "2. deploy"
 $API create-stack; echo

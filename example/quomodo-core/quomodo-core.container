@@ -31,6 +31,17 @@ Secret=quomodo-mongo-password,type=env,target=KOMODO_DATABASE_PASSWORD
 Secret=quomodo-jwt-secret,type=env,target=KOMODO_JWT_SECRET
 Secret=quomodo-admin-password,type=env,target=KOMODO_INIT_ADMIN_PASSWORD
 
+# Agents only connect over wss://, so something must terminate TLS for
+# Core: a reverse proxy in front of it (docs/install.md), or Core itself.
+# For Core itself, mount the host directory your ACME client renews into.
+# Mount the directory, not the files: a renewal that replaces the files
+# leaves a single-file mount on the old copy. Core checks the files every
+# 5 minutes and reloads a renewed pair without a restart.
+# Environment=KOMODO_SSL_ENABLED=true
+# Environment=KOMODO_SSL_CERT_FILE=/config/ssl/fullchain.pem
+# Environment=KOMODO_SSL_KEY_FILE=/config/ssl/privkey.pem
+# Volume=/etc/quomodo/ssl:/config/ssl:ro
+
 # OIDC login instead of, or beside, local login:
 # Environment=KOMODO_OIDC_ENABLED=true
 # Environment=KOMODO_OIDC_PROVIDER=https://auth.example.com/application/o/quomodo/

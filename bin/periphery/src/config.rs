@@ -82,9 +82,9 @@ pub fn periphery_config() -> &'static PeripheryConfig {
       core_addresses: env
         .periphery_core_addresses
         .unwrap_or(config.core_addresses),
-      core_tls_insecure_skip_verify: env
-        .periphery_core_tls_insecure_skip_verify
-        .unwrap_or(config.core_tls_insecure_skip_verify),
+      core_tls_ca_file: env
+        .periphery_core_tls_ca_file
+        .or(config.core_tls_ca_file),
       connect_as: env
         .periphery_connect_as
         .unwrap_or(config.connect_as),

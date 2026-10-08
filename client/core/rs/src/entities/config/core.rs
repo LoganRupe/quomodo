@@ -273,6 +273,8 @@ pub struct Env {
   pub komodo_ssl_key_file: Option<String>,
   /// Override `ssl_cert_file`
   pub komodo_ssl_cert_file: Option<String>,
+  /// Override `ssl_reload_interval`
+  pub komodo_ssl_reload_interval: Option<Timelength>,
 
   /// Override `reporting_enabled`
   pub komodo_reporting_enabled: Option<bool>,
@@ -720,6 +722,11 @@ pub struct CoreConfig {
   #[serde(default = "default_ssl_cert_file")]
   pub ssl_cert_file: String,
 
+  /// How often Core checks the cert and key files for changes. A changed
+  /// pair is reloaded without a restart. Default: `5-min`.
+  #[serde(default = "default_ssl_reload_interval")]
+  pub ssl_reload_interval: Timelength,
+
   // =============
   // = Reporting =
   // =============
@@ -872,6 +879,10 @@ fn default_ssl_cert_file() -> String {
   "/config/ssl/cert.pem".to_string()
 }
 
+fn default_ssl_reload_interval() -> Timelength {
+  Timelength::FiveMinutes
+}
+
 impl Default for CoreConfig {
   fn default() -> Self {
     Self {
@@ -940,6 +951,7 @@ impl Default for CoreConfig {
       ssl_enabled: Default::default(),
       ssl_key_file: default_ssl_key_file(),
       ssl_cert_file: default_ssl_cert_file(),
+      ssl_reload_interval: default_ssl_reload_interval(),
       reporting_enabled: Default::default(),
       reporting_private_key: default_reporting_private_key(),
       ui_path: default_ui_path(),
@@ -1055,6 +1067,7 @@ impl CoreConfig {
       ssl_enabled: config.ssl_enabled,
       ssl_key_file: config.ssl_key_file,
       ssl_cert_file: config.ssl_cert_file,
+      ssl_reload_interval: config.ssl_reload_interval,
       reporting_enabled: config.reporting_enabled,
       reporting_private_key: if self
         .reporting_private_key

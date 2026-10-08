@@ -399,6 +399,12 @@ ssl_key_file = "/config/ssl/key.pem"
 ## Default: /config/ssl/cert.pem
 ssl_cert_file = "/config/ssl/cert.pem"
 
+## How often Core checks the ssl key and cert files for changes.
+## A renewed pair is loaded without a restart.
+## Env: KOMODO_SSL_RELOAD_INTERVAL
+## Default: 5-min
+ssl_reload_interval = "5-min"
+
 ############
 # DATABASE #
 ############

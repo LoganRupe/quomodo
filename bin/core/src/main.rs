@@ -24,6 +24,7 @@ mod report;
 mod resource;
 mod schedule;
 mod secrets;
+mod server;
 mod stack;
 mod startup;
 mod state;
@@ -93,7 +94,7 @@ async fn app() -> anyhow::Result<()> {
     }
   });
 
-  mogh_server::serve_app(api::app(), config, handle).await
+  server::serve(api::app(), handle).await
 }
 
 #[tokio::main]

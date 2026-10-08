@@ -11,11 +11,11 @@ use transport::{
     AddressConnectionIdentifiers, ClientLoginFlow,
     ConnectionIdentifiers, LoginFlow, LoginFlowArgs,
   },
-  fix_ws_address,
   websocket::{
     WebsocketExt, login::LoginWebsocketExt,
     tungstenite::TungsteniteWebsocket,
   },
+  wss_address,
 };
 
 use crate::{
@@ -29,7 +29,7 @@ pub async fn handler(
   address: &str,
 ) -> anyhow::Result<tokio::task::JoinHandle<anyhow::Result<()>>> {
   let config = periphery_config();
-  let address = fix_ws_address(address);
+  let address = wss_address(address)?;
   let identifiers = AddressConnectionIdentifiers::extract(&address)?;
   let query =
     format!("server={}", urlencoding::encode(&config.connect_as));
@@ -220,7 +220,7 @@ async fn connect_websocket(
   url: &str,
 ) -> anyhow::Result<(TungsteniteWebsocket, HeaderValue)> {
   let config = periphery_config();
-  TungsteniteWebsocket::connect_maybe_tls_insecure(url, config.core_tls_insecure_skip_verify)
+  TungsteniteWebsocket::connect_wss(url, config.core_tls_ca_file.as_deref())
     .await
     .map_err(|e| match e.status {
       StatusCode::NOT_FOUND => anyhow!("404 Not Found: Server '{}' does not exist.", config.connect_as),

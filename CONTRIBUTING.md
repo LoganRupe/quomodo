@@ -26,7 +26,8 @@ cd ../../../ui && yarn link komodo_client && yarn && yarn build
 
 CI runs exactly these. [`scripts/e2e.sh`](scripts/e2e.sh) is the end-to-end
 test: Core, FerretDB, and a privileged Fedora container running systemd,
-podman and the agent, all under docker on your machine. Run it for any change
+podman and the agent, all under docker on your machine. It needs docker,
+cargo, python3 and openssl. Run it for any change
 to deploys, secrets, or the agent. It is not in CI because it needs a
 privileged container.
 

@@ -3,10 +3,11 @@
 # files and the .volume files. See docs/install.md.
 #
 # Mongo publishes nothing. Core publishes 9120, which the UI, the API and
-# the agents all use. Put it behind a TLS reverse proxy, or bind it to a
-# private address the agents reach over WireGuard/Tailscale, e.g.
-# PublishPort=10.0.0.5:9120:9120. If that address comes from a VPN daemon,
-# order the pod after it so the address exists at boot:
+# the agents all use. Agents only connect over wss://: either put a TLS
+# reverse proxy in front and bind this to an address only the proxy reaches
+# (PublishPort=127.0.0.1:9120:9120), or turn on TLS in quomodo-core.container.
+# If the address comes from a VPN daemon, order the pod after it so the
+# address exists at boot:
 #   After=tailscaled.service
 #   Wants=tailscaled.service
 [Unit]

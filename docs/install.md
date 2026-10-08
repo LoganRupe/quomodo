@@ -9,11 +9,11 @@ Core host if it deploys stacks too, and dials out to Core.
 - Linux with systemd and podman 5.0 or newer on every host. Quadlet `.pod`
   and `.build` units need 5.0.
 - `git` on every agent host.
-- A path from each agent to Core's port 9120. The key handshake between agent
+- TLS in front of Core. Agents only connect over `wss://` and refuse to
+  start with a `ws://` or `http://` address: the key handshake between agent
   and Core authenticates both ends but does not encrypt the session, and Core
-  sends resolved secrets over it. Use `wss://` (TLS on Core or a reverse
-  proxy), or keep the traffic on an encrypted network such as WireGuard or
-  Tailscale. See [SECURITY.md](../SECURITY.md).
+  sends resolved secrets over it. Either Core serves TLS itself or a reverse
+  proxy does ([TLS](#tls)). See [SECURITY.md](../SECURITY.md).
 
 ## Core
 
@@ -26,6 +26,8 @@ Core pod: Core plus mongo, with the volumes they need.
      `ghcr.io/loganrupe/quomodo:<tag>` and `:latest`.
    - Login: local admin is on by default. Uncomment the OIDC block to add an
      OIDC provider, and create its client secret in step 2.
+   - TLS: uncomment that block if Core serves TLS itself rather than sitting
+     behind a proxy ([TLS](#tls)).
    - Secrets provider: uncomment that block if stacks will read secrets from
      a vault ([secrets.md](secrets.md)).
 
@@ -59,7 +61,8 @@ Core pod: Core plus mongo, with the volumes they need.
    sudo systemctl start quomodo-pod.service
    ```
 
-   `curl http://localhost:9120/version` prints the version once Core is up.
+   `curl http://localhost:9120/version` (`https://` with TLS on Core) prints
+   the version once Core is up.
    Core writes its key pair to the `quomodo-keys` volume on first start.
    Settings in the UI shows its public key.
 
@@ -67,11 +70,51 @@ Core pod: Core plus mongo, with the volumes they need.
 new `:latest` and restart Core. Pin a tag instead if you want upgrades to be
 a deliberate edit.
 
-### Reverse proxy
+### TLS
 
-A proxy in front of Core must pass websocket upgrades for `/ws/` and forward
-the `Host` header unchanged. The agent binds its handshake to the host name
-it dialled, so a rewritten `Host` fails the login with `401 Unauthorized`.
+Agents verify Core's certificate against the system roots, or against the
+CA in `core_tls_ca_file` if you set one. There is no way to skip
+verification: without it, anyone in the path can relay the key handshake
+and read everything after it.
+
+Pick one:
+
+- **A reverse proxy** (Caddy, Traefik, nginx) with a public certificate,
+  forwarding to Core's plain HTTP on 9120. It must pass websocket upgrades
+  for `/ws/` and forward the `Host` header unchanged. The agent binds its
+  handshake to the host name it dialled, so a rewritten `Host` fails the
+  login with `401 Unauthorized`. Bind Core's `PublishPort=` to an address
+  only the proxy reaches, so nothing talks to it in the clear.
+- **Core serves TLS itself.** Set `KOMODO_SSL_ENABLED=true` and point
+  `KOMODO_SSL_CERT_FILE` / `KOMODO_SSL_KEY_FILE` at a full chain and its key.
+  The example container has this block commented out: it mounts a host
+  directory read-only at `/config/ssl`. The certificate must name the host
+  or IP the agents dial. For a private CA, copy the CA certificate to each
+  agent and set `core_tls_ca_file`.
+
+### Certificate renewal
+
+Core checks the cert and key files for changes every 5 minutes
+(`ssl_reload_interval`) and loads a renewed pair without a restart.
+Connected agents keep their sessions; new connections get the new
+certificate. A pair that fails to load, such as a renewal caught half
+written, leaves the current certificate in place and is tried again on the
+next check.
+
+So renewal is your ACME client (lego, certbot, acme.sh, step-ca) writing
+new files into the mounted directory. Two rules:
+
+- Mount the directory, not the two files. ACME clients and rsync replace a
+  file by renaming a new one over it, and a single-file bind mount keeps
+  pointing at the old copy.
+- The container's root has to be able to read both files.
+
+If the certificate expires anyway, agents that are connected stay
+connected, but none can reconnect: each retries every 5 seconds and logs
+the certificate error, and its Server shows as not OK. Running containers
+are unaffected. Once Core serves a valid certificate the agents reconnect
+on their own. Alert on expiry, for example with the blackbox exporter's
+`probe_ssl_earliest_cert_expiry`.
 
 ## Agent
 
@@ -104,6 +147,7 @@ Repeat on every host that deploys stacks.
    ```toml
    core_addresses = ["wss://quomodo.example.com"]
    connect_as = "web-01"   # the Server name on Core
+   # core_tls_ca_file = "/etc/quomodo/ca.pem"   # only for a private CA
    ```
 
 4. Install the unit as `/etc/systemd/system/quomodo-agent.service`:

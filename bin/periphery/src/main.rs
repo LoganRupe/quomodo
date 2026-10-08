@@ -29,6 +29,14 @@ async fn app() -> anyhow::Result<()> {
   let config = config::periphery_config();
   mogh_logger::init(&config.logging)?;
 
+  // The agent only talks to Core over wss://. Refuse to start on any other
+  // address rather than retry it forever.
+  for address in &config.core_addresses {
+    transport::wss_address(address).context(
+      "Invalid 'core_addresses' (PERIPHERY_CORE_ADDRESSES)",
+    )?;
+  }
+
   let startup_span = info_span!("AgentStartup");
 
   let mut handles = async {

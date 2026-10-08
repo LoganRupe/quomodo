@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 use anyhow::{Context, anyhow};
 use axum::http::{self, HeaderValue};
@@ -10,7 +10,10 @@ use futures_util::{
 };
 use mogh_error::AddStatusCodeError;
 use periphery_client::transport::EncodedTransportMessage;
-use rustls::{ClientConfig, client::danger::ServerCertVerifier};
+use rustls::{
+  ClientConfig, RootCertStore,
+  pki_types::{CertificateDer, pem::PemObject},
+};
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
   Connector, MaybeTlsStream, WebSocketStream,
@@ -170,40 +173,32 @@ impl WebsocketReceiver for TungsteniteWebsocketReceiver {
 }
 
 impl TungsteniteWebsocket {
-  pub async fn connect_maybe_tls_insecure(
+  /// Connect to a `wss://` url, verifying the server certificate.
+  /// With `ca_file`, only the CA certificates in that PEM file are
+  /// trusted; without it, the system roots. Any other scheme is refused.
+  pub async fn connect_wss(
     url: &str,
-    insecure: bool,
+    ca_file: Option<&Path>,
   ) -> mogh_error::Result<(Self, HeaderValue)> {
-    if insecure {
-      Self::connect_tls_insecure(url).await
-    } else {
-      Self::connect(url).await
+    if !url.starts_with("wss://") {
+      return Err(
+        anyhow!(
+          "Refusing to connect to {url}: only wss:// is allowed"
+        )
+        .into(),
+      );
     }
-  }
-
-  pub async fn connect(
-    url: &str,
-  ) -> mogh_error::Result<(Self, HeaderValue)> {
-    let res =
-      tokio_tungstenite::connect_async(make_request(url)?).await;
-    Self::handle_connection_result(url, res)
-  }
-
-  pub async fn connect_tls_insecure(
-    url: &str,
-  ) -> mogh_error::Result<(Self, HeaderValue)> {
+    let connector = match ca_file {
+      Some(path) => {
+        Some(Connector::Rustls(Arc::new(ca_client_config(path)?)))
+      }
+      None => None,
+    };
     let res = tokio_tungstenite::connect_async_tls_with_config(
       make_request(url)?,
       None,
       false,
-      Some(Connector::Rustls(Arc::new(
-        ClientConfig::builder()
-          .dangerous()
-          .with_custom_certificate_verifier(Arc::new(
-            InsecureVerifier,
-          ))
-          .with_no_client_auth(),
-      ))),
+      connector,
     )
     .await;
     Self::handle_connection_result(url, res)
@@ -254,61 +249,36 @@ fn make_request(url: &str) -> mogh_error::Result<http::Request<()>> {
   Ok(request)
 }
 
-#[derive(Debug)]
-struct InsecureVerifier;
-
-impl ServerCertVerifier for InsecureVerifier {
-  fn verify_server_cert(
-    &self,
-    _end_entity: &rustls::pki_types::CertificateDer<'_>,
-    _intermediates: &[rustls::pki_types::CertificateDer<'_>],
-    _server_name: &rustls::pki_types::ServerName<'_>,
-    _ocsp_response: &[u8],
-    _now: rustls::pki_types::UnixTime,
-  ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error>
-  {
-    Ok(rustls::client::danger::ServerCertVerified::assertion())
+/// A client config trusting only the CA certificates in a PEM file.
+fn ca_client_config(path: &Path) -> anyhow::Result<ClientConfig> {
+  let mut roots = RootCertStore::empty();
+  let certs =
+    CertificateDer::pem_file_iter(path).with_context(|| {
+      format!("Failed to read Core CA file {}", path.display())
+    })?;
+  for cert in certs {
+    let cert = cert.with_context(|| {
+      format!(
+        "Invalid certificate in Core CA file {}",
+        path.display()
+      )
+    })?;
+    roots.add(cert).with_context(|| {
+      format!(
+        "Unusable certificate in Core CA file {}",
+        path.display()
+      )
+    })?;
   }
-
-  fn verify_tls12_signature(
-    &self,
-    _message: &[u8],
-    _cert: &rustls::pki_types::CertificateDer<'_>,
-    _dss: &rustls::DigitallySignedStruct,
-  ) -> Result<
-    rustls::client::danger::HandshakeSignatureValid,
-    rustls::Error,
-  > {
-    Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+  if roots.is_empty() {
+    return Err(anyhow!(
+      "Core CA file {} holds no certificates",
+      path.display()
+    ));
   }
-
-  fn verify_tls13_signature(
-    &self,
-    _message: &[u8],
-    _cert: &rustls::pki_types::CertificateDer<'_>,
-    _dss: &rustls::DigitallySignedStruct,
-  ) -> Result<
-    rustls::client::danger::HandshakeSignatureValid,
-    rustls::Error,
-  > {
-    Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
-  }
-
-  fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
-    vec![
-      rustls::SignatureScheme::RSA_PKCS1_SHA1,
-      rustls::SignatureScheme::ECDSA_SHA1_Legacy,
-      rustls::SignatureScheme::RSA_PKCS1_SHA256,
-      rustls::SignatureScheme::ECDSA_NISTP256_SHA256,
-      rustls::SignatureScheme::RSA_PKCS1_SHA384,
-      rustls::SignatureScheme::ECDSA_NISTP384_SHA384,
-      rustls::SignatureScheme::RSA_PKCS1_SHA512,
-      rustls::SignatureScheme::ECDSA_NISTP521_SHA512,
-      rustls::SignatureScheme::RSA_PSS_SHA256,
-      rustls::SignatureScheme::RSA_PSS_SHA384,
-      rustls::SignatureScheme::RSA_PSS_SHA512,
-      rustls::SignatureScheme::ED25519,
-      rustls::SignatureScheme::ED448,
-    ]
-  }
+  Ok(
+    ClientConfig::builder()
+      .with_root_certificates(roots)
+      .with_no_client_auth(),
+  )
 }

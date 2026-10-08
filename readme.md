@@ -17,7 +17,7 @@ format may still change between releases.
 
 - **Core** (`quomodo`): the API and UI. Runs as a root quadlet pod with mongo.
 - **Agent** (`quomodo-agent`): runs as root on every host and dials out to
-  Core. No inbound listener, no passkeys, no terminals.
+  Core over `wss://` only. No inbound listener, no passkeys, no terminals.
 - **Stacks**: a directory in git holding raw `.pod`, `.container`, `.network`,
   `.volume`, `.build`, `.image` or `.kube` files plus config files. Deploying
   copies the directory to `/etc/containers/systemd/<stack>/`, reloads systemd

@@ -152,8 +152,8 @@ pub struct Env {
   /// Override `core_addresses`
   #[serde(alias = "periphery_core_address")]
   pub periphery_core_addresses: Option<Vec<String>>,
-  /// Override `core_tls_insecure_skip_verify`
-  pub periphery_core_tls_insecure_skip_verify: Option<bool>,
+  /// Override `core_tls_ca_file`
+  pub periphery_core_tls_ca_file: Option<PathBuf>,
   /// Override `connect_as`
   pub periphery_connect_as: Option<String>,
   /// Override `config_directory`
@@ -241,10 +241,11 @@ pub struct PeripheryConfig {
   )]
   pub core_addresses: Vec<String>,
 
-  /// Allow the agent to connect to Core
-  /// without validating the Core certs
+  /// A PEM file of CA certificates to verify Core's TLS certificate
+  /// against, instead of the system roots. For a Core on a private CA.
+  /// There is no way to skip verification.
   #[serde(default)]
-  pub core_tls_insecure_skip_verify: bool,
+  pub core_tls_ca_file: Option<PathBuf>,
 
   /// Server name / id to connect as
   #[serde(default)]
@@ -337,7 +338,7 @@ impl Default for PeripheryConfig {
       onboarding_key: None,
       core_public_keys: None,
       core_addresses: Default::default(),
-      core_tls_insecure_skip_verify: Default::default(),
+      core_tls_ca_file: None,
       connect_as: Default::default(),
       config_directory: default_config_directory(),
       root_directory: default_root_directory(),
@@ -370,8 +371,7 @@ impl PeripheryConfig {
         .map(|key| empty_or_redacted(key)),
       core_public_keys: self.core_public_keys.clone(),
       core_addresses: self.core_addresses.clone(),
-      core_tls_insecure_skip_verify: self
-        .core_tls_insecure_skip_verify,
+      core_tls_ca_file: self.core_tls_ca_file.clone(),
       connect_as: self.connect_as.clone(),
       config_directory: self.config_directory.clone(),
       root_directory: self.root_directory.clone(),
