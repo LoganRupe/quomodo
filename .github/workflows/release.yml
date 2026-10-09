@@ -1,4 +1,5 @@
-# Tagged releases only. No edge builds.
+# Tagged releases only. No edge builds. The tag must match the
+# [workspace.package] version in Cargo.toml, or nothing is built.
 #
 # - x86_64 agent binary attached to the GitHub release as `quomodo-agent-x86_64`
 #   (plus its .sha256)
@@ -18,8 +19,25 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  version:
+    name: tag matches Cargo.toml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compare the tag with [workspace.package] version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          CARGO=$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\(.*\)"/\1/p}' Cargo.toml)
+          if [ "$TAG" != "$CARGO" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match Cargo.toml version $CARGO."
+            echo "Bump [workspace.package] version, commit, and tag that commit."
+            exit 1
+          fi
+          echo "releasing $CARGO"
+
   agent:
     name: agent binary (x86_64)
+    needs: version
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -31,9 +49,6 @@ jobs:
           rustup default stable
       - name: Build
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          cargo install cargo-edit --locked -q
-          cargo set-version -p komodo_periphery "$VERSION"
           cargo build -p komodo_periphery --release
           cp target/release/quomodo-agent quomodo-agent-x86_64
           sha256sum quomodo-agent-x86_64 > quomodo-agent-x86_64.sha256
@@ -43,11 +58,12 @@ jobs:
         run: |
           set -eu
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
-            || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --verify-tag --notes ""
+            || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --verify-tag --generate-notes
           gh release upload "$GITHUB_REF_NAME" quomodo-agent-x86_64 quomodo-agent-x86_64.sha256 --clobber
 
   core-image:
     name: core image
+    needs: version
     runs-on: ubuntu-latest
     permissions:
       contents: read

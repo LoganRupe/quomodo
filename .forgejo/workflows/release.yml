@@ -1,4 +1,5 @@
-# Tagged releases only. No edge builds. The Forgejo twin of
+# Tagged releases only. No edge builds. The tag must match the
+# [workspace.package] version in Cargo.toml, or nothing is built. The Forgejo twin of
 # .github/workflows/release.yml, for a copy of the repo hosted on Forgejo.
 #
 # - x86_64 agent binary attached to the Forgejo release as `quomodo-agent-x86_64`
@@ -23,8 +24,25 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  version:
+    name: tag matches Cargo.toml
+    runs-on: docker
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compare the tag with [workspace.package] version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          CARGO=$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\(.*\)"/\1/p}' Cargo.toml)
+          if [ "$TAG" != "$CARGO" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match Cargo.toml version $CARGO."
+            echo "Bump [workspace.package] version, commit, and tag that commit."
+            exit 1
+          fi
+          echo "releasing $CARGO"
+
   agent:
     name: agent binary (x86_64)
+    needs: version
     runs-on: docker
     steps:
       - uses: actions/checkout@v7
@@ -35,9 +53,6 @@ jobs:
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - name: Build
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          cargo install cargo-edit --locked -q
-          cargo set-version -p komodo_periphery "$VERSION"
           cargo build -p komodo_periphery --release
           cp target/release/quomodo-agent quomodo-agent-x86_64
           sha256sum quomodo-agent-x86_64 > quomodo-agent-x86_64.sha256
@@ -61,6 +76,7 @@ jobs:
 
   core-image:
     name: core image
+    needs: version
     runs-on: docker
     steps:
       - uses: actions/checkout@v7

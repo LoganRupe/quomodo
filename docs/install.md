@@ -18,7 +18,9 @@ Core host if it deploys stacks too, and dials out to Core.
 ## Core
 
 The files in [`example/quomodo-core`](../example/quomodo-core) are a working
-Core pod: Core plus mongo, with the volumes they need.
+Core pod: Core plus mongo, with the volumes they need. The pod runs in its own
+user namespace, so the Core host needs the same `containers` subordinate id
+range as an agent host ([Agent](#agent), step 2).
 
 1. Copy them to the host and edit `quomodo-core.container`:
    - `KOMODO_HOST`: the URL users open Core on.
@@ -107,7 +109,10 @@ new files into the mounted directory. Two rules:
 - Mount the directory, not the two files. ACME clients and rsync replace a
   file by renaming a new one over it, and a single-file bind mount keeps
   pointing at the old copy.
-- The container's root has to be able to read both files.
+- The container's root has to be able to read both files. In the example
+  pod that is host uid 2147483647, not root: make the directory and files
+  owned by that uid (`chown -R 2147483647:2147483647`), or readable by
+  others.
 
 If the certificate expires anyway, agents that are connected stay
 connected, but none can reconnect: each retries every 5 seconds and logs

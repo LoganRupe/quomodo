@@ -4,11 +4,22 @@ Releases are tag-triggered only. Pushing a `v*` tag builds:
 
 - the x86_64 agent binary, attached to the release as `quomodo-agent-x86_64`
   with its `.sha256`;
-- the Core image, pushed as `<image>:<tag>` and `<image>:latest`.
+- the Core image, pushed as `<image>:<tag>` and `<image>:latest`;
+- on GitHub, release notes generated from the merged pull requests.
 
-Both workflows set the crate versions from the tag. Bump
-`[workspace.package] version` in `Cargo.toml` to match anyway, so a local
-build reports the right version to Core.
+To release:
+
+1. Bump `[workspace.package] version` in `Cargo.toml` and run `cargo check`
+   so `Cargo.lock` follows. Commit that on `main`.
+2. Tag that commit `v<version>` and push the tag.
+
+Both workflows start by comparing the tag with the `Cargo.toml` version and
+build nothing if they differ, so a binary never reports a version its source
+doesn't say. Pre-1.0, a breaking change bumps the minor version.
+
+The repository also carries upstream's `v2.3.3` tag. Push tags by name, not
+with `--tags`: on the forge it would sit beside Quomodo's `v0.x` tags and
+sort above them.
 
 ## GitHub
 

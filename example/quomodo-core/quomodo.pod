@@ -18,6 +18,14 @@ Wants=network-online.target
 [Pod]
 PodName=quomodo
 PublishPort=9120:9120
+# Core and mongo share this user namespace: a fixed slice at the bottom of
+# podman's `containers` subordinate range, so container root is host uid
+# 2147483647 and never moves. An agent on the same host hands out its own
+# slices from the top of the range down, so the two never overlap.
+# The members set an empty UserNS=: UserNS=auto on a pod member would run it
+# in the host user namespace, as real root.
+UIDMap=0:2147483647:65536
+GIDMap=0:2147483647:65536
 
 [Install]
 WantedBy=multi-user.target

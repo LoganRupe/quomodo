@@ -5,7 +5,7 @@ Description=Quomodo mongo
 Image=docker.io/mongo:8
 Pod=quomodo.pod
 ContainerName=quomodo-mongo
-UserNS=auto
+UserNS=
 Volume=quomodo-mongo-data.volume:/data/db
 Volume=quomodo-mongo-config.volume:/data/configdb
 Environment=MONGO_INITDB_ROOT_USERNAME=quomodo
