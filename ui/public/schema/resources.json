@@ -52,13 +52,6 @@
       "items": {
         "$ref": "#/definitions/UserGroupToml"
       }
-    },
-    "variable": {
-      "description": "Declare a variable",
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/Variable"
-      }
     }
   },
   "definitions": {
@@ -2308,13 +2301,6 @@
             "type": "string"
           }
         },
-        "include_variables": {
-          "description": "Whether sync should include variables.",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
         "include_user_groups": {
           "description": "Whether sync should include user groups.",
           "type": [
@@ -2617,33 +2603,6 @@
             "id"
           ]
         }
-      ]
-    },
-    "Variable": {
-      "description": "A non-secret global variable which can be interpolated into deployment\nenvironment variable values and build argument values.",
-      "type": "object",
-      "properties": {
-        "name": {
-          "description": "Unique name associated with the variable.\nInstances of '[[variable.name]]' in value will be replaced with 'variable.value'.",
-          "type": "string"
-        },
-        "description": {
-          "description": "A description for the variable.",
-          "type": "string"
-        },
-        "value": {
-          "description": "The value associated with the variable.",
-          "type": "string",
-          "default": ""
-        },
-        "is_secret": {
-          "description": "If marked as secret, the variable value will be hidden in updates / logs.\nAdditionally the value will not be served in read requests by non admin users.\n\nNote that the value is NOT encrypted in the database, and will likely show up in database logs.\nThe security of these variables comes down to the security\nof the database (system level encryption, network isolation, etc.)",
-          "type": "boolean",
-          "default": false
-        }
-      },
-      "required": [
-        "name"
       ]
     }
   }

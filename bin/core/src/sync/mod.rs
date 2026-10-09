@@ -20,7 +20,6 @@ pub mod replace_ids;
 pub mod resources;
 pub mod toml;
 pub mod user_groups;
-pub mod variables;
 pub mod view;
 
 #[derive(Default)]

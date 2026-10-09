@@ -218,22 +218,6 @@ impl Resolve<ExecuteArgs> for RunSync {
     );
 
     let (
-      variables_to_create,
-      variables_to_update,
-      variables_to_delete,
-    ) = if match_resource_type.is_none()
-      && match_resources.is_none()
-      && sync.config.include_variables
-    {
-      crate::sync::variables::get_updates_for_execution(
-        resources.variables,
-        delete,
-      )
-      .await?
-    } else {
-      Default::default()
-    };
-    let (
       user_groups_to_create,
       user_groups_to_update,
       user_groups_to_delete,
@@ -261,9 +245,6 @@ impl Resolve<ExecuteArgs> for RunSync {
       && user_groups_to_create.is_empty()
       && user_groups_to_update.is_empty()
       && user_groups_to_delete.is_empty()
-      && variables_to_create.is_empty()
-      && variables_to_update.is_empty()
-      && variables_to_delete.is_empty()
     {
       update.push_simple_log(
         "No Changes",
@@ -288,15 +269,6 @@ impl Resolve<ExecuteArgs> for RunSync {
     // =====================================================
 
     // No deps
-    maybe_extend(
-      &mut update.logs,
-      crate::sync::variables::run_updates(
-        variables_to_create,
-        variables_to_update,
-        variables_to_delete,
-      )
-      .await,
-    );
     maybe_extend(
       &mut update.logs,
       crate::sync::user_groups::run_updates(

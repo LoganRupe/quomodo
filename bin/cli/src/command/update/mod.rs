@@ -6,7 +6,6 @@ use komodo_client::entities::{
 
 mod resource;
 mod user;
-mod variable;
 
 pub async fn handle(command: &UpdateCommand) -> anyhow::Result<()> {
   match command {
@@ -22,12 +21,6 @@ pub async fn handle(command: &UpdateCommand) -> anyhow::Result<()> {
     UpdateCommand::Sync(update) => {
       resource::update::<PartialResourceSyncConfig>(update).await
     }
-    UpdateCommand::Variable {
-      name,
-      value,
-      secret,
-      yes,
-    } => variable::update(name, value, *secret, *yes).await,
     UpdateCommand::User { username, command } => {
       user::update(username, command).await
     }

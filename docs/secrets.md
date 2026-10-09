@@ -3,7 +3,7 @@
 Core reads stack secrets from an external store at deploy time, sends them to
 the agent, and the agent turns them into podman secrets. Secret values are
 never written to mongo, the repo clone, or a file under `/etc`.
-[stacks.md](stacks.md#variables-and-secrets) covers how stack files reference
+[stacks.md](stacks.md#secrets) covers how stack files reference
 them.
 
 Each Stack names one collection with `secrets_collection`. A Stack that

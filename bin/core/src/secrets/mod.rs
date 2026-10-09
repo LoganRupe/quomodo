@@ -74,18 +74,16 @@ pub struct ResolvedSecrets {
   pub hashes: BTreeMap<String, String>,
 }
 
-/// Find every `[[NAME]]` in the stack files which is not a Variable,
-/// and resolve it from the stack's secrets collection.
+/// Find every `[[NAME]]` in the stack files and resolve it from the
+/// stack's secrets collection.
 pub async fn resolve_stack_secrets(
   stack: &Stack,
   files: &[FileContents],
   blobs: &[quadlet::Blob],
-  variables: &HashMap<String, String>,
 ) -> anyhow::Result<ResolvedSecrets> {
   let mut names = files
     .iter()
     .flat_map(|f| referenced_names(&f.contents))
-    .filter(|name| !variables.contains_key(name))
     .collect::<Vec<_>>();
   names.sort();
   names.dedup();
@@ -114,10 +112,9 @@ pub async fn resolve_stack_secrets(
   // Run the same preparation the agent runs, so the secret hashes
   // (including config files mounted with `Secret=file:`) match exactly,
   // and so a rule violation fails here instead of on the host.
-  let prepared = quadlet::prepare::prepare(
-    stack, files, blobs, variables, &secrets,
-  )
-  .context("Stack files failed secret validation")?;
+  let prepared =
+    quadlet::prepare::prepare(stack, files, blobs, &secrets)
+      .context("Stack files failed secret validation")?;
 
   Ok(ResolvedSecrets {
     secrets,

@@ -2,7 +2,6 @@ use ::quadlet as quadlet_lib;
 use anyhow::{Context, anyhow};
 use database::mungos::mongodb::bson::{doc, to_document};
 use formatting::format_serror;
-use interpolate::Interpolator;
 use komodo_client::{
   api::execute::*,
   entities::{
@@ -18,9 +17,7 @@ use periphery_client::api::quadlet::{self, StackUnitAction};
 use crate::{
   api::write::refresh_stack_cache,
   helpers::{
-    periphery_client,
-    query::get_variables,
-    stack_git_token,
+    periphery_client, stack_git_token,
     update::{add_update_without_send, update_update},
   },
   monitor::refresh_server_cache,
@@ -157,35 +154,14 @@ impl Resolve<ExecuteArgs> for DeployStack {
       );
     }
 
-    let variables = get_variables().await?;
-
-    // Non-secret variables into the pre / post deploy commands and repo commands.
-    let mut replacers = if !stack.config.skip_secret_interp {
-      let empty = Default::default();
-      let mut interpolator =
-        Interpolator::new(Some(&variables), &empty);
-      interpolator.interpolate_stack(&mut stack)?;
-      if let Some(repo) = repo.as_mut()
-        && !repo.config.skip_secret_interp
-      {
-        interpolator.interpolate_repo(repo)?;
-      }
-      interpolator.push_logs(&mut update.logs);
-      interpolator.secret_replacers
-    } else {
-      Default::default()
-    };
+    // Secret values, mapped back to their `[[NAME]]` so no log shows them.
+    let mut replacers = std::collections::HashSet::new();
 
     let resolved = if stack.config.skip_secret_interp {
       Default::default()
     } else {
-      resolve_stack_secrets(
-        &stack,
-        &contents.files,
-        &contents.blobs,
-        &variables,
-      )
-      .await?
+      resolve_stack_secrets(&stack, &contents.files, &contents.blobs)
+        .await?
     };
     if !resolved.secrets.is_empty() {
       update.logs.push(Log::simple(
@@ -222,7 +198,6 @@ impl Resolve<ExecuteArgs> for DeployStack {
         repo,
         git_token,
         registry_token,
-        variables,
         secrets: resolved.secrets,
         replacers: replacers.into_iter().collect(),
         services: self.services,
@@ -388,7 +363,6 @@ impl Resolve<ExecuteArgs> for DeployStackIfChanged {
     // so a rotated secret also counts as a change.
     let latest_hash =
       if contents.errors.is_empty() && !contents.files.is_empty() {
-        let variables = get_variables().await?;
         let resolved = if stack.config.skip_secret_interp {
           Default::default()
         } else {
@@ -396,7 +370,6 @@ impl Resolve<ExecuteArgs> for DeployStackIfChanged {
             &stack,
             &contents.files,
             &contents.blobs,
-            &variables,
           )
           .await?
         };

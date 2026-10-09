@@ -33,7 +33,6 @@ mod sync;
 mod tag;
 mod user;
 mod user_group;
-mod variable;
 
 pub use stack::refresh_stack_cache;
 
@@ -152,13 +151,6 @@ pub enum WriteRequest {
   DeleteTag(DeleteTag),
   RenameTag(RenameTag),
   UpdateTagColor(UpdateTagColor),
-
-  // ==== VARIABLE ====
-  CreateVariable(CreateVariable),
-  UpdateVariableValue(UpdateVariableValue),
-  UpdateVariableDescription(UpdateVariableDescription),
-  UpdateVariableIsSecret(UpdateVariableIsSecret),
-  DeleteVariable(DeleteVariable),
 
   // ==== PROVIDER ====
   CreateGitProviderAccount(CreateGitProviderAccount),

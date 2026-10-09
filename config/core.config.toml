@@ -578,8 +578,7 @@ keep_alerts_for_days = 14
 ###########
 
 ## Stacks resolve `[[NAME]]` references from a secret store at deploy time.
-## Non-secret Variables are resolved first, then the store. Secret values are
-## never written to the database. Core refuses to save a Variable marked secret.
+## Every `[[NAME]]` is a secret. Secret values are never written to the database.
 ##
 ## Each Stack names the collection it reads from with `secrets_collection`.
 ## `[[NAME]]` reads the item's password, `[[NAME.field]]` reads a custom field.

@@ -660,33 +660,6 @@ export type CreateProcedureResponse = Procedure;
 
 export type CreateServiceUserResponse = User;
 
-/**
- * A non-secret global variable which can be interpolated into deployment
- * environment variable values and build argument values.
- */
-export interface Variable {
-	/**
-	 * Unique name associated with the variable.
-	 * Instances of '[[variable.name]]' in value will be replaced with 'variable.value'.
-	 */
-	name: string;
-	/** A description for the variable. */
-	description?: string;
-	/** The value associated with the variable. */
-	value?: string;
-	/**
-	 * If marked as secret, the variable value will be hidden in updates / logs.
-	 * Additionally the value will not be served in read requests by non admin users.
-	 * 
-	 * Note that the value is NOT encrypted in the database, and will likely show up in database logs.
-	 * The security of these variables comes down to the security
-	 * of the database (system level encryption, network isolation, etc.)
-	 */
-	is_secret?: boolean;
-}
-
-export type CreateVariableResponse = Variable;
-
 export type DeleteApiKeyForServiceUserResponse = NoData;
 
 export type DeleteGitProviderAccountResponse = GitProviderAccount;
@@ -736,8 +709,6 @@ export type DeleteOnboardingKeyResponse = OnboardingKey;
 export type DeleteProcedureResponse = Procedure;
 
 export type DeleteUserResponse = User;
-
-export type DeleteVariableResponse = Variable;
 
 /** Response containing pretty formatted toml contents. */
 export interface TomlResponse {
@@ -1220,8 +1191,6 @@ export interface ResourceSyncConfig {
 	 * matching all of the given tags. If none, will match all resources.
 	 */
 	match_tags?: string[];
-	/** Whether sync should include variables. */
-	include_variables?: boolean;
 	/** Whether sync should include user groups. */
 	include_user_groups?: boolean;
 	/**
@@ -1286,8 +1255,6 @@ export interface ResourceSyncInfo {
 	last_sync_message?: string;
 	/** The list of pending updates to resources */
 	resource_updates?: ResourceDiff[];
-	/** The list of pending updates to variables */
-	variable_updates?: DiffData[];
 	/** The list of pending updates to user groups */
 	user_group_updates?: DiffData[];
 	/** The list of pending deploys to resources. */
@@ -1823,8 +1790,6 @@ export interface UserGroup {
 }
 
 export type GetUserGroupResponse = UserGroup;
-
-export type GetVariableResponse = Variable;
 
 export type JsonObject = any;
 
@@ -2405,8 +2370,6 @@ export type ListUserTargetPermissionsResponse = Permission[];
 
 export type ListUsersResponse = User[];
 
-export type ListVariablesResponse = Variable[];
-
 export type MongoDocument = any;
 
 export interface ProcedureQuerySpecifics {
@@ -2503,12 +2466,6 @@ export type UpdateServiceUserDescriptionResponse = User;
 export type UpdateUserAdminResponse = NoData;
 
 export type UpdateUserBasePermissionsResponse = NoData;
-
-export type UpdateVariableDescriptionResponse = Variable;
-
-export type UpdateVariableIsSecretResponse = Variable;
-
-export type UpdateVariableValueResponse = Variable;
 
 export type Usize = number;
 
@@ -3039,18 +2996,6 @@ export interface CreateUserGroup {
 	name: string;
 }
 
-/** **Admin only.** Create variable. Response: [Variable]. */
-export interface CreateVariable {
-	/** The name of the variable to create. */
-	name: string;
-	/** The initial value of the variable. defualt: "". */
-	value?: string;
-	/** The initial value of the description. default: "". */
-	description?: string;
-	/** Whether to make this a secret variable. */
-	is_secret?: boolean;
-}
-
 /**
  * Deletes the action at the given id, and returns the deleted action.
  * Response: [Action]
@@ -3170,11 +3115,6 @@ export interface DeleteUserGroup {
 	id: string;
 }
 
-/** **Admin only.** Delete a variable. Response: [Variable]. */
-export interface DeleteVariable {
-	name: string;
-}
-
 /** Deploys the target stack. `docker compose up`. Response: [Update] */
 export interface DeployStack {
 	/** Id or name */
@@ -3292,8 +3232,6 @@ export interface ResourcesToml {
 	resource_syncs?: ResourceToml<_PartialResourceSyncConfig>[];
 	/** Declare a user group */
 	user_groups?: UserGroupToml[];
-	/** Declare a variable */
-	variables?: Variable[];
 }
 
 /**
@@ -3312,11 +3250,6 @@ export interface ExportAllResourcesToToml {
 	 * Accepts tag name or id. Empty array will not filter by tag.
 	 */
 	tags?: string[];
-	/**
-	 * Whether to include variables in the exported contents.
-	 * Default: false
-	 */
-	include_variables?: boolean;
 	/**
 	 * Whether to include user groups in the exported contents.
 	 * Default: false
@@ -3338,8 +3271,6 @@ export interface ExportResourcesToToml {
 	targets?: ResourceTarget[];
 	/** The user group names or ids to include in the export. */
 	user_groups?: string[];
-	/** Whether to include variables */
-	include_variables?: boolean;
 	/**
 	 * Pass an existing [ResourcesToml] to preserve
 	 * the meta configuration.
@@ -3863,18 +3794,6 @@ export interface GetUsernameResponse {
 	username: string;
 	/** An optional icon for the user. */
 	avatar?: string;
-}
-
-/**
- * List all available global variables.
- * Response: [Variable]
- * 
- * Note. For non admin users making this call,
- * secret variables will have their values obscured.
- */
-export interface GetVariable {
-	/** The name of the variable to get. */
-	name: string;
 }
 
 /**
@@ -4700,16 +4619,6 @@ export interface ListUsers {
 }
 
 /**
- * List all available global variables.
- * Response: [ListVariablesResponse]
- * 
- * Note. For non admin users making this call,
- * secret variables will have their values obscured.
- */
-export interface ListVariables {
-}
-
-/**
  * Prunes the docker images on the target server. Response: [Update].
  * 
  * 1. Runs `docker image prune -a -f`.
@@ -5419,30 +5328,6 @@ export interface UpdateUserBasePermissions {
 	create_builds?: boolean;
 }
 
-/** **Admin only.** Update variable description. Response: [Variable]. */
-export interface UpdateVariableDescription {
-	/** The name of the variable to update. */
-	name: string;
-	/** The description to set. */
-	description: string;
-}
-
-/** **Admin only.** Update whether variable is secret. Response: [Variable]. */
-export interface UpdateVariableIsSecret {
-	/** The name of the variable to update. */
-	name: string;
-	/** Whether variable is secret. */
-	is_secret: boolean;
-}
-
-/** **Admin only.** Update variable value. Response: [Variable]. */
-export interface UpdateVariableValue {
-	/** The name of the variable to update. */
-	name: string;
-	/** The value to set. */
-	value: string;
-}
-
 /** Write to the sync toml file contents. Response: [Update]. */
 export interface WriteSyncFileContents {
 	/** The name or id of the target Sync. */
@@ -5655,8 +5540,6 @@ export type ReadRequest =
 	| { type: "ListUpdates", params: ListUpdates }
 	| { type: "ListAlerts", params: ListAlerts }
 	| { type: "GetAlert", params: GetAlert }
-	| { type: "GetVariable", params: GetVariable }
-	| { type: "ListVariables", params: ListVariables }
 	| { type: "GetGitProviderAccount", params: GetGitProviderAccount }
 	| { type: "ListGitProviderAccounts", params: ListGitProviderAccounts }
 	| { type: "GetImageRegistryAccount", params: GetImageRegistryAccount }
@@ -5783,11 +5666,6 @@ export type WriteRequest =
 	| { type: "DeleteTag", params: DeleteTag }
 	| { type: "RenameTag", params: RenameTag }
 	| { type: "UpdateTagColor", params: UpdateTagColor }
-	| { type: "CreateVariable", params: CreateVariable }
-	| { type: "UpdateVariableValue", params: UpdateVariableValue }
-	| { type: "UpdateVariableDescription", params: UpdateVariableDescription }
-	| { type: "UpdateVariableIsSecret", params: UpdateVariableIsSecret }
-	| { type: "DeleteVariable", params: DeleteVariable }
 	| { type: "CreateGitProviderAccount", params: CreateGitProviderAccount }
 	| { type: "UpdateGitProviderAccount", params: UpdateGitProviderAccount }
 	| { type: "DeleteGitProviderAccount", params: DeleteGitProviderAccount }

@@ -1,13 +1,13 @@
-//! Interpolation of variables and secrets into stack files, and the
-//! split between what gets written to the quadlet directory and what
-//! becomes a podman secret.
+//! Interpolation of secrets into stack files, and the split between what
+//! gets written to the quadlet directory and what becomes a podman secret.
+//!
+//! Every `[[NAME]]` is a secret from the stack's secrets collection. Plain
+//! configuration lives in the files themselves.
 //!
 //! Rules:
-//! - `[[NAME]]` where NAME is a Variable: replaced everywhere.
-//! - `[[NAME]]` where NAME is a secret, inside a `Secret=` line of a unit
-//!   file: replaced with the podman secret name `<stack>_NAME`, and the
-//!   agent creates that secret.
-//! - `[[NAME]]` where NAME is a secret, anywhere else in a unit file: error.
+//! - `[[NAME]]` inside a `Secret=` line of a unit file: replaced with the
+//!   podman secret name `<stack>_NAME`, and the agent creates that secret.
+//! - `[[NAME]]` anywhere else in a unit file: error.
 //! - `Secret=file:<path>` in a unit file: the file at <path> is interpolated
 //!   in memory and becomes podman secret `<stack>_<path>`; it is not written
 //!   to the quadlet directory.
@@ -79,7 +79,6 @@ pub fn prepare(
   stack: &Stack,
   files: &[FileContents],
   blobs: &[Blob],
-  variables: &HashMap<String, String>,
   secrets: &HashMap<String, String>,
 ) -> anyhow::Result<Prepared> {
   let prefix = secret_prefix(&stack.name);
@@ -94,21 +93,15 @@ pub fn prepare(
   };
   // Config files referenced with `Secret=file:<path>`, by relative path.
   let mut file_secret_refs = BTreeSet::<String>::new();
-  // Config files (after variable interpolation) which still reference a secret.
+  // Config files which reference a secret.
   let mut secret_bearing = BTreeMap::<String, String>::new();
   let mut errors = Vec::<String>::new();
 
-  // Pass 1: variables everywhere, then classify.
+  // Pass 1: classify.
   for file in files {
     let is_unit =
       QuadletKind::from_file_name(base_name(&file.path)).is_some();
-    let contents = if skip {
-      file.contents.clone()
-    } else {
-      replace_tokens(&file.contents, |name| {
-        variables.get(name).cloned()
-      })
-    };
+    let contents = file.contents.clone();
 
     if skip {
       prepared.write.insert(file.path.clone(), contents);
@@ -321,31 +314,25 @@ mod tests {
       .collect()
   }
 
-  fn maps() -> (HashMap<String, String>, HashMap<String, String>) {
-    let vars = HashMap::from([(
-      "DOMAIN".to_string(),
-      "example.com".to_string(),
-    )]);
-    let secrets = HashMap::from([
+  fn secrets() -> HashMap<String, String> {
+    HashMap::from([
       ("DB_PASSWORD".to_string(), "hunter2".to_string()),
       ("API_KEY".to_string(), "k-123".to_string()),
-    ]);
-    (vars, secrets)
+    ])
   }
 
   #[test]
-  fn variables_secrets_and_file_secrets() {
-    let (vars, secrets) = maps();
+  fn secrets_and_file_secrets() {
+    let secrets = secrets();
     let files = files(&[
       (
         "web.container",
-        "[Container]\nImage=x\nEnvironment=DOMAIN=[[DOMAIN]]\nSecret=[[DB_PASSWORD]],type=env,target=DB_PASSWORD\nSecret=file:config.yml,type=mount,target=/etc/app.yml\n",
+        "[Container]\nImage=x\nEnvironment=DOMAIN=example.com\nSecret=[[DB_PASSWORD]],type=env,target=DB_PASSWORD\nSecret=file:config.yml,type=mount,target=/etc/app.yml\n",
       ),
-      ("config.yml", "domain: [[DOMAIN]]\napi_key: [[API_KEY]]\n"),
-      ("plain.txt", "hello [[DOMAIN]]\n"),
+      ("config.yml", "domain: example.com\napi_key: [[API_KEY]]\n"),
+      ("plain.txt", "hello example.com\n"),
     ]);
-    let p =
-      prepare(&stack(false), &files, &[], &vars, &secrets).unwrap();
+    let p = prepare(&stack(false), &files, &[], &secrets).unwrap();
     let web = &p.write["web.container"];
     assert!(web.contains("Environment=DOMAIN=example.com"));
     assert!(web.contains(
@@ -375,12 +362,12 @@ mod tests {
 
   #[test]
   fn secret_outside_secret_line_is_an_error() {
-    let (vars, secrets) = maps();
+    let secrets = secrets();
     let files = files(&[(
       "web.container",
       "[Container]\nImage=x\nEnvironment=PW=[[DB_PASSWORD]]\n",
     )]);
-    let err = prepare(&stack(false), &files, &[], &vars, &secrets)
+    let err = prepare(&stack(false), &files, &[], &secrets)
       .unwrap_err()
       .to_string();
     assert!(err.contains("may only be referenced on a Secret= line"));
@@ -388,12 +375,12 @@ mod tests {
 
   #[test]
   fn unmounted_secret_file_is_an_error() {
-    let (vars, secrets) = maps();
+    let secrets = secrets();
     let files = files(&[
       ("web.container", "[Container]\nImage=x\n"),
       ("config.yml", "api_key: [[API_KEY]]\n"),
     ]);
-    let err = prepare(&stack(false), &files, &[], &vars, &secrets)
+    let err = prepare(&stack(false), &files, &[], &secrets)
       .unwrap_err()
       .to_string();
     assert!(
@@ -403,12 +390,12 @@ mod tests {
 
   #[test]
   fn unresolved_reference_is_an_error() {
-    let (vars, secrets) = maps();
+    let secrets = secrets();
     let files = files(&[(
       "web.container",
       "[Container]\nImage=x\nEnvironment=A=[[NOPE]]\n",
     )]);
-    let err = prepare(&stack(false), &files, &[], &vars, &secrets)
+    let err = prepare(&stack(false), &files, &[], &secrets)
       .unwrap_err()
       .to_string();
     assert!(err.contains("unresolved reference [[NOPE]]"));
@@ -416,13 +403,12 @@ mod tests {
 
   #[test]
   fn skip_interp_writes_verbatim() {
-    let (vars, secrets) = maps();
+    let secrets = secrets();
     let files = files(&[(
       "web.container",
       "[Container]\nImage=x\nEnvironment=A=[[NOPE]]\n",
     )]);
-    let p =
-      prepare(&stack(true), &files, &[], &vars, &secrets).unwrap();
+    let p = prepare(&stack(true), &files, &[], &secrets).unwrap();
     assert_eq!(
       p.write["web.container"],
       "[Container]\nImage=x\nEnvironment=A=[[NOPE]]\n"
@@ -432,7 +418,7 @@ mod tests {
 
   #[test]
   fn bad_userns_fails_on_core() {
-    let (vars, secrets) = maps();
+    let secrets = secrets();
     let files = files(&[
       ("app.pod", "[Pod]\n"),
       (
@@ -440,14 +426,14 @@ mod tests {
         "[Container]\nImage=x\nPod=app.pod\nUserNS=auto\n",
       ),
     ]);
-    let err = prepare(&stack(false), &files, &[], &vars, &secrets)
+    let err = prepare(&stack(false), &files, &[], &secrets)
       .unwrap_err()
       .to_string();
     assert!(
       err.contains("a pod member cannot use UserNS=auto"),
       "{err}"
     );
-    let err = prepare(&stack(true), &files, &[], &vars, &secrets)
+    let err = prepare(&stack(true), &files, &[], &secrets)
       .unwrap_err()
       .to_string();
     assert!(
@@ -458,14 +444,13 @@ mod tests {
 
   #[test]
   fn blobs_pass_through_and_cannot_be_secret_files() {
-    let (vars, secrets) = maps();
+    let secrets = secrets();
     let blobs = [Blob {
       path: "assets/logo.png".into(),
       sha256: "abc".into(),
     }];
     let ok = files(&[("web.container", "[Container]\nImage=x\n")]);
-    let p =
-      prepare(&stack(false), &ok, &blobs, &vars, &secrets).unwrap();
+    let p = prepare(&stack(false), &ok, &blobs, &secrets).unwrap();
     assert_eq!(p.blobs["assets/logo.png"], "abc");
     assert!(!p.write.contains_key("assets/logo.png"));
 
@@ -473,7 +458,7 @@ mod tests {
       "web.container",
       "[Container]\nImage=x\nSecret=file:assets/logo.png,type=mount\n",
     )]);
-    let err = prepare(&stack(false), &bad, &blobs, &vars, &secrets)
+    let err = prepare(&stack(false), &bad, &blobs, &secrets)
       .unwrap_err()
       .to_string();
     assert!(err.contains("cannot be a secret file"), "{err}");

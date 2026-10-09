@@ -113,10 +113,6 @@ export type ReadResponses = {
   ListAlerts: Types.ListAlertsResponse;
   GetAlert: Types.GetAlertResponse;
 
-  // ==== VARIABLE ====
-  GetVariable: Types.GetVariableResponse;
-  ListVariables: Types.ListVariablesResponse;
-
   // ==== PROVIDER ====
   GetGitProviderAccount: Types.GetGitProviderAccountResponse;
   ListGitProviderAccounts: Types.ListGitProviderAccountsResponse;
@@ -229,13 +225,6 @@ export type WriteResponses = {
   DeleteTag: Types.Tag;
   RenameTag: Types.Tag;
   UpdateTagColor: Types.Tag;
-
-  // ==== VARIABLE ====
-  CreateVariable: Types.CreateVariableResponse;
-  UpdateVariableValue: Types.UpdateVariableValueResponse;
-  UpdateVariableDescription: Types.UpdateVariableDescriptionResponse;
-  UpdateVariableIsSecret: Types.UpdateVariableIsSecretResponse;
-  DeleteVariable: Types.DeleteVariableResponse;
 
   // ==== PROVIDER ====
   CreateGitProviderAccount: Types.CreateGitProviderAccountResponse;

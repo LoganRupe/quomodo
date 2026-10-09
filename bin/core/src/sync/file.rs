@@ -260,7 +260,6 @@ pub fn extend_resources(
     resource_syncs,
   );
   resources.user_groups.extend(more.user_groups);
-  resources.variables.extend(more.variables);
 }
 
 fn filter_by_tag<T: Default>(

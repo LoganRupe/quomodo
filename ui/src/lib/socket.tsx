@@ -256,13 +256,6 @@ function onUpdate(
         ["GetResourceSync"],
       );
     }
-
-    if (
-      update.target.type === "System" &&
-      update.operation.includes("Variable")
-    ) {
-      invalidate(["ListVariables"], ["GetVariable"]);
-    }
   }
 
   // Run any attached handlers

@@ -207,7 +207,7 @@ export default function StackConfig({
       skip_secret_interp: {
         label: "Skip Secret Interpolation",
         description:
-          "Do not interpolate variables or secrets into the unit files.",
+          "Do not interpolate secrets into the stack files.",
       },
     },
   };

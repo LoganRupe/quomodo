@@ -10,18 +10,16 @@ Server, runs `systemctl daemon-reload`, and starts or restarts the units
 whose inputs changed. [`example/stack`](../example/stack) is a small working
 stack.
 
-## Variables and secrets
+## Secrets
 
-`[[NAME]]` anywhere in a text file is a reference. Core resolves it at deploy
-time:
+Plain configuration goes in the files themselves: they are in git, so a
+domain or a port is just written where it is used. `[[NAME]]` in a text file
+is always a secret. Core reads it at deploy time from the Stack's
+`secrets_collection` in the secret store ([secrets.md](secrets.md)).
+`[[NAME]]` reads the item's password; `[[NAME.field]]` reads one of its
+custom fields.
 
-1. A non-secret Variable called `NAME` (Settings, or `[[variable]]` in a
-   ResourceSync) is substituted everywhere, in unit files and config files.
-2. Anything else is a secret, read from the Stack's `secrets_collection` in
-   the secret store ([secrets.md](secrets.md)). `[[NAME]]` reads the item's
-   password; `[[NAME.field]]` reads one of its custom fields.
-
-Secrets have stricter rules, so a value never lands in a file under `/etc`:
+Secrets follow two rules, so a value never lands in a file under `/etc`:
 
 - In a unit file, a secret may only appear on a `Secret=` line:
   `Secret=[[DB_PASSWORD]],type=env,target=POSTGRES_PASSWORD`. The agent
@@ -33,13 +31,16 @@ Secrets have stricter rules, so a value never lands in a file under `/etc`:
   `<stack>_config.yml`. The file itself is not written to the quadlet
   directory. A config file holding a secret that no unit mounts this way
   fails the deploy.
-- Core refuses to save a Variable marked secret. Secrets live in the store.
 
 Podman secret names keep `[A-Za-z0-9_.-]`; any other character in the stack
 name or path becomes `_`.
 
-Set `skip_secret_interp = true` on a Stack to skip variable and secret
-interpolation.
+Set `skip_secret_interp = true` on a Stack to install its files without
+resolving `[[NAME]]`.
+
+Quomodo has no Variables. Komodo's global Variables lived in the database,
+outside git; they were removed in v0.2.0. A `[[variable]]` block in a
+ResourceSync file is ignored.
 
 ## Files that are not text
 

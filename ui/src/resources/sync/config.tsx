@@ -170,10 +170,6 @@ export default function ResourceSyncConfig({
         label: "Sync Resources",
         description: "Include resources (servers, stacks, etc.) in the sync.",
       },
-      include_variables: {
-        label: "Sync Variables",
-        description: "Include variables in the sync.",
-      },
       include_user_groups: {
         label: "Sync User Groups",
         description: "Include user groups in the sync.",

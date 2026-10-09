@@ -1,8 +1,5 @@
 use anyhow::Context;
-use database::{
-  bson::doc,
-  mungos::{find::find_collect, mongodb::options::FindOptions},
-};
+use database::mungos::find::find_collect;
 use komodo_client::{
   api::read::{
     ExportAllResourcesToToml, ExportAllResourcesToTomlResponse,
@@ -29,7 +26,6 @@ use crate::{
     replace_ids::ReplaceIds,
     toml::{ToToml, convert_resource},
     user_groups::{convert_user_groups, user_group_to_toml},
-    variables::variable_to_toml,
   },
 };
 
@@ -108,7 +104,6 @@ impl Resolve<ReadArgs> for ExportAllResourcesToToml {
     ExportResourcesToToml {
       targets,
       user_groups,
-      include_variables: self.include_variables,
       existing: self.existing,
     }
     .resolve(args)
@@ -124,7 +119,6 @@ impl Resolve<ReadArgs> for ExportResourcesToToml {
     let ExportResourcesToToml {
       targets,
       user_groups,
-      include_variables,
       existing,
     } = self;
     let mut res = ResourcesToml::default();
@@ -198,24 +192,6 @@ impl Resolve<ReadArgs> for ExportResourcesToToml {
       .await
       .context("failed to add user groups")?;
 
-    if include_variables {
-      res.variables = find_collect(
-        &db_client().variables,
-        None,
-        FindOptions::builder().sort(doc! { "name": 1 }).build(),
-      )
-      .await
-      .context("failed to get variables from db")?
-      .into_iter()
-      .map(|mut variable| {
-        if !user.admin && variable.is_secret {
-          variable.value = "#".repeat(variable.value.len())
-        }
-        variable
-      })
-      .collect();
-    }
-
     let toml = serialize_resources_toml(res)
       .context("failed to serialize resources to toml")?;
 
@@ -269,13 +245,6 @@ fn serialize_resources_toml(
     (Action, actions, "action"),
     (ResourceSync, resource_syncs, "resource_sync"),
   );
-
-  for variable in &resources.variables {
-    if !toml.is_empty() {
-      toml.push_str("\n\n##\n\n");
-    }
-    toml.push_str(&variable_to_toml(variable)?);
-  }
 
   for user_group in resources.user_groups {
     if !toml.is_empty() {

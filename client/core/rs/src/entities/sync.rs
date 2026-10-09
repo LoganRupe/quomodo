@@ -110,9 +110,6 @@ pub struct ResourceSyncInfo {
   /// The list of pending updates to resources
   #[serde(default)]
   pub resource_updates: Vec<ResourceDiff>,
-  /// The list of pending updates to variables
-  #[serde(default)]
-  pub variable_updates: Vec<DiffData>,
   /// The list of pending updates to user groups
   #[serde(default)]
   pub user_group_updates: Vec<DiffData>,
@@ -303,11 +300,6 @@ pub struct ResourceSyncConfig {
   #[builder(default)]
   pub match_tags: Vec<String>,
 
-  /// Whether sync should include variables.
-  #[serde(default)]
-  #[builder(default)]
-  pub include_variables: bool,
-
   /// Whether sync should include user groups.
   #[serde(default)]
   #[builder(default)]
@@ -387,7 +379,6 @@ impl Default for ResourceSyncConfig {
       managed: Default::default(),
       include_resources: default_include_resources(),
       match_tags: Default::default(),
-      include_variables: Default::default(),
       include_user_groups: Default::default(),
       delete: Default::default(),
       webhook_enabled: default_webhook_enabled(),

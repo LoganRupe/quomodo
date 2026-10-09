@@ -1,4 +1,4 @@
-domain: [[DOMAIN]]
+domain: app.example.com
 database:
   user: app
   password: [[DB_PASSWORD]]

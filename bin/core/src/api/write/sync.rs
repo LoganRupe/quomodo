@@ -518,7 +518,6 @@ impl Resolve<WriteArgs> for CommitSync {
     let res = ExportAllResourcesToToml {
       include_resources: sync.config.include_resources,
       tags: sync.config.match_tags.clone(),
-      include_variables: sync.config.include_variables,
       include_user_groups: sync.config.include_user_groups,
       existing: resources
         .inspect_err(|e| warn!("Existing resource TOML is unavailable, resource meta will not be preserved | ERROR: {e:#}"))
@@ -800,16 +799,6 @@ impl Resolve<WriteArgs> for RefreshResourceSyncPending {
           Default::default()
         };
 
-      let variable_updates = if sync.config.include_variables {
-        crate::sync::variables::get_updates_for_view(
-          &resources.variables,
-          delete,
-        )
-        .await?
-      } else {
-        Default::default()
-      };
-
       let user_group_updates = if sync.config.include_user_groups {
         crate::sync::user_groups::get_updates_for_view(
           resources.user_groups,
@@ -823,7 +812,6 @@ impl Resolve<WriteArgs> for RefreshResourceSyncPending {
       anyhow::Ok((
         resource_updates,
         deploy_updates,
-        variable_updates,
         user_group_updates,
       ))
     }
@@ -832,13 +820,11 @@ impl Resolve<WriteArgs> for RefreshResourceSyncPending {
     let (
       resource_updates,
       (pending_deploys, pending_deploy_error),
-      variable_updates,
       user_group_updates,
       pending_error,
     ) = match res {
-      Ok(res) => (res.0, res.1, res.2, res.3, None),
+      Ok(res) => (res.0, res.1, res.2, None),
       Err(e) => (
-        Default::default(),
         Default::default(),
         Default::default(),
         Default::default(),
@@ -848,7 +834,6 @@ impl Resolve<WriteArgs> for RefreshResourceSyncPending {
 
     let has_updates = !resource_updates.is_empty()
       || !pending_deploys.is_empty()
-      || !variable_updates.is_empty()
       || !user_group_updates.is_empty();
 
     let info = ResourceSyncInfo {
@@ -862,7 +847,6 @@ impl Resolve<WriteArgs> for RefreshResourceSyncPending {
       pending_deploys,
       pending_deploy_error,
       resource_updates,
-      variable_updates,
       user_group_updates,
       pending_error,
     };

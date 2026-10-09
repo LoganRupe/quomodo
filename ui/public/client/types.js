@@ -52,112 +52,33 @@ export var TemplatesQueryBehavior;
     /** Results *only* includes templates. */
     TemplatesQueryBehavior["Only"] = "Only";
 })(TemplatesQueryBehavior || (TemplatesQueryBehavior = {}));
-/** Types of maintenance schedules */
-export var MaintenanceScheduleType;
-(function (MaintenanceScheduleType) {
-    /** Daily at the specified time */
-    MaintenanceScheduleType["Daily"] = "Daily";
-    /** Weekly on the specified day and time */
-    MaintenanceScheduleType["Weekly"] = "Weekly";
-    /** One-time maintenance on a specific date and time */
-    MaintenanceScheduleType["OneTime"] = "OneTime";
-})(MaintenanceScheduleType || (MaintenanceScheduleType = {}));
 export var Operation;
 (function (Operation) {
     Operation["None"] = "None";
-    Operation["CreateSwarm"] = "CreateSwarm";
-    Operation["UpdateSwarm"] = "UpdateSwarm";
-    Operation["RenameSwarm"] = "RenameSwarm";
-    Operation["DeleteSwarm"] = "DeleteSwarm";
-    Operation["RemoveSwarmNodes"] = "RemoveSwarmNodes";
-    Operation["UpdateSwarmNode"] = "UpdateSwarmNode";
-    Operation["RemoveSwarmStacks"] = "RemoveSwarmStacks";
-    Operation["RemoveSwarmServices"] = "RemoveSwarmServices";
-    Operation["CreateSwarmConfig"] = "CreateSwarmConfig";
-    Operation["RotateSwarmConfig"] = "RotateSwarmConfig";
-    Operation["RemoveSwarmConfigs"] = "RemoveSwarmConfigs";
-    Operation["CreateSwarmSecret"] = "CreateSwarmSecret";
-    Operation["RotateSwarmSecret"] = "RotateSwarmSecret";
-    Operation["RemoveSwarmSecrets"] = "RemoveSwarmSecrets";
     Operation["CreateServer"] = "CreateServer";
     Operation["UpdateServer"] = "UpdateServer";
     Operation["UpdateServerKey"] = "UpdateServerKey";
     Operation["DeleteServer"] = "DeleteServer";
     Operation["RenameServer"] = "RenameServer";
-    Operation["StartContainer"] = "StartContainer";
-    Operation["RestartContainer"] = "RestartContainer";
-    Operation["PauseContainer"] = "PauseContainer";
-    Operation["UnpauseContainer"] = "UnpauseContainer";
-    Operation["StopContainer"] = "StopContainer";
-    Operation["DestroyContainer"] = "DestroyContainer";
-    Operation["StartAllContainers"] = "StartAllContainers";
-    Operation["RestartAllContainers"] = "RestartAllContainers";
-    Operation["PauseAllContainers"] = "PauseAllContainers";
-    Operation["UnpauseAllContainers"] = "UnpauseAllContainers";
-    Operation["StopAllContainers"] = "StopAllContainers";
-    Operation["PruneContainers"] = "PruneContainers";
-    Operation["CreateNetwork"] = "CreateNetwork";
-    Operation["DeleteNetwork"] = "DeleteNetwork";
-    Operation["PruneNetworks"] = "PruneNetworks";
-    Operation["DeleteImage"] = "DeleteImage";
     Operation["PruneImages"] = "PruneImages";
-    Operation["DeleteVolume"] = "DeleteVolume";
-    Operation["PruneVolumes"] = "PruneVolumes";
-    Operation["PruneDockerBuilders"] = "PruneDockerBuilders";
-    Operation["PruneBuildx"] = "PruneBuildx";
     Operation["PruneSystem"] = "PruneSystem";
     Operation["CreateStack"] = "CreateStack";
     Operation["UpdateStack"] = "UpdateStack";
     Operation["RenameStack"] = "RenameStack";
     Operation["DeleteStack"] = "DeleteStack";
-    Operation["WriteStackContents"] = "WriteStackContents";
     Operation["RefreshStackCache"] = "RefreshStackCache";
     Operation["PullStack"] = "PullStack";
     Operation["DeployStack"] = "DeployStack";
     Operation["StartStack"] = "StartStack";
     Operation["RestartStack"] = "RestartStack";
-    Operation["PauseStack"] = "PauseStack";
-    Operation["UnpauseStack"] = "UnpauseStack";
     Operation["StopStack"] = "StopStack";
     Operation["DestroyStack"] = "DestroyStack";
-    Operation["RunStackService"] = "RunStackService";
-    Operation["CheckStackForUpdate"] = "CheckStackForUpdate";
-    Operation["DeployStackService"] = "DeployStackService";
-    Operation["PullStackService"] = "PullStackService";
-    Operation["StartStackService"] = "StartStackService";
-    Operation["RestartStackService"] = "RestartStackService";
-    Operation["PauseStackService"] = "PauseStackService";
-    Operation["UnpauseStackService"] = "UnpauseStackService";
-    Operation["StopStackService"] = "StopStackService";
-    Operation["DestroyStackService"] = "DestroyStackService";
-    Operation["CreateDeployment"] = "CreateDeployment";
-    Operation["UpdateDeployment"] = "UpdateDeployment";
-    Operation["RenameDeployment"] = "RenameDeployment";
-    Operation["DeleteDeployment"] = "DeleteDeployment";
-    Operation["Deploy"] = "Deploy";
-    Operation["PullDeployment"] = "PullDeployment";
-    Operation["StartDeployment"] = "StartDeployment";
-    Operation["RestartDeployment"] = "RestartDeployment";
-    Operation["PauseDeployment"] = "PauseDeployment";
-    Operation["UnpauseDeployment"] = "UnpauseDeployment";
-    Operation["StopDeployment"] = "StopDeployment";
-    Operation["DestroyDeployment"] = "DestroyDeployment";
-    Operation["CheckDeploymentForUpdate"] = "CheckDeploymentForUpdate";
-    Operation["CreateBuild"] = "CreateBuild";
-    Operation["UpdateBuild"] = "UpdateBuild";
-    Operation["RenameBuild"] = "RenameBuild";
-    Operation["DeleteBuild"] = "DeleteBuild";
-    Operation["RunBuild"] = "RunBuild";
-    Operation["CancelBuild"] = "CancelBuild";
-    Operation["WriteDockerfile"] = "WriteDockerfile";
     Operation["CreateRepo"] = "CreateRepo";
     Operation["UpdateRepo"] = "UpdateRepo";
     Operation["RenameRepo"] = "RenameRepo";
     Operation["DeleteRepo"] = "DeleteRepo";
     Operation["CloneRepo"] = "CloneRepo";
     Operation["PullRepo"] = "PullRepo";
-    Operation["BuildRepo"] = "BuildRepo";
-    Operation["CancelRepoBuild"] = "CancelRepoBuild";
     Operation["CreateProcedure"] = "CreateProcedure";
     Operation["UpdateProcedure"] = "UpdateProcedure";
     Operation["RenameProcedure"] = "RenameProcedure";
@@ -177,19 +98,8 @@ export var Operation;
     Operation["WriteSyncContents"] = "WriteSyncContents";
     Operation["CommitSync"] = "CommitSync";
     Operation["RunSync"] = "RunSync";
-    Operation["CreateBuilder"] = "CreateBuilder";
-    Operation["UpdateBuilder"] = "UpdateBuilder";
-    Operation["RenameBuilder"] = "RenameBuilder";
-    Operation["DeleteBuilder"] = "DeleteBuilder";
-    Operation["CreateAlerter"] = "CreateAlerter";
-    Operation["UpdateAlerter"] = "UpdateAlerter";
-    Operation["RenameAlerter"] = "RenameAlerter";
-    Operation["DeleteAlerter"] = "DeleteAlerter";
-    Operation["TestAlerter"] = "TestAlerter";
-    Operation["SendAlert"] = "SendAlert";
     Operation["ClearRepoCache"] = "ClearRepoCache";
     Operation["BackupCoreDatabase"] = "BackupCoreDatabase";
-    Operation["GlobalAutoUpdate"] = "GlobalAutoUpdate";
     Operation["RotateAllServerKeys"] = "RotateAllServerKeys";
     Operation["RotateCoreKeys"] = "RotateCoreKeys";
     Operation["CreateVariable"] = "CreateVariable";
@@ -212,66 +122,6 @@ export var UpdateStatus;
     /** The run is complete */
     UpdateStatus["Complete"] = "Complete";
 })(UpdateStatus || (UpdateStatus = {}));
-export var BuildState;
-(function (BuildState) {
-    /** Currently building */
-    BuildState["Building"] = "Building";
-    /** Last build successful (or never built) */
-    BuildState["Ok"] = "Ok";
-    /** Last build failed */
-    BuildState["Failed"] = "Failed";
-    /** Other case */
-    BuildState["Unknown"] = "Unknown";
-})(BuildState || (BuildState = {}));
-export var RestartMode;
-(function (RestartMode) {
-    RestartMode["NoRestart"] = "no";
-    RestartMode["OnFailure"] = "on-failure";
-    RestartMode["Always"] = "always";
-    RestartMode["UnlessStopped"] = "unless-stopped";
-})(RestartMode || (RestartMode = {}));
-export var TerminationSignal;
-(function (TerminationSignal) {
-    TerminationSignal["SigHup"] = "SIGHUP";
-    TerminationSignal["SigInt"] = "SIGINT";
-    TerminationSignal["SigQuit"] = "SIGQUIT";
-    TerminationSignal["SigTerm"] = "SIGTERM";
-})(TerminationSignal || (TerminationSignal = {}));
-/**
- * Variants de/serialized from/to snake_case.
- *
- * Eg.
- * - NotDeployed -> not_deployed
- * - Restarting -> restarting
- * - Running -> running.
- */
-export var DeploymentState;
-(function (DeploymentState) {
-    /** The deployment is currently re/deploying */
-    DeploymentState["Deploying"] = "deploying";
-    /** Container / Service is running */
-    DeploymentState["Running"] = "running";
-    /** Server mode only. Container is created but not running. */
-    DeploymentState["Created"] = "created";
-    /** Server mode only. Container is in restart loop */
-    DeploymentState["Restarting"] = "restarting";
-    /** Server mode only. Container is in the process of stopping */
-    DeploymentState["Stopping"] = "stopping";
-    /** Server mode only. Container is being removed */
-    DeploymentState["Removing"] = "removing";
-    /** Server mode only. Container is paused */
-    DeploymentState["Paused"] = "paused";
-    /** Server mode only. Container is exited */
-    DeploymentState["Exited"] = "exited";
-    /** Server mode only. Container is dead */
-    DeploymentState["Dead"] = "dead";
-    /** Swarm mode only. Some tasks don't match their desired state. */
-    DeploymentState["Unhealthy"] = "unhealthy";
-    /** The deployment is not deployed (no matching Container / Service) */
-    DeploymentState["NotDeployed"] = "not_deployed";
-    /** Server / Swarm not reachable for status */
-    DeploymentState["Unknown"] = "unknown";
-})(DeploymentState || (DeploymentState = {}));
 /** Severity level of problem. */
 export var SeverityLevel;
 (function (SeverityLevel) {
@@ -349,15 +199,27 @@ export var Timelength;
     /** `30-day` */
     Timelength["ThirtyDays"] = "30-day";
 })(Timelength || (Timelength = {}));
-export var StackFileRequires;
-(function (StackFileRequires) {
-    /** Diff requires service redeploy. */
-    StackFileRequires["Redeploy"] = "Redeploy";
-    /** Diff requires service restart */
-    StackFileRequires["Restart"] = "Restart";
-    /** Diff requires no action. Default. */
-    StackFileRequires["None"] = "None";
-})(StackFileRequires || (StackFileRequires = {}));
+/** Types of maintenance schedules */
+export var MaintenanceScheduleType;
+(function (MaintenanceScheduleType) {
+    /** Daily at the specified time */
+    MaintenanceScheduleType["Daily"] = "Daily";
+    /** Weekly on the specified day and time */
+    MaintenanceScheduleType["Weekly"] = "Weekly";
+    /** One-time maintenance on a specific date and time */
+    MaintenanceScheduleType["OneTime"] = "OneTime";
+})(MaintenanceScheduleType || (MaintenanceScheduleType = {}));
+/** The kind of quadlet unit, by file extension. */
+export var QuadletKind;
+(function (QuadletKind) {
+    QuadletKind["Container"] = "container";
+    QuadletKind["Pod"] = "pod";
+    QuadletKind["Network"] = "network";
+    QuadletKind["Volume"] = "volume";
+    QuadletKind["Build"] = "build";
+    QuadletKind["Image"] = "image";
+    QuadletKind["Kube"] = "kube";
+})(QuadletKind || (QuadletKind = {}));
 export var TagColor;
 (function (TagColor) {
     TagColor["LightSlate"] = "LightSlate";
@@ -427,265 +289,6 @@ export var ContainerStateStatusEnum;
     ContainerStateStatusEnum["Dead"] = "dead";
     ContainerStateStatusEnum["Empty"] = "";
 })(ContainerStateStatusEnum || (ContainerStateStatusEnum = {}));
-export var HealthStatusEnum;
-(function (HealthStatusEnum) {
-    HealthStatusEnum["Empty"] = "";
-    HealthStatusEnum["None"] = "none";
-    HealthStatusEnum["Starting"] = "starting";
-    HealthStatusEnum["Healthy"] = "healthy";
-    HealthStatusEnum["Unhealthy"] = "unhealthy";
-})(HealthStatusEnum || (HealthStatusEnum = {}));
-export var RestartPolicyNameEnum;
-(function (RestartPolicyNameEnum) {
-    RestartPolicyNameEnum["Empty"] = "";
-    RestartPolicyNameEnum["No"] = "no";
-    RestartPolicyNameEnum["Always"] = "always";
-    RestartPolicyNameEnum["UnlessStopped"] = "unless-stopped";
-    RestartPolicyNameEnum["OnFailure"] = "on-failure";
-})(RestartPolicyNameEnum || (RestartPolicyNameEnum = {}));
-export var MountType;
-(function (MountType) {
-    MountType["Bind"] = "bind";
-    MountType["Volume"] = "volume";
-    MountType["Image"] = "image";
-    MountType["Tmpfs"] = "tmpfs";
-    MountType["Npipe"] = "npipe";
-    MountType["Cluster"] = "cluster";
-})(MountType || (MountType = {}));
-export var MountBindOptionsPropagationEnum;
-(function (MountBindOptionsPropagationEnum) {
-    MountBindOptionsPropagationEnum["Empty"] = "";
-    MountBindOptionsPropagationEnum["Private"] = "private";
-    MountBindOptionsPropagationEnum["Rprivate"] = "rprivate";
-    MountBindOptionsPropagationEnum["Shared"] = "shared";
-    MountBindOptionsPropagationEnum["Rshared"] = "rshared";
-    MountBindOptionsPropagationEnum["Slave"] = "slave";
-    MountBindOptionsPropagationEnum["Rslave"] = "rslave";
-})(MountBindOptionsPropagationEnum || (MountBindOptionsPropagationEnum = {}));
-export var HostConfigCgroupnsModeEnum;
-(function (HostConfigCgroupnsModeEnum) {
-    HostConfigCgroupnsModeEnum["Empty"] = "";
-    HostConfigCgroupnsModeEnum["Private"] = "private";
-    HostConfigCgroupnsModeEnum["Host"] = "host";
-})(HostConfigCgroupnsModeEnum || (HostConfigCgroupnsModeEnum = {}));
-export var HostConfigIsolationEnum;
-(function (HostConfigIsolationEnum) {
-    HostConfigIsolationEnum["Empty"] = "";
-    HostConfigIsolationEnum["Default"] = "default";
-    HostConfigIsolationEnum["Process"] = "process";
-    HostConfigIsolationEnum["Hyperv"] = "hyperv";
-})(HostConfigIsolationEnum || (HostConfigIsolationEnum = {}));
-/** The service mode. */
-export var SwarmServiceMode;
-(function (SwarmServiceMode) {
-    /**
-     * Replicated service
-     * - Run desired number of replicas
-     */
-    SwarmServiceMode["Replicated"] = "Replicated";
-    /**
-     * Global service
-     * - Run once per node
-     */
-    SwarmServiceMode["Global"] = "Global";
-    /**
-     * Replicated job
-     * - Scheduled tasks which run to completion
-     * - Run desired number of job replicas
-     */
-    SwarmServiceMode["ReplicatedJob"] = "ReplicatedJob";
-    /**
-     * Global job
-     * - Scheduled tasks which run to completion
-     * - Run one job per node
-     */
-    SwarmServiceMode["GlobalJob"] = "GlobalJob";
-})(SwarmServiceMode || (SwarmServiceMode = {}));
-export var SwarmState;
-(function (SwarmState) {
-    /** All nodes /tasks OK */
-    SwarmState["Healthy"] = "Healthy";
-    /** Some nodes / tasks don't match desired state */
-    SwarmState["Unhealthy"] = "Unhealthy";
-    /** All nodes / tasks down. */
-    SwarmState["Down"] = "Down";
-    /** Unknown case */
-    SwarmState["Unknown"] = "Unknown";
-})(SwarmState || (SwarmState = {}));
-export var TaskSpecContainerSpecPrivilegesSeccompModeEnum;
-(function (TaskSpecContainerSpecPrivilegesSeccompModeEnum) {
-    TaskSpecContainerSpecPrivilegesSeccompModeEnum["EMPTY"] = "";
-    TaskSpecContainerSpecPrivilegesSeccompModeEnum["DEFAULT"] = "default";
-    TaskSpecContainerSpecPrivilegesSeccompModeEnum["UNCONFINED"] = "unconfined";
-    TaskSpecContainerSpecPrivilegesSeccompModeEnum["CUSTOM"] = "custom";
-})(TaskSpecContainerSpecPrivilegesSeccompModeEnum || (TaskSpecContainerSpecPrivilegesSeccompModeEnum = {}));
-export var TaskSpecContainerSpecPrivilegesAppArmorModeEnum;
-(function (TaskSpecContainerSpecPrivilegesAppArmorModeEnum) {
-    TaskSpecContainerSpecPrivilegesAppArmorModeEnum["EMPTY"] = "";
-    TaskSpecContainerSpecPrivilegesAppArmorModeEnum["DEFAULT"] = "default";
-    TaskSpecContainerSpecPrivilegesAppArmorModeEnum["DISABLED"] = "disabled";
-})(TaskSpecContainerSpecPrivilegesAppArmorModeEnum || (TaskSpecContainerSpecPrivilegesAppArmorModeEnum = {}));
-export var TaskSpecContainerSpecIsolationEnum;
-(function (TaskSpecContainerSpecIsolationEnum) {
-    TaskSpecContainerSpecIsolationEnum["DEFAULT"] = "default";
-    TaskSpecContainerSpecIsolationEnum["PROCESS"] = "process";
-    TaskSpecContainerSpecIsolationEnum["HYPERV"] = "hyperv";
-    TaskSpecContainerSpecIsolationEnum["EMPTY"] = "";
-})(TaskSpecContainerSpecIsolationEnum || (TaskSpecContainerSpecIsolationEnum = {}));
-export var TaskSpecRestartPolicyConditionEnum;
-(function (TaskSpecRestartPolicyConditionEnum) {
-    TaskSpecRestartPolicyConditionEnum["EMPTY"] = "";
-    TaskSpecRestartPolicyConditionEnum["NONE"] = "none";
-    TaskSpecRestartPolicyConditionEnum["ON_FAILURE"] = "on-failure";
-    TaskSpecRestartPolicyConditionEnum["ANY"] = "any";
-})(TaskSpecRestartPolicyConditionEnum || (TaskSpecRestartPolicyConditionEnum = {}));
-export var ServiceSpecUpdateConfigFailureActionEnum;
-(function (ServiceSpecUpdateConfigFailureActionEnum) {
-    ServiceSpecUpdateConfigFailureActionEnum["EMPTY"] = "";
-    ServiceSpecUpdateConfigFailureActionEnum["CONTINUE"] = "continue";
-    ServiceSpecUpdateConfigFailureActionEnum["PAUSE"] = "pause";
-    ServiceSpecUpdateConfigFailureActionEnum["ROLLBACK"] = "rollback";
-})(ServiceSpecUpdateConfigFailureActionEnum || (ServiceSpecUpdateConfigFailureActionEnum = {}));
-export var ServiceSpecUpdateConfigOrderEnum;
-(function (ServiceSpecUpdateConfigOrderEnum) {
-    ServiceSpecUpdateConfigOrderEnum["EMPTY"] = "";
-    ServiceSpecUpdateConfigOrderEnum["STOP_FIRST"] = "stop-first";
-    ServiceSpecUpdateConfigOrderEnum["START_FIRST"] = "start-first";
-})(ServiceSpecUpdateConfigOrderEnum || (ServiceSpecUpdateConfigOrderEnum = {}));
-export var ServiceSpecRollbackConfigFailureActionEnum;
-(function (ServiceSpecRollbackConfigFailureActionEnum) {
-    ServiceSpecRollbackConfigFailureActionEnum["EMPTY"] = "";
-    ServiceSpecRollbackConfigFailureActionEnum["CONTINUE"] = "continue";
-    ServiceSpecRollbackConfigFailureActionEnum["PAUSE"] = "pause";
-})(ServiceSpecRollbackConfigFailureActionEnum || (ServiceSpecRollbackConfigFailureActionEnum = {}));
-export var ServiceSpecRollbackConfigOrderEnum;
-(function (ServiceSpecRollbackConfigOrderEnum) {
-    ServiceSpecRollbackConfigOrderEnum["EMPTY"] = "";
-    ServiceSpecRollbackConfigOrderEnum["STOP_FIRST"] = "stop-first";
-    ServiceSpecRollbackConfigOrderEnum["START_FIRST"] = "start-first";
-})(ServiceSpecRollbackConfigOrderEnum || (ServiceSpecRollbackConfigOrderEnum = {}));
-export var EndpointSpecModeEnum;
-(function (EndpointSpecModeEnum) {
-    EndpointSpecModeEnum["EMPTY"] = "";
-    EndpointSpecModeEnum["VIP"] = "vip";
-    EndpointSpecModeEnum["DNSRR"] = "dnsrr";
-})(EndpointSpecModeEnum || (EndpointSpecModeEnum = {}));
-export var EndpointPortConfigProtocolEnum;
-(function (EndpointPortConfigProtocolEnum) {
-    EndpointPortConfigProtocolEnum["EMPTY"] = "";
-    EndpointPortConfigProtocolEnum["TCP"] = "tcp";
-    EndpointPortConfigProtocolEnum["UDP"] = "udp";
-    EndpointPortConfigProtocolEnum["SCTP"] = "sctp";
-})(EndpointPortConfigProtocolEnum || (EndpointPortConfigProtocolEnum = {}));
-export var EndpointPortConfigPublishModeEnum;
-(function (EndpointPortConfigPublishModeEnum) {
-    EndpointPortConfigPublishModeEnum["EMPTY"] = "";
-    EndpointPortConfigPublishModeEnum["INGRESS"] = "ingress";
-    EndpointPortConfigPublishModeEnum["HOST"] = "host";
-})(EndpointPortConfigPublishModeEnum || (EndpointPortConfigPublishModeEnum = {}));
-export var ServiceUpdateStatusStateEnum;
-(function (ServiceUpdateStatusStateEnum) {
-    ServiceUpdateStatusStateEnum["EMPTY"] = "";
-    ServiceUpdateStatusStateEnum["UPDATING"] = "updating";
-    ServiceUpdateStatusStateEnum["PAUSED"] = "paused";
-    ServiceUpdateStatusStateEnum["COMPLETED"] = "completed";
-    ServiceUpdateStatusStateEnum["ROLLBACK_STARTED"] = "rollback_started";
-    ServiceUpdateStatusStateEnum["ROLLBACK_PAUSED"] = "rollback_paused";
-    ServiceUpdateStatusStateEnum["ROLLBACK_COMPLETED"] = "rollback_completed";
-})(ServiceUpdateStatusStateEnum || (ServiceUpdateStatusStateEnum = {}));
-export var ImageManifestSummaryKindEnum;
-(function (ImageManifestSummaryKindEnum) {
-    ImageManifestSummaryKindEnum["Empty"] = "";
-    ImageManifestSummaryKindEnum["Image"] = "image";
-    ImageManifestSummaryKindEnum["Attestation"] = "attestation";
-    ImageManifestSummaryKindEnum["Unknown"] = "unknown";
-})(ImageManifestSummaryKindEnum || (ImageManifestSummaryKindEnum = {}));
-export var TaskState;
-(function (TaskState) {
-    TaskState["NEW"] = "new";
-    TaskState["ALLOCATED"] = "allocated";
-    TaskState["PENDING"] = "pending";
-    TaskState["ASSIGNED"] = "assigned";
-    TaskState["ACCEPTED"] = "accepted";
-    TaskState["PREPARING"] = "preparing";
-    TaskState["READY"] = "ready";
-    TaskState["STARTING"] = "starting";
-    TaskState["RUNNING"] = "running";
-    TaskState["COMPLETE"] = "complete";
-    TaskState["SHUTDOWN"] = "shutdown";
-    TaskState["FAILED"] = "failed";
-    TaskState["REJECTED"] = "rejected";
-    TaskState["REMOVE"] = "remove";
-    TaskState["ORPHANED"] = "orphaned";
-})(TaskState || (TaskState = {}));
-export var NodeSpecRoleEnum;
-(function (NodeSpecRoleEnum) {
-    NodeSpecRoleEnum["EMPTY"] = "";
-    NodeSpecRoleEnum["WORKER"] = "worker";
-    NodeSpecRoleEnum["MANAGER"] = "manager";
-})(NodeSpecRoleEnum || (NodeSpecRoleEnum = {}));
-export var NodeSpecAvailabilityEnum;
-(function (NodeSpecAvailabilityEnum) {
-    NodeSpecAvailabilityEnum["EMPTY"] = "";
-    NodeSpecAvailabilityEnum["ACTIVE"] = "active";
-    NodeSpecAvailabilityEnum["PAUSE"] = "pause";
-    NodeSpecAvailabilityEnum["DRAIN"] = "drain";
-})(NodeSpecAvailabilityEnum || (NodeSpecAvailabilityEnum = {}));
-/** NodeState represents the state of a node. */
-export var NodeState;
-(function (NodeState) {
-    NodeState["UNKNOWN"] = "unknown";
-    NodeState["DOWN"] = "down";
-    NodeState["READY"] = "ready";
-    NodeState["DISCONNECTED"] = "disconnected";
-})(NodeState || (NodeState = {}));
-/** Reachability represents the reachability of a node. */
-export var NodeReachability;
-(function (NodeReachability) {
-    NodeReachability["UNKNOWN"] = "unknown";
-    NodeReachability["UNREACHABLE"] = "unreachable";
-    NodeReachability["REACHABLE"] = "reachable";
-})(NodeReachability || (NodeReachability = {}));
-export var SwarmSpecCaConfigExternalCasProtocolEnum;
-(function (SwarmSpecCaConfigExternalCasProtocolEnum) {
-    SwarmSpecCaConfigExternalCasProtocolEnum["EMPTY"] = "";
-    SwarmSpecCaConfigExternalCasProtocolEnum["CFSSL"] = "cfssl";
-})(SwarmSpecCaConfigExternalCasProtocolEnum || (SwarmSpecCaConfigExternalCasProtocolEnum = {}));
-export var VolumeScopeEnum;
-(function (VolumeScopeEnum) {
-    VolumeScopeEnum["Empty"] = "";
-    VolumeScopeEnum["Local"] = "local";
-    VolumeScopeEnum["Global"] = "global";
-})(VolumeScopeEnum || (VolumeScopeEnum = {}));
-export var ClusterVolumeSpecAccessModeScopeEnum;
-(function (ClusterVolumeSpecAccessModeScopeEnum) {
-    ClusterVolumeSpecAccessModeScopeEnum["Empty"] = "";
-    ClusterVolumeSpecAccessModeScopeEnum["Single"] = "single";
-    ClusterVolumeSpecAccessModeScopeEnum["Multi"] = "multi";
-})(ClusterVolumeSpecAccessModeScopeEnum || (ClusterVolumeSpecAccessModeScopeEnum = {}));
-export var ClusterVolumeSpecAccessModeSharingEnum;
-(function (ClusterVolumeSpecAccessModeSharingEnum) {
-    ClusterVolumeSpecAccessModeSharingEnum["Empty"] = "";
-    ClusterVolumeSpecAccessModeSharingEnum["None"] = "none";
-    ClusterVolumeSpecAccessModeSharingEnum["Readonly"] = "readonly";
-    ClusterVolumeSpecAccessModeSharingEnum["Onewriter"] = "onewriter";
-    ClusterVolumeSpecAccessModeSharingEnum["All"] = "all";
-})(ClusterVolumeSpecAccessModeSharingEnum || (ClusterVolumeSpecAccessModeSharingEnum = {}));
-export var ClusterVolumeSpecAccessModeAvailabilityEnum;
-(function (ClusterVolumeSpecAccessModeAvailabilityEnum) {
-    ClusterVolumeSpecAccessModeAvailabilityEnum["Empty"] = "";
-    ClusterVolumeSpecAccessModeAvailabilityEnum["Active"] = "active";
-    ClusterVolumeSpecAccessModeAvailabilityEnum["Pause"] = "pause";
-    ClusterVolumeSpecAccessModeAvailabilityEnum["Drain"] = "drain";
-})(ClusterVolumeSpecAccessModeAvailabilityEnum || (ClusterVolumeSpecAccessModeAvailabilityEnum = {}));
-export var ClusterVolumePublishStatusStateEnum;
-(function (ClusterVolumePublishStatusStateEnum) {
-    ClusterVolumePublishStatusStateEnum["Empty"] = "";
-    ClusterVolumePublishStatusStateEnum["PendingPublish"] = "pending-publish";
-    ClusterVolumePublishStatusStateEnum["Published"] = "published";
-    ClusterVolumePublishStatusStateEnum["PendingNodeUnpublish"] = "pending-node-unpublish";
-    ClusterVolumePublishStatusStateEnum["PendingControllerUnpublish"] = "pending-controller-unpublish";
-})(ClusterVolumePublishStatusStateEnum || (ClusterVolumePublishStatusStateEnum = {}));
 export var PortTypeEnum;
 (function (PortTypeEnum) {
     PortTypeEnum["EMPTY"] = "";
@@ -693,35 +296,19 @@ export var PortTypeEnum;
     PortTypeEnum["UDP"] = "udp";
     PortTypeEnum["SCTP"] = "sctp";
 })(PortTypeEnum || (PortTypeEnum = {}));
-/**
- * Combined state options for
- * both Server and Swarm based Stacks.
- */
 export var StackServiceState;
 (function (StackServiceState) {
-    /** (Swarm) All tasks OK */
     StackServiceState["Healthy"] = "Healthy";
-    /** (Swarm) Some tasks don't match desired state */
     StackServiceState["Unhealthy"] = "Unhealthy";
-    /** (Swarm) All tasks down. */
     StackServiceState["Down"] = "Down";
-    /** (Container) Container is running */
     StackServiceState["Running"] = "Running";
-    /** (Container) Container is created */
     StackServiceState["Created"] = "Created";
-    /** (Container) Container is paused */
     StackServiceState["Paused"] = "Paused";
-    /** (Container) Container is restarting */
     StackServiceState["Restarting"] = "Restarting";
-    /** (Container) Container is exited */
     StackServiceState["Exited"] = "Exited";
-    /** (Container) Container is stopping */
     StackServiceState["Stopping"] = "Stopping";
-    /** (Container) Container is removing */
     StackServiceState["Removing"] = "Removing";
-    /** (Container) Container is dead */
     StackServiceState["Dead"] = "Dead";
-    /** Unknown case */
     StackServiceState["Unknown"] = "Unknown";
 })(StackServiceState || (StackServiceState = {}));
 export var ProcedureState;
@@ -741,8 +328,6 @@ export var RepoState;
     RepoState["Cloning"] = "Cloning";
     /** Currently pulling */
     RepoState["Pulling"] = "Pulling";
-    /** Currently building */
-    RepoState["Building"] = "Building";
     /** Last clone / pull successful (or never cloned) */
     RepoState["Ok"] = "Ok";
     /** Last clone / pull failed */
@@ -797,28 +382,6 @@ export var StackState;
     /** Server not reachable for status */
     StackState["Unknown"] = "unknown";
 })(StackState || (StackState = {}));
-/**
- * Configures the behavior of [CreateTerminal] if the
- * specified terminal name already exists.
- */
-export var TerminalRecreateMode;
-(function (TerminalRecreateMode) {
-    /**
-     * Never kill the old terminal if it already exists.
-     * If the init command is different, returns error.
-     */
-    TerminalRecreateMode["Never"] = "Never";
-    /** Always kill the old terminal and create new one */
-    TerminalRecreateMode["Always"] = "Always";
-    /** Only kill and recreate if the command is different. */
-    TerminalRecreateMode["DifferentCommand"] = "DifferentCommand";
-})(TerminalRecreateMode || (TerminalRecreateMode = {}));
-/** Specify the container terminal mode (exec or attach) */
-export var ContainerTerminalMode;
-(function (ContainerTerminalMode) {
-    ContainerTerminalMode["Exec"] = "exec";
-    ContainerTerminalMode["Attach"] = "attach";
-})(ContainerTerminalMode || (ContainerTerminalMode = {}));
 export var ActionSortBy;
 (function (ActionSortBy) {
     /** Sort by name. Default. */
@@ -828,15 +391,6 @@ export var ActionSortBy;
     /** Sort by next scheduled run. */
     ActionSortBy["NextRun"] = "NextRun";
 })(ActionSortBy || (ActionSortBy = {}));
-export var AlerterSortBy;
-(function (AlerterSortBy) {
-    /** Sort by name. Default. */
-    AlerterSortBy["Name"] = "Name";
-    /** Sort by endpoint type. */
-    AlerterSortBy["Type"] = "Type";
-    /** Sort by enabled. */
-    AlerterSortBy["Enabled"] = "Enabled";
-})(AlerterSortBy || (AlerterSortBy = {}));
 export var ContainerSortBy;
 (function (ContainerSortBy) {
     /** Sort by container name. Default. */
@@ -854,35 +408,6 @@ export var ContainerSortBy;
     /** Sort by first volume. */
     ContainerSortBy["Volumes"] = "Volumes";
 })(ContainerSortBy || (ContainerSortBy = {}));
-export var BuilderSortBy;
-(function (BuilderSortBy) {
-    /** Sort by name. Default. */
-    BuilderSortBy["Name"] = "Name";
-    /** Sort by builder provider type. */
-    BuilderSortBy["Provider"] = "Provider";
-    /** Sort by instance type. */
-    BuilderSortBy["InstanceType"] = "InstanceType";
-})(BuilderSortBy || (BuilderSortBy = {}));
-export var BuildSortBy;
-(function (BuildSortBy) {
-    /** Sort by name. Default. */
-    BuildSortBy["Name"] = "Name";
-    /** Sort by source repo. */
-    BuildSortBy["Source"] = "Source";
-    /** Sort by state. */
-    BuildSortBy["State"] = "State";
-})(BuildSortBy || (BuildSortBy = {}));
-export var DeploymentSortBy;
-(function (DeploymentSortBy) {
-    /** Sort by name. Default. */
-    DeploymentSortBy["Name"] = "Name";
-    /** Sort by image. */
-    DeploymentSortBy["Image"] = "Image";
-    /** Sort by host Server / Swarm name. */
-    DeploymentSortBy["Host"] = "Host";
-    /** Sort by state. */
-    DeploymentSortBy["State"] = "State";
-})(DeploymentSortBy || (DeploymentSortBy = {}));
 export var ProcedureSortBy;
 (function (ProcedureSortBy) {
     /** Sort by name. Default. */
@@ -948,35 +473,11 @@ export var ServerSortBy;
 })(ServerSortBy || (ServerSortBy = {}));
 export var StackSortBy;
 (function (StackSortBy) {
-    /** Sort by name. Default. */
     StackSortBy["Name"] = "Name";
-    /** Sort by source repo. */
     StackSortBy["Source"] = "Source";
-    /** Sort by host Server / Swarm name. */
     StackSortBy["Host"] = "Host";
-    /** Sort by state. */
     StackSortBy["State"] = "State";
 })(StackSortBy || (StackSortBy = {}));
-export var SwarmSortBy;
-(function (SwarmSortBy) {
-    /** Sort by name. Default. */
-    SwarmSortBy["Name"] = "Name";
-    /** Sort by state. */
-    SwarmSortBy["State"] = "State";
-})(SwarmSortBy || (SwarmSortBy = {}));
-export var TerminalSortBy;
-(function (TerminalSortBy) {
-    /** Sort by name. Default. */
-    TerminalSortBy["Name"] = "Name";
-    /** Sort by target. */
-    TerminalSortBy["Target"] = "Target";
-    /** Sort by init command. */
-    TerminalSortBy["Command"] = "Command";
-    /** Sort by stored size. */
-    TerminalSortBy["Size"] = "Size";
-    /** Sort by created timestamp. */
-    TerminalSortBy["Created"] = "Created";
-})(TerminalSortBy || (TerminalSortBy = {}));
 export var ServiceUserQueryBehavior;
 (function (ServiceUserQueryBehavior) {
     /** Include service users in results. Default. */
@@ -990,8 +491,6 @@ export var DefaultRepoFolder;
 (function (DefaultRepoFolder) {
     /** /${root_directory}/stacks */
     DefaultRepoFolder["Stacks"] = "Stacks";
-    /** /${root_directory}/builds */
-    DefaultRepoFolder["Builds"] = "Builds";
     /** /${root_directory}/repos */
     DefaultRepoFolder["Repos"] = "Repos";
     /**
@@ -1114,13 +613,6 @@ export var SpecificPermission;
 (function (SpecificPermission) {
     /**
      * On **Server**
-     * - Access the terminal apis
-     * On **Stack / Deployment**
-     * - Access the container exec Apis
-     */
-    SpecificPermission["Terminal"] = "Terminal";
-    /**
-     * On **Server**
      * - Allowed to attach Stacks, Deployments, Repos, Builders to the Server
      * On **Builder**
      * - Allowed to attach Builds to the Builder
@@ -1158,3 +650,10 @@ export var SyncWebhookAction;
     SyncWebhookAction["Refresh"] = "Refresh";
     SyncWebhookAction["Sync"] = "Sync";
 })(SyncWebhookAction || (SyncWebhookAction = {}));
+export var TerminationSignal;
+(function (TerminationSignal) {
+    TerminationSignal["SigHup"] = "SIGHUP";
+    TerminationSignal["SigInt"] = "SIGINT";
+    TerminationSignal["SigQuit"] = "SIGQUIT";
+    TerminationSignal["SigTerm"] = "SIGTERM";
+})(TerminationSignal || (TerminationSignal = {}));

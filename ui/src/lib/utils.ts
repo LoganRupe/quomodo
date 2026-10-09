@@ -194,7 +194,6 @@ export function getUpdateQuery(target: Types.ResourceTarget) {
 export function resourceSyncNoChanges(sync: Types.ResourceSync) {
   return (
     (sync.info?.resource_updates?.length ?? 0) === 0 &&
-    (sync.info?.variable_updates?.length ?? 0) === 0 &&
     (sync.info?.user_group_updates?.length ?? 0) === 0
   );
 }

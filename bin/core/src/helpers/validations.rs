@@ -52,34 +52,3 @@ pub fn validate_api_key_name(name: &str) -> anyhow::Result<()> {
     .validate(name)
     .context("Failed to validate api key name")
 }
-
-/// Minimum length for variable names
-pub const MIN_VARIABLE_NAME_LENGTH: usize = 1;
-/// Maximum length for variable names
-pub const MAX_VARIABLE_NAME_LENGTH: usize = 500;
-
-/// Validate variable names
-///
-/// - Between [MIN_VARIABLE_NAME_LENGTH] and [MAX_VARIABLE_NAME_LENGTH] characters
-/// - Matches `^[a-zA-Z_][a-zA-Z0-9_]*$`
-pub fn validate_variable_name(name: &str) -> anyhow::Result<()> {
-  StringValidator::default()
-    .min_length(MIN_VARIABLE_NAME_LENGTH)
-    .max_length(MAX_VARIABLE_NAME_LENGTH)
-    .matches(StringValidatorMatches::VariableName)
-    .validate(name)
-    .context("Failed to validate variable name")
-}
-
-/// Maximum length for variable values
-pub const MAX_VARIABLE_VALUE_LENGTH: usize = 10000;
-
-/// Validate variable values
-///
-/// - Less than [MAX_VARIABLE_VALUE_LENGTH] characters
-pub fn validate_variable_value(value: &str) -> anyhow::Result<()> {
-  StringValidator::default()
-    .max_length(MAX_VARIABLE_VALUE_LENGTH)
-    .validate(value)
-    .context("Failed to validate variable value")
-}

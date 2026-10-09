@@ -72,8 +72,6 @@ pub mod update;
 pub mod user;
 /// Subtypes of [UserGroup][user_group::UserGroup].
 pub mod user_group;
-/// Subtypes of [Variable][variable::Variable]
-pub mod variable;
 
 #[typeshare(serialized_as = "number")]
 pub type I64 = i64;
@@ -1150,7 +1148,8 @@ pub enum Operation {
   RotateAllServerKeys,
   RotateCoreKeys,
 
-  // Variable
+  // Variable. Variables were removed in v0.2.0; kept so older Updates
+  // still deserialize.
   CreateVariable,
   UpdateVariableValue,
   DeleteVariable,

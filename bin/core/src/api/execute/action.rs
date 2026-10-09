@@ -43,7 +43,7 @@ use crate::{
   api::execute::ExecuteRequest,
   auth::KomodoAuthImpl,
   config::core_config,
-  helpers::{query::get_variables, update::update_update},
+  helpers::update::update_update,
   permission::get_check_permissions,
   resource::refresh_action_state_cache,
   state::{action_cancel_cache, action_states, db_client},
@@ -299,15 +299,12 @@ async fn interpolate(
   key: String,
   secret: String,
 ) -> mogh_error::Result<HashSet<(String, String)>> {
-  let variables = get_variables().await?;
-
-  // The action api key pair is the only secret interpolated into Actions.
+  // The action api key pair is the only thing interpolated into Actions.
   let mut secrets = std::collections::HashMap::new();
   secrets.insert(String::from("ACTION_API_KEY"), key);
   secrets.insert(String::from("ACTION_API_SECRET"), secret);
 
-  let mut interpolator =
-    Interpolator::new(Some(&variables), &secrets);
+  let mut interpolator = Interpolator::new(&secrets);
 
   interpolator
     .interpolate_string(contents)?

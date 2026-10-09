@@ -131,15 +131,6 @@ export function useOmniSearch(opened: boolean) {
             leftSection: <ICONS.Schedule size="1.3rem" />,
             onClick: () => nav("/schedules"),
           },
-          {
-            id: "Variables",
-            label: "Variables",
-            leftSection: <ICONS.Variable size="1.3rem" />,
-            onClick: () => {
-              setSettingsView("Variables");
-              nav("/settings");
-            },
-          },
           user?.admin && {
             id: "Users",
             label: "Users",

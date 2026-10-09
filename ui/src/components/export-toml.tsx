@@ -21,7 +21,6 @@ export interface ExportTomlProps {
   };
   userGroups?: string[];
   tags?: string[];
-  includeVariables?: boolean;
 }
 
 export default function ExportToml(props: ExportTomlProps) {
@@ -50,9 +49,8 @@ function ExportTomlInner({
   listQuery,
   userGroups,
   tags,
-  includeVariables,
 }: ExportTomlProps) {
-  const useAll = !(targets || listQuery || userGroups || includeVariables);
+  const useAll = !(targets || listQuery || userGroups);
 
   const listTargets = useRead(
     `List${listQuery?.type ?? "Server"}s`,
@@ -70,7 +68,6 @@ function ExportTomlInner({
     {
       targets: exportTargets ? exportTargets : [],
       user_groups: userGroups ? userGroups : [],
-      include_variables: includeVariables,
     },
     { enabled: !useAll && (!listQuery || !!listTargets) },
   );
@@ -80,7 +77,6 @@ function ExportTomlInner({
     {
       tags,
       include_resources: true,
-      include_variables: true,
       include_user_groups: true,
     },
     { enabled: useAll },

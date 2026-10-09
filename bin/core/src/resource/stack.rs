@@ -28,7 +28,7 @@ use crate::{
   config::core_config,
   helpers::{
     periphery_client,
-    query::{get_cached_stack_state, get_stack_state, get_variables},
+    query::{get_cached_stack_state, get_stack_state},
     repo_link,
   },
   monitor::refresh_server_cache,
@@ -227,11 +227,9 @@ impl super::KomodoResource for Stack {
       && let Ok(fresh) = super::get::<Stack>(&created.id).await
       && let Some(files) = fresh.info.remote_contents.as_ref()
     {
-      let variables = get_variables().await.unwrap_or_default();
       let mut names = files
         .iter()
         .flat_map(|f| quadlet::prepare::referenced_names(&f.contents))
-        .filter(|n| !variables.contains_key(n))
         .collect::<Vec<_>>();
       names.sort();
       names.dedup();

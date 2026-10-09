@@ -1,4 +1,3 @@
-import { useSettingsView } from "@/lib/hooks";
 import {
   ActionIcon,
   Divider,
@@ -16,7 +15,6 @@ import { useNavigate } from "react-router-dom";
 export default function KeyboardShortcuts() {
   const [opened, { open, close }] = useDisclosure();
   const nav = useNavigate();
-  const [_, setSettingsView] = useSettingsView();
 
   useShiftKeyListener("H", () => nav("/"));
   useShiftKeyListener("G", () => nav("/servers"));
@@ -24,10 +22,6 @@ export default function KeyboardShortcuts() {
   useShiftKeyListener("R", () => nav("/repos"));
   useShiftKeyListener("P", () => nav("/procedures"));
   useShiftKeyListener("C", () => nav("/schedules"));
-  useShiftKeyListener("V", () => {
-    setSettingsView("Variables");
-    nav("/settings");
-  });
 
   return (
     <>
@@ -46,7 +40,6 @@ export default function KeyboardShortcuts() {
           <KeyboardShortcut label="Go to Stacks" keys={["Shift", "Z"]} />
           <KeyboardShortcut label="Go to Repos" keys={["Shift", "R"]} />
           <KeyboardShortcut label="Go to Procedures" keys={["Shift", "P"]} />
-          <KeyboardShortcut label="Go to Variables" keys={["Shift", "V"]} />
           <KeyboardShortcut label="Go to Schedules" keys={["Shift", "C"]} />
 
           <KeyboardShortcut label="Search" keys={["Shift", "S"]} />

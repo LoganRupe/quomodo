@@ -224,59 +224,6 @@ export default function ResourceSyncPending({
         );
       })}
 
-      {/* PENDING VARIABLE UPDATES */}
-      {sync?.info?.variable_updates?.map((data, i) => {
-        return (
-          <Stack key={i} className="bordered-light" bdrs="md" p="xl">
-            <Text
-              ff="monospace"
-              c={diffTypeIntention(data.type, view === "Commit")}
-            >
-              {view === "Commit" ? reversePendingType(data.type) : data.type}{" "}
-              Variable
-            </Text>
-            {data.type === "Create" && (
-              <MonacoEditor
-                value={data.data.proposed}
-                language="fancy_toml"
-                enableFancyToml={enableFancyToml}
-                readOnly
-              />
-            )}
-            {data.type === "Update" && (
-              <>
-                {view === "Execute" && (
-                  <MonacoDiffEditor
-                    original={data.data.current}
-                    modified={data.data.proposed}
-                    language="fancy_toml"
-                    enableFancyToml={enableFancyToml}
-                    readOnly
-                  />
-                )}
-                {view === "Commit" && (
-                  <MonacoDiffEditor
-                    original={data.data.proposed}
-                    modified={data.data.current}
-                    language="fancy_toml"
-                    enableFancyToml={enableFancyToml}
-                    readOnly
-                  />
-                )}
-              </>
-            )}
-            {data.type === "Delete" && (
-              <MonacoEditor
-                value={data.data.current}
-                language="fancy_toml"
-                enableFancyToml={enableFancyToml}
-                readOnly
-              />
-            )}
-          </Stack>
-        );
-      })}
-
       {/* PENDING USER GROUP UPDATES */}
       {sync?.info?.user_group_updates?.map((data, i) => {
         return (

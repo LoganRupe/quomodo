@@ -13,7 +13,6 @@ mod sync;
 mod tags;
 mod user;
 mod user_group;
-mod variable;
 
 pub use action::*;
 pub use alert::*;
@@ -30,7 +29,6 @@ pub use sync::*;
 pub use tags::*;
 pub use user::*;
 pub use user_group::*;
-pub use variable::*;
 
 #[cfg(feature = "utoipa")]
 pub mod openapi;

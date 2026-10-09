@@ -168,7 +168,6 @@ impl Resolve<ReadArgs> for GetResourceSyncsSummary {
 
       if !(resource_sync.info.pending_deploys.is_empty()
         && resource_sync.info.resource_updates.is_empty()
-        && resource_sync.info.variable_updates.is_empty()
         && resource_sync.info.user_group_updates.is_empty())
       {
         res.pending += 1;

@@ -45,7 +45,6 @@ impl Resolve<crate::api::Args> for DeployStack {
       repo,
       git_token,
       registry_token,
-      variables,
       secrets,
       mut replacers,
       services,
@@ -113,7 +112,6 @@ impl Resolve<crate::api::Args> for DeployStack {
       &stack,
       &read.files,
       &read.blobs,
-      &variables,
       &secrets,
     ) {
       Ok(p) => p,

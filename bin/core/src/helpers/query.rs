@@ -22,7 +22,6 @@ use komodo_client::{
     tag::Tag,
     user::{User, admin_service_user},
     user_group::UserGroup,
-    variable::Variable,
   },
 };
 use mogh_auth_server::provider::oidc::SubjectIdentifier;
@@ -307,33 +306,6 @@ pub fn id_or_username_filter(id_or_username: &str) -> Document {
     Ok(id) => doc! { "_id": id },
     Err(_) => doc! { "username": id_or_username },
   }
-}
-
-pub async fn get_variable(name: &str) -> anyhow::Result<Variable> {
-  db_client()
-    .variables
-    .find_one(doc! { "name": &name })
-    .await
-    .context("failed at call to db")?
-    .with_context(|| {
-      format!("no variable found with given name: {name}")
-    })
-}
-
-/// Non-secret Variables by name. Secrets come from the secret store
-/// at deploy time and are never read from the database.
-pub async fn get_variables() -> anyhow::Result<HashMap<String, String>>
-{
-  let variables = find_collect(&db_client().variables, None, None)
-    .await
-    .context("failed to get all variables from db")?;
-  Ok(
-    variables
-      .into_iter()
-      .filter(|variable| !variable.is_secret)
-      .map(|variable| (variable.name, variable.value))
-      .collect(),
-  )
 }
 
 /// Get last time procedure / action was run using Update query.

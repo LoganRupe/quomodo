@@ -19,7 +19,6 @@ mod toml;
 mod update;
 mod user;
 mod user_group;
-mod variable;
 
 pub use action::*;
 pub use alert::*;
@@ -38,7 +37,6 @@ pub use toml::*;
 pub use update::*;
 pub use user::*;
 pub use user_group::*;
-pub use variable::*;
 
 use crate::entities::{
   ResourceTarget, Timelength, U64,

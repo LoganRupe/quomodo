@@ -64,7 +64,6 @@ import {
   Unlink,
   User,
   Users,
-  Variable,
   X,
   Zap,
 } from "lucide-react";
@@ -79,7 +78,6 @@ export const ICONS = {
   Stack: Layers,
   ResourceSync: FolderSync,
   ExportToml: FileDown,
-  Variable,
   Provider: CloudCog,
   // PAGES
   Dashboard: LayoutDashboard,

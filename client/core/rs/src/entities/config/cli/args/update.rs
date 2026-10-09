@@ -10,21 +10,6 @@ pub enum UpdateCommand {
   Stack(UpdateResource),
   /// Update a Syncs's configuration.
   Sync(UpdateResource),
-  /// Update a Variable's value. (alias: `var`)
-  #[clap(alias = "var")]
-  Variable {
-    /// The name of the variable.
-    name: String,
-    /// The value to set variable to.
-    value: String,
-    /// Whether the value should be set to secret.
-    /// If unset, will leave the variable secret setting as-is.
-    #[arg(long, short = 's')]
-    secret: Option<bool>,
-    /// Always continue on user confirmation prompts.
-    #[arg(long, short = 'y', default_value_t = false)]
-    yes: bool,
-  },
   /// Update a user's configuration, including assigning resetting password and assigning Super Admin
   User {
     /// The user to update

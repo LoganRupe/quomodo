@@ -19,8 +19,8 @@ use serde::{Deserialize, Serialize};
 
 /// Deploy the stack.
 ///
-/// Core resolves every `[[NAME]]` referenced in the stack files before calling this:
-/// non-secret Variables land in `variables`, secret store values land in `secrets`.
+/// Core resolves every `[[NAME]]` referenced in the stack files from the secret
+/// store before calling this, into `secrets`.
 /// The agent interpolates in memory. Secret values only ever reach the host as
 /// podman secrets, never as files under the quadlet directory.
 #[derive(Serialize, Deserialize, Debug, Clone, Resolve)]
@@ -31,9 +31,6 @@ pub struct DeployStack {
   pub repo: Option<Repo>,
   pub git_token: Option<String>,
   pub registry_token: Option<String>,
-  /// Non-secret variables, interpolated into every file.
-  #[serde(default)]
-  pub variables: HashMap<String, String>,
   /// Resolved secrets by name. Only allowed inside `Secret=` lines of unit files,
   /// or inside config files referenced as `Secret=file:<path>`.
   #[serde(default)]

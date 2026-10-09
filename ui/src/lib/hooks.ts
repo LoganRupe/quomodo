@@ -664,13 +664,12 @@ export function useTemplatesQueryBehavior() {
 }
 
 export type SettingsView =
-  | "Variables"
   | "Tags"
   | "Providers"
   | "Users"
   | "Onboarding";
 
-const viewAtom = atomWithStorage<SettingsView>("settings-view-v2", "Variables");
+const viewAtom = atomWithStorage<SettingsView>("settings-view-v3", "Tags");
 export function useSettingsView() {
   return useAtom<SettingsView>(viewAtom);
 }

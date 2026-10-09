@@ -48,8 +48,8 @@ pub fn format_log_grep(
 //  Git
 // =====
 
-/// Core has already interpolated variables into the environment
-/// and the on_clone / on_pull commands. The agent only writes and runs them.
+/// Writes the repo environment and runs the on_clone / on_pull commands
+/// as Core sent them.
 #[instrument(
   "PostRepoExecution",
   skip_all,

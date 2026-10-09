@@ -13,7 +13,6 @@ use super::{
   server::_PartialServerConfig,
   stack::_PartialStackConfig,
   sync::_PartialResourceSyncConfig,
-  variable::Variable,
 };
 
 /// Specifies resources to sync on Komodo
@@ -91,15 +90,6 @@ pub struct ResourcesToml {
   )]
   #[cfg_attr(feature = "schemars", schemars(rename = "user_group"))]
   pub user_groups: Vec<UserGroupToml>,
-
-  /// Declare a variable
-  #[serde(
-    default,
-    alias = "variable",
-    skip_serializing_if = "Vec::is_empty"
-  )]
-  #[cfg_attr(feature = "schemars", schemars(rename = "variable"))]
-  pub variables: Vec<Variable>,
 }
 
 #[typeshare]

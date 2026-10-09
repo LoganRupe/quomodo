@@ -46,10 +46,6 @@ pub struct ExportAllResourcesToToml {
   /// Accepts tag name or id. Empty array will not filter by tag.
   #[serde(default)]
   pub tags: Vec<String>,
-  /// Whether to include variables in the exported contents.
-  /// Default: false
-  #[serde(default)]
-  pub include_variables: bool,
   /// Whether to include user groups in the exported contents.
   /// Default: false
   #[serde(default)]
@@ -95,9 +91,6 @@ pub struct ExportResourcesToToml {
   /// The user group names or ids to include in the export.
   #[serde(default)]
   pub user_groups: Vec<String>,
-  /// Whether to include variables
-  #[serde(default)]
-  pub include_variables: bool,
   /// Pass an existing [ResourcesToml] to preserve
   /// the meta configuration.
   pub existing: Option<ResourcesToml>,

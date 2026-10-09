@@ -51,7 +51,6 @@ mod toml;
 mod update;
 mod user;
 mod user_group;
-mod variable;
 
 pub struct ReadArgs {
   pub user: User,
@@ -188,10 +187,6 @@ enum ReadRequest {
   // ==== ALERT ====
   ListAlerts(ListAlerts),
   GetAlert(GetAlert),
-
-  // ==== VARIABLE ====
-  GetVariable(GetVariable),
-  ListVariables(ListVariables),
 
   // ==== PROVIDER ====
   GetGitProviderAccount(GetGitProviderAccount),

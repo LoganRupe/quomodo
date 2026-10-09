@@ -264,7 +264,6 @@ async fn get_resource_sync_state(
   {
     ResourceSyncState::Failed
   } else if !data.resource_updates.is_empty()
-    || !data.variable_updates.is_empty()
     || !data.user_group_updates.is_empty()
     || !data.pending_deploys.is_empty()
   {

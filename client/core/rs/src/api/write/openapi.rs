@@ -59,12 +59,6 @@ use crate::api::write;
     write::refresh_resource_sync_pending,
     write::write_sync_file_contents,
     write::commit_sync,
-    // variable
-    write::create_variable,
-    write::update_variable_value,
-    write::update_variable_description,
-    write::update_variable_is_secret,
-    write::delete_variable,
     // terminal
     // alert
     write::close_alert,

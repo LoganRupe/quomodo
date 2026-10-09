@@ -35,8 +35,8 @@ format may still change between releases.
   files in volumes turn into `nobody`). `UserNS=auto:uidmapping=...` keeps
   its carve-outs; `UserNS=host` and friends are left alone; a pod member
   shares the pod's namespace.
-- **Secrets**: `[[NAME]]` resolves from non-secret Variables first, then from
-  the secret store named by the Stack's `secrets_collection`. Core fetches the
+- **Secrets**: `[[NAME]]` in a stack file is always a secret, read from the
+  secret store named by the Stack's `secrets_collection`. Core fetches the
   values at deploy time, sends them to the agent over the key-authenticated
   websocket, and the agent creates podman secrets. A secret may only be
   referenced on a `Secret=` line; a config file holding a secret reference is
@@ -44,21 +44,21 @@ format may still change between releases.
   with a resolved secret touches mongo. First provider: Vaultwarden or
   Bitwarden, over the Bitwarden vault protocol.
 
-Resources: Server, Stack, Repo, ResourceSync, Procedure, Action, Variables.
+Resources: Server, Stack, Repo, ResourceSync, Procedure, Action.
 Auth: local, OIDC, API keys. Webhooks: GitHub (Forgejo and Gitea send the
 same format) and GitLab. Alerts are recorded and shown in the UI; nothing
 sends them.
 
-Gone from upstream: Deployment, Build, Builder, Swarm, Alerter, Google and
-GitHub OAuth, terminals and container exec, docker and compose, image update
-polling. The Rust module names inside still say `komodo` and `periphery`,
+Gone from upstream: Deployment, Build, Builder, Swarm, Alerter, Variables,
+Google and GitHub OAuth, terminals and container exec, docker and compose,
+image update polling. The Rust module names inside still say `komodo` and `periphery`,
 and config environment variables still start with `KOMODO_` / `PERIPHERY_`.
 There is no migration from Komodo: stacks have to be rewritten as quadlets.
 
 ## Docs
 
 - [Install](docs/install.md): Core, agents, the first stack, webhooks
-- [Stacks](docs/stacks.md): files, variables and secrets, what a deploy
+- [Stacks](docs/stacks.md): files, secrets, what a deploy
   restarts, user namespaces
 - [Secrets](docs/secrets.md): providers and the vault service account
 - [Releasing](docs/releasing.md): tags, images, binaries

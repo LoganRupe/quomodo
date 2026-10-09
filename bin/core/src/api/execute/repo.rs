@@ -1,6 +1,3 @@
-use interpolate::Interpolator;
-use std::collections::HashSet;
-
 use anyhow::{Context, anyhow};
 use database::mungos::{
   by_id::update_one_by_id,
@@ -22,10 +19,7 @@ use periphery_client::api;
 
 use crate::{
   api::write::WriteArgs,
-  helpers::{
-    git_token, periphery_client, query::get_variables,
-    update::update_update,
-  },
+  helpers::{git_token, periphery_client, update::update_update},
   permission::get_check_permissions,
   resource::{self, refresh_repo_state_cache},
   state::{action_states, db_client},
@@ -123,11 +117,6 @@ impl Resolve<ExecuteArgs> for CloneRepo {
 
     let periphery = periphery_client(&server).await?;
 
-    // interpolate variables / secrets, returning the sanitizing replacers to send to
-    // periphery so it may sanitize the final command for safe logging (avoids exposing secret values)
-    let secret_replacers =
-      interpolate(&mut repo, &mut update).await?;
-
     let logs = match periphery
       .request(api::git::CloneRepo {
         args: (&repo).into(),
@@ -137,7 +126,7 @@ impl Resolve<ExecuteArgs> for CloneRepo {
         on_clone: repo.config.on_clone.into(),
         on_pull: repo.config.on_pull.into(),
         skip_secret_interp: repo.config.skip_secret_interp,
-        replacers: secret_replacers.into_iter().collect(),
+        replacers: Vec::new(),
       })
       .await
     {
@@ -268,11 +257,6 @@ impl Resolve<ExecuteArgs> for PullRepo {
 
     let periphery = periphery_client(&server).await?;
 
-    // interpolate variables / secrets, returning the sanitizing replacers to send to
-    // periphery so it may sanitize the final command for safe logging (avoids exposing secret values)
-    let secret_replacers =
-      interpolate(&mut repo, &mut update).await?;
-
     let logs = match periphery
       .request(api::git::PullRepo {
         args: (&repo).into(),
@@ -281,7 +265,7 @@ impl Resolve<ExecuteArgs> for PullRepo {
         env_file_path: repo.config.env_file_path,
         on_pull: repo.config.on_pull.into(),
         skip_secret_interp: repo.config.skip_secret_interp,
-        replacers: secret_replacers.into_iter().collect(),
+        replacers: Vec::new(),
       })
       .await
     {
@@ -364,31 +348,5 @@ async fn update_last_pulled_time(repo_name: &str) {
     warn!(
       "failed to update repo last_pulled_at | repo: {repo_name} | {e:#}",
     );
-  }
-}
-
-/// Non-secret Variables into the repo environment and on_clone / on_pull commands.
-#[instrument(
-  "Interpolate",
-  skip_all,
-  fields(
-    skip_secret_interp = repo.config.skip_secret_interp
-  )
-)]
-async fn interpolate(
-  repo: &mut Repo,
-  update: &mut Update,
-) -> anyhow::Result<HashSet<(String, String)>> {
-  if !repo.config.skip_secret_interp {
-    let variables = get_variables().await?;
-    let empty = Default::default();
-    let mut interpolator =
-      Interpolator::new(Some(&variables), &empty);
-    interpolator
-      .interpolate_repo(repo)?
-      .push_logs(&mut update.logs);
-    Ok(interpolator.secret_replacers)
-  } else {
-    Ok(Default::default())
   }
 }

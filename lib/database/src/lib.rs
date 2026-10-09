@@ -19,7 +19,6 @@ use komodo_client::entities::{
   update::Update,
   user::{User, UserConfig},
   user_group::UserGroup,
-  variable::Variable,
 };
 use mongo_indexed::{Document, create_index, create_unique_index};
 use mungos::{
@@ -45,7 +44,6 @@ pub struct Client {
   pub api_keys: Collection<ApiKey>,
   pub onboarding_keys: Collection<OnboardingKey>,
   pub tags: Collection<Tag>,
-  pub variables: Collection<Variable>,
   pub git_accounts: Collection<GitProviderAccount>,
   pub registry_accounts: Collection<ImageRegistryAccount>,
   pub updates: Collection<Update>,
@@ -78,7 +76,6 @@ impl Client {
       api_keys: mongo_indexed::collection(&db, true).await?,
       onboarding_keys: mongo_indexed::collection(&db, true).await?,
       tags: mongo_indexed::collection(&db, true).await?,
-      variables: mongo_indexed::collection(&db, true).await?,
       git_accounts: mongo_indexed::collection(&db, true).await?,
       registry_accounts: registry_accounts_collection(&db).await?,
       updates: mongo_indexed::collection(&db, true).await?,

@@ -6,7 +6,7 @@ After=db.service
 Image=docker.io/library/nginx:1.27
 Pod=app.pod
 Network=app.network
-Environment=DOMAIN=[[DOMAIN]]
+Environment=DOMAIN=app.example.com
 Secret=file:config.yml,type=mount,target=/etc/app/config.yml
 
 [Service]
