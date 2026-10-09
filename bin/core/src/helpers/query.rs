@@ -10,6 +10,7 @@ use komodo_client::{
   entities::{
     ResourceTarget,
     action::{Action, ActionState},
+    alerter::Alerter,
     docker::container::{
       ContainerListItem, ContainerStateStatusEnum,
     },
@@ -290,6 +291,9 @@ pub async fn get_user_permission_on_target(
     }
     ResourceTarget::ResourceSync(id) => {
       get_user_permission_on_resource::<ResourceSync>(user, id).await
+    }
+    ResourceTarget::Alerter(id) => {
+      get_user_permission_on_resource::<Alerter>(user, id).await
     }
   }
 }

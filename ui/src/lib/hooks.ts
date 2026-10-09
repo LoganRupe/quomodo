@@ -397,6 +397,18 @@ export function useAllResources(
       },
       { refetchInterval, enabled, placeholderData: keepPreviousData },
     ).data,
+    Alerter: useRead(
+      "ListAlerters",
+      {
+        query: {
+          terms: terms?.filter(
+            (term) => !termMatchesTypeKeyword("alerters", term),
+          ),
+        },
+        limit,
+      },
+      { refetchInterval, enabled, placeholderData: keepPreviousData },
+    ).data,
     ResourceSync: useRead(
       "ListResourceSyncs",
       {
@@ -637,7 +649,7 @@ export function usePermissions({ type, id }: Types.ResourceTarget) {
     type === "Server"
       ? user?.admin ||
         (!disable_non_admin_create && user?.create_server_permissions)
-      : type === "Procedure" || type === "Action"
+      : type === "Alerter" || type === "Procedure" || type === "Action"
         ? user?.admin
         : user?.admin || !disable_non_admin_create;
 
@@ -665,6 +677,7 @@ export function useTemplatesQueryBehavior() {
 
 export type SettingsView =
   | "Tags"
+  | "Alerters"
   | "Providers"
   | "Users"
   | "Onboarding";

@@ -39,6 +39,7 @@ use crate::{
 };
 
 mod action;
+mod alerter;
 mod maintenance;
 mod procedure;
 mod repo;
@@ -103,6 +104,8 @@ pub enum ExecuteRequest {
   RunSync(RunSync),
 
   // ==== ALERTER ====
+  TestAlerter(TestAlerter),
+  SendAlert(SendAlert),
 
   // ==== SERVER ====
   PruneImages(PruneImages),

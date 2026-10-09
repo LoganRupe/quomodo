@@ -82,6 +82,10 @@ export type ReadResponses = {
   // ==== BUILDER ====
 
   // ==== ALERTER ====
+  GetAlertersSummary: Types.GetAlertersSummaryResponse;
+  GetAlerter: Types.GetAlerterResponse;
+  ListAlerters: Types.ListAlertersResponse;
+  ListFullAlerters: Types.ListFullAlertersResponse;
 
   // ==== TOML ====
   ExportAllResourcesToToml: Types.ExportAllResourcesToTomlResponse;
@@ -187,6 +191,11 @@ export type WriteResponses = {
   // ==== BUILDER ====
 
   // ==== ALERTER ====
+  CreateAlerter: Types.Alerter;
+  CopyAlerter: Types.Alerter;
+  DeleteAlerter: Types.Alerter;
+  UpdateAlerter: Types.Alerter;
+  RenameAlerter: Types.Update;
 
   // ==== ONBOARDING KEY ====
   CreateOnboardingKey: Types.CreateOnboardingKeyResponse;
@@ -276,6 +285,8 @@ export type ExecuteResponses = {
   RunSync: Types.Update;
 
   // ==== ALERTER ====
+  TestAlerter: Types.Update;
+  SendAlert: Types.Update;
 
   // ==== SERVER ====
   PruneImages: Types.Update;

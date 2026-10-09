@@ -1,0 +1,172 @@
+use mogh_resolver::Resolve;
+use serde::{Deserialize, Serialize};
+use typeshare::typeshare;
+
+use crate::entities::{
+  U64,
+  alerter::{Alerter, AlerterListItem, AlerterQuery, AlerterSortBy},
+};
+
+use super::KomodoReadRequest;
+
+//
+
+#[cfg(feature = "utoipa")]
+#[utoipa::path(
+  post,
+  path = "/GetAlerter",
+  description = "Get a specific alerter.",
+  request_body(content = GetAlerter),
+  responses(
+    (status = 200, description = "The alerter", body = crate::entities::alerter::AlerterSchema),
+  ),
+)]
+pub fn get_alerter() {}
+
+/// Get a specific alerter. Response: [Alerter].
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug, Clone, Resolve)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[empty_traits(KomodoReadRequest)]
+#[response(GetAlerterResponse)]
+#[error(mogh_error::Error)]
+pub struct GetAlerter {
+  /// Id or name
+  #[serde(alias = "id", alias = "name")]
+  pub alerter: String,
+}
+
+#[typeshare]
+pub type GetAlerterResponse = Alerter;
+
+//
+
+#[cfg(feature = "utoipa")]
+#[utoipa::path(
+  post,
+  path = "/ListAlerters",
+  description = "List alerters matching optional query.",
+  request_body(content = ListAlerters),
+  responses(
+    (status = 200, description = "The list of alerters", body = ListAlertersResponse),
+  ),
+)]
+pub fn list_alerters() {}
+
+/// List alerters matching optional query. Response: [ListAlertersResponse].
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, Resolve)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[empty_traits(KomodoReadRequest)]
+#[response(ListAlertersResponse)]
+#[error(mogh_error::Error)]
+pub struct ListAlerters {
+  /// Structured query to filter alerters.
+  #[serde(default)]
+  pub query: AlerterQuery,
+
+  /// Retrieve more results by incrementing the page.
+  /// `page: 0` is default.
+  #[serde(default)]
+  pub page: U64,
+
+  /// Set the limit for number of resources per-page.
+  /// If not provided, uses the Core config
+  /// `default_pagination_limit` (default: 30).
+  ///
+  /// Passing `limit: 0` returns all results (unlimited).
+  ///
+  /// Note: the page logic relies on this being consistent
+  /// across queries for more pages.
+  pub limit: Option<U64>,
+
+  /// Sort the results by this field.
+  /// Defaults to Name. Non-Name sorts are applied in memory
+  /// after querying all matching resources.
+  #[serde(default)]
+  pub sort_by: AlerterSortBy,
+
+  /// Reverse the sort direction.
+  #[serde(default)]
+  pub sort_desc: bool,
+}
+
+#[typeshare]
+pub type ListAlertersResponse = Vec<AlerterListItem>;
+
+//
+
+#[cfg(feature = "utoipa")]
+#[utoipa::path(
+  post,
+  path = "/ListFullAlerters",
+  description = "List full alerters matching optional query.",
+  request_body(content = ListFullAlerters),
+  responses(
+    (status = 200, description = "The list of alerters", body = ListFullAlertersResponse),
+  ),
+)]
+pub fn list_full_alerters() {}
+
+/// List full alerters matching optional query. Response: [ListFullAlertersResponse].
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, Resolve)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[empty_traits(KomodoReadRequest)]
+#[response(ListFullAlertersResponse)]
+#[error(mogh_error::Error)]
+pub struct ListFullAlerters {
+  /// Structured query to filter alerters.
+  #[serde(default)]
+  pub query: AlerterQuery,
+
+  /// Retrieve more results by incrementing the page.
+  /// `page: 0` is default.
+  #[serde(default)]
+  pub page: U64,
+
+  /// Set the limit for number of resources per-page.
+  /// If not provided, uses the Core config
+  /// `default_pagination_limit` (default: 30).
+  ///
+  /// Passing `limit: 0` returns all results (unlimited).
+  ///
+  /// Note: the page logic relies on this being consistent
+  /// across queries for more pages.
+  pub limit: Option<U64>,
+}
+
+#[typeshare]
+pub type ListFullAlertersResponse = Vec<Alerter>;
+
+//
+
+#[cfg(feature = "utoipa")]
+#[utoipa::path(
+  post,
+  path = "/GetAlertersSummary",
+  description = "Gets a summary of data relating to all alerters.",
+  request_body(content = GetAlertersSummary),
+  responses(
+    (status = 200, description = "The alerters summary", body = GetAlertersSummaryResponse),
+  ),
+)]
+pub fn get_alerters_summary() {}
+
+/// Gets a summary of data relating to all alerters.
+/// Response: [GetAlertersSummaryResponse].
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug, Clone, Resolve)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[empty_traits(KomodoReadRequest)]
+#[response(GetAlertersSummaryResponse)]
+#[error(mogh_error::Error)]
+pub struct GetAlertersSummary {}
+
+/// Response for [GetAlertersSummary].
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+pub struct GetAlertersSummaryResponse {
+  pub total: u32,
+}

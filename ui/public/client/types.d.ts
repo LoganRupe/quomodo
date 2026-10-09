@@ -209,6 +209,154 @@ export interface ActionQuerySpecifics {
     scheduled?: boolean;
 }
 export type ActionQuery = ResourceQuery<ActionQuerySpecifics>;
+export type AlerterEndpoint = 
+/** Send alert serialized to JSON to an http endpoint. */
+{
+    type: "Custom";
+    params: CustomAlerterEndpoint;
+}
+/** Send alert to a Slack app */
+ | {
+    type: "Slack";
+    params: SlackAlerterEndpoint;
+}
+/** Send alert to a Discord app */
+ | {
+    type: "Discord";
+    params: DiscordAlerterEndpoint;
+}
+/** Send alert to Ntfy */
+ | {
+    type: "Ntfy";
+    params: NtfyAlerterEndpoint;
+}
+/** Send alert to Pushover */
+ | {
+    type: "Pushover";
+    params: PushoverAlerterEndpoint;
+};
+/** Used to reference a specific resource across all resource types */
+export type ResourceTarget = {
+    type: "System";
+    id: string;
+} | {
+    type: "Server";
+    id: string;
+} | {
+    type: "Stack";
+    id: string;
+} | {
+    type: "Repo";
+    id: string;
+} | {
+    type: "Procedure";
+    id: string;
+} | {
+    type: "Action";
+    id: string;
+} | {
+    type: "Alerter";
+    id: string;
+} | {
+    type: "ResourceSync";
+    id: string;
+};
+/** Types of maintenance schedules */
+export declare enum MaintenanceScheduleType {
+    /** Daily at the specified time */
+    Daily = "Daily",
+    /** Weekly on the specified day and time */
+    Weekly = "Weekly",
+    /** One-time maintenance on a specific date and time */
+    OneTime = "OneTime"
+}
+/** Represents a scheduled maintenance window */
+export interface MaintenanceWindow {
+    /** Name for the maintenance window (required) */
+    name: string;
+    /** Description of what maintenance is performed (optional) */
+    description?: string;
+    /**
+     * The type of maintenance schedule:
+     * - Daily (default)
+     * - Weekly
+     * - OneTime
+     */
+    schedule_type?: MaintenanceScheduleType;
+    /** For Weekly schedules: Specify the day of the week (Monday, Tuesday, etc.) */
+    day_of_week?: string;
+    /** For OneTime window: ISO 8601 date format (YYYY-MM-DD) */
+    date?: string;
+    /** Start hour in 24-hour format (0-23) (optional, defaults to 0) */
+    hour?: number;
+    /** Start minute (0-59) (optional, defaults to 0) */
+    minute?: number;
+    /** Duration of the maintenance window in minutes (required) */
+    duration_minutes: number;
+    /**
+     * Timezone for maintenance window specificiation.
+     * If empty, will use Core timezone.
+     */
+    timezone?: string;
+    /** Whether this maintenance window is currently enabled */
+    enabled: boolean;
+}
+export interface AlerterConfig {
+    /** Whether the alerter is enabled */
+    enabled?: boolean;
+    /**
+     * Where to route the alert messages.
+     *
+     * The endpoint url (and the ntfy email) may contain `[[NAME]]`
+     * references, resolved from `secrets_collection` when an alert is sent.
+     * Webhook urls carry their token, so keep them in the secret store.
+     *
+     * Default: Custom endpoint `http://localhost:7000`
+     */
+    endpoint?: AlerterEndpoint;
+    /**
+     * The secret store collection `[[NAME]]` references in the endpoint
+     * resolve from. Required if the endpoint references a secret.
+     */
+    secrets_collection?: string;
+    /**
+     * Only send specific alert types.
+     * If empty, will send all alert types.
+     */
+    alert_types?: AlertData["type"][];
+    /**
+     * Only send alerts on specific resources.
+     * If empty, will send alerts for all resources.
+     */
+    resources?: ResourceTarget[];
+    /** DON'T send alerts on these resources. */
+    except_resources?: ResourceTarget[];
+    /** Scheduled maintenance windows during which alerts will be suppressed. */
+    maintenance_windows?: MaintenanceWindow[];
+}
+export type Alerter = Resource<AlerterConfig, undefined>;
+export interface AlerterListItemInfo {
+    /** Whether alerter is enabled for sending alerts */
+    enabled: boolean;
+    /** The type of the alerter, eg. `Slack`, `Custom` */
+    endpoint_type: AlerterEndpoint["type"];
+}
+export type AlerterListItem = ResourceListItem<AlerterListItemInfo>;
+export interface AlerterQuerySpecifics {
+    /**
+     * Filter alerters by enabled.
+     * - `None`: Don't filter by enabled
+     * - `Some(true)`: Only include alerts with `enabled: true`
+     * - `Some(false)`: Only include alerts with `enabled: false`
+     */
+    enabled?: boolean;
+    /**
+     * Only include alerters with these endpoint types.
+     * If empty, don't filter by enpoint type.
+     */
+    types: AlerterEndpoint["type"][];
+}
+export type AlerterQuery = ResourceQuery<AlerterQuerySpecifics>;
 export type BatchExecutionResponseItem = {
     status: "Ok";
     data: Update;
@@ -262,6 +410,12 @@ export declare enum Operation {
     WriteSyncContents = "WriteSyncContents",
     CommitSync = "CommitSync",
     RunSync = "RunSync",
+    CreateAlerter = "CreateAlerter",
+    UpdateAlerter = "UpdateAlerter",
+    RenameAlerter = "RenameAlerter",
+    DeleteAlerter = "DeleteAlerter",
+    TestAlerter = "TestAlerter",
+    SendAlert = "SendAlert",
     ClearRepoCache = "ClearRepoCache",
     BackupCoreDatabase = "BackupCoreDatabase",
     RotateAllServerKeys = "RotateAllServerKeys",
@@ -276,29 +430,6 @@ export declare enum Operation {
     UpdateDockerRegistryAccount = "UpdateDockerRegistryAccount",
     DeleteDockerRegistryAccount = "DeleteDockerRegistryAccount"
 }
-/** Used to reference a specific resource across all resource types */
-export type ResourceTarget = {
-    type: "System";
-    id: string;
-} | {
-    type: "Server";
-    id: string;
-} | {
-    type: "Stack";
-    id: string;
-} | {
-    type: "Repo";
-    id: string;
-} | {
-    type: "Procedure";
-    id: string;
-} | {
-    type: "Action";
-    id: string;
-} | {
-    type: "ResourceSync";
-    id: string;
-};
 /** Represents the output of some command being run */
 export interface Log {
     /** A label for the log */
@@ -465,6 +596,12 @@ export type Execution =
  | {
     type: "CommitSync";
     params: CommitSync;
+} | {
+    type: "TestAlerter";
+    params: TestAlerter;
+} | {
+    type: "SendAlert";
+    params: SendAlert;
 } | {
     type: "PruneImages";
     params: PruneImages;
@@ -880,13 +1017,7 @@ export type AlertData =
         core_version: string;
     };
 }
-/**
- * A container's state has changed unexpectedly.
- * For swarms, this refers to swarm service.
- * A Deployment has an image update available
- * A Deployment has an image update available
- * A stack's state has changed unexpectedly.
- */
+/** A stack's state has changed unexpectedly. */
  | {
     type: "StackStateChange";
     data: {
@@ -904,12 +1035,7 @@ export type AlertData =
         to: StackState;
     };
 }
-/**
- * A Stack has an image update available
- * A Stack was auto updated
- * An AWS builder failed to terminate.
- * A resource sync has pending updates
- */
+/** A resource sync has pending updates */
  | {
     type: "ResourceSyncPendingUpdates";
     data: {
@@ -921,7 +1047,6 @@ export type AlertData =
 }
 /**
  * A build has failed
- * A repo has failed
  * A procedure has failed
  */
  | {
@@ -990,6 +1115,7 @@ export interface Alert {
     resolved_ts?: I64;
 }
 export type GetAlertResponse = Alert;
+export type GetAlerterResponse = Alerter;
 export type GetContainerLogResponse = Log;
 export type GetGitProviderAccountResponse = GitProviderAccount;
 export type GetImageRegistryAccountResponse = ImageRegistryAccount;
@@ -1327,46 +1453,6 @@ export interface ServerActionState {
     pruning_system: boolean;
 }
 export type GetServerActionStateResponse = ServerActionState;
-/** Types of maintenance schedules */
-export declare enum MaintenanceScheduleType {
-    /** Daily at the specified time */
-    Daily = "Daily",
-    /** Weekly on the specified day and time */
-    Weekly = "Weekly",
-    /** One-time maintenance on a specific date and time */
-    OneTime = "OneTime"
-}
-/** Represents a scheduled maintenance window */
-export interface MaintenanceWindow {
-    /** Name for the maintenance window (required) */
-    name: string;
-    /** Description of what maintenance is performed (optional) */
-    description?: string;
-    /**
-     * The type of maintenance schedule:
-     * - Daily (default)
-     * - Weekly
-     * - OneTime
-     */
-    schedule_type?: MaintenanceScheduleType;
-    /** For Weekly schedules: Specify the day of the week (Monday, Tuesday, etc.) */
-    day_of_week?: string;
-    /** For OneTime window: ISO 8601 date format (YYYY-MM-DD) */
-    date?: string;
-    /** Start hour in 24-hour format (0-23) (optional, defaults to 0) */
-    hour?: number;
-    /** Start minute (0-59) (optional, defaults to 0) */
-    minute?: number;
-    /** Duration of the maintenance window in minutes (required) */
-    duration_minutes: number;
-    /**
-     * Timezone for maintenance window specificiation.
-     * If empty, will use Core timezone.
-     */
-    timezone?: string;
-    /** Whether this maintenance window is currently enabled */
-    enabled: boolean;
-}
 /** Server configuration. */
 export interface ServerConfig {
     /** The address to use with links for containers on the server. */
@@ -1805,6 +1891,7 @@ export interface UserGroup {
 export type GetUserGroupResponse = UserGroup;
 export type JsonObject = any;
 export type ListActionsResponse = ActionListItem[];
+export type ListAlertersResponse = AlerterListItem[];
 export declare enum ContainerStateStatusEnum {
     Running = "running",
     Created = "created",
@@ -1915,6 +2002,7 @@ export type ListApiKeysForServiceUserResponse = ApiKey[];
 export type ListApiKeysResponse = ApiKey[];
 export type ListContainersResponse = ContainerListItem[];
 export type ListFullActionsResponse = Action[];
+export type ListFullAlertersResponse = Alerter[];
 export type ListFullProceduresResponse = Procedure[];
 export type ListFullReposResponse = Repo[];
 export type ListFullResourceSyncsResponse = ResourceSync[];
@@ -2397,6 +2485,7 @@ export type UpdateUserAdminResponse = NoData;
 export type UpdateUserBasePermissionsResponse = NoData;
 export type Usize = number;
 export type _PartialActionConfig = Partial<ActionConfig>;
+export type _PartialAlerterConfig = Partial<AlerterConfig>;
 export type _PartialGitProviderAccount = Partial<GitProviderAccount>;
 export type _PartialImageRegistryAccount = Partial<ImageRegistryAccount>;
 export type _PartialProcedureConfig = Partial<ProcedureConfig>;
@@ -2669,6 +2758,16 @@ export interface CopyAction {
     id: string;
 }
 /**
+ * Creates a new alerter with given `name` and the configuration
+ * of the alerter at the given `id`. Response: [Alerter].
+ */
+export interface CopyAlerter {
+    /** The name of the new alerter. */
+    name: string;
+    /** The id of the alerter to copy. */
+    id: string;
+}
+/**
  * Creates a new procedure with given `name` and the configuration
  * of the procedure at the given `id`. Response: [Procedure].
  */
@@ -2726,6 +2825,13 @@ export interface CreateAction {
     name: string;
     /** Optional partial config to initialize the action with. */
     config?: _PartialActionConfig;
+}
+/** Create an alerter. Response: [Alerter]. */
+export interface CreateAlerter {
+    /** The name given to newly created alerter. */
+    name: string;
+    /** Optional partial config to initialize the alerter with. */
+    config?: _PartialAlerterConfig;
 }
 /**
  * **Admin only**. Create an api key for a service user.
@@ -2876,12 +2982,25 @@ export interface CreateUserGroup {
     /** The name to assign to the new UserGroup */
     name: string;
 }
+/** Configuration for a Custom alerter endpoint. */
+export interface CustomAlerterEndpoint {
+    /** The http/s endpoint to send the POST to */
+    url: string;
+}
 /**
  * Deletes the action at the given id, and returns the deleted action.
  * Response: [Action]
  */
 export interface DeleteAction {
     /** The id or name of the action to delete. */
+    id: string;
+}
+/**
+ * Deletes the alerter at the given id, and returns the deleted alerter.
+ * Response: [Alerter]
+ */
+export interface DeleteAlerter {
+    /** The id or name of the alerter to delete. */
     id: string;
 }
 /**
@@ -3008,6 +3127,11 @@ export interface DestroyStack {
     /** Id or name */
     stack: string;
 }
+/** Configuration for a Discord alerter. */
+export interface DiscordAlerterEndpoint {
+    /** The Discord webhook url */
+    url: string;
+}
 export interface EnvironmentVar {
     variable: string;
     value: string;
@@ -3084,11 +3208,9 @@ export interface ResourcesToml {
     procedures?: ResourceToml<_PartialProcedureConfig>[];
     /** Declare an action */
     actions?: ResourceToml<_PartialActionConfig>[];
-    /**
-     * Declare an alerter
-     * Declare a builder
-     * Declare a resource sync
-     */
+    /** Declare an alerter */
+    alerters?: ResourceToml<_PartialAlerterConfig>[];
+    /** Declare a resource sync */
     resource_syncs?: ResourceToml<_PartialResourceSyncConfig>[];
     /** Declare a user group */
     user_groups?: UserGroupToml[];
@@ -3176,6 +3298,21 @@ export interface GetActionsSummaryResponse {
 /** Get an alert: Response: [Alert]. */
 export interface GetAlert {
     id: string;
+}
+/** Get a specific alerter. Response: [Alerter]. */
+export interface GetAlerter {
+    /** Id or name */
+    alerter: string;
+}
+/**
+ * Gets a summary of data relating to all alerters.
+ * Response: [GetAlertersSummaryResponse].
+ */
+export interface GetAlertersSummary {
+}
+/** Response for [GetAlertersSummary]. */
+export interface GetAlertersSummaryResponse {
+    total: number;
 }
 /**
  * Get the container log's tail, split by stdout/stderr.
@@ -3655,6 +3792,43 @@ export interface ListActions {
     /** Reverse the sort direction. */
     sort_desc?: boolean;
 }
+export declare enum AlerterSortBy {
+    /** Sort by name. Default. */
+    Name = "Name",
+    /** Sort by endpoint type. */
+    Type = "Type",
+    /** Sort by enabled. */
+    Enabled = "Enabled"
+}
+/** List alerters matching optional query. Response: [ListAlertersResponse]. */
+export interface ListAlerters {
+    /** Structured query to filter alerters. */
+    query?: AlerterQuery;
+    /**
+     * Retrieve more results by incrementing the page.
+     * `page: 0` is default.
+     */
+    page?: U64;
+    /**
+     * Set the limit for number of resources per-page.
+     * If not provided, uses the Core config
+     * `default_pagination_limit` (default: 30).
+     *
+     * Passing `limit: 0` returns all results (unlimited).
+     *
+     * Note: the page logic relies on this being consistent
+     * across queries for more pages.
+     */
+    limit?: U64;
+    /**
+     * Sort the results by this field.
+     * Defaults to Name. Non-Name sorts are applied in memory
+     * after querying all matching resources.
+     */
+    sort_by?: AlerterSortBy;
+    /** Reverse the sort direction. */
+    sort_desc?: boolean;
+}
 /**
  * Get a paginated list of alerts sorted by timestamp descending.
  * Response: [ListAlertsResponse].
@@ -3823,6 +3997,27 @@ export interface ListContainers {
 export interface ListFullActions {
     /** optional structured query to filter actions. */
     query?: ActionQuery;
+    /**
+     * Retrieve more results by incrementing the page.
+     * `page: 0` is default.
+     */
+    page?: U64;
+    /**
+     * Set the limit for number of resources per-page.
+     * If not provided, uses the Core config
+     * `default_pagination_limit` (default: 30).
+     *
+     * Passing `limit: 0` returns all results (unlimited).
+     *
+     * Note: the page logic relies on this being consistent
+     * across queries for more pages.
+     */
+    limit?: U64;
+}
+/** List full alerters matching optional query. Response: [ListFullAlertersResponse]. */
+export interface ListFullAlerters {
+    /** Structured query to filter alerters. */
+    query?: AlerterQuery;
     /**
      * Retrieve more results by incrementing the page.
      * `page: 0` is default.
@@ -4378,6 +4573,16 @@ export interface ListUsers {
      */
     service_users?: ServiceUserQueryBehavior;
 }
+/** Configuration for a Ntfy alerter. */
+export interface NtfyAlerterEndpoint {
+    /** The ntfy topic URL */
+    url: string;
+    /**
+     * Optional E-Mail Address to enable ntfy email notifications.
+     * SMTP must be configured on the ntfy server.
+     */
+    email?: string;
+}
 /**
  * Prunes the docker images on the target server. Response: [Update].
  *
@@ -4426,6 +4631,11 @@ export interface PushRecentlyViewed {
     /** The target to push. */
     resource: ResourceTarget;
 }
+/** Configuration for a Pushover alerter. */
+export interface PushoverAlerterEndpoint {
+    /** The pushover URL including application and user tokens in parameters. */
+    url: string;
+}
 /** Trigger a refresh of the cached latest hash and message. */
 export interface RefreshRepoCache {
     /** Id or name */
@@ -4459,6 +4669,16 @@ export interface RemoveUserFromUserGroup {
  */
 export interface RenameAction {
     /** The id or name of the Action to rename. */
+    id: string;
+    /** The new name. */
+    name: string;
+}
+/**
+ * Rename the Alerter at id to the given name.
+ * Response: [Update].
+ */
+export interface RenameAlerter {
+    /** The id or name of the Alerter to rename. */
     id: string;
     /** The new name. */
     name: string;
@@ -4702,6 +4922,24 @@ export interface SearchStackLog {
     /** Enable `--timestamps` */
     timestamps?: boolean;
 }
+/**
+ * Send a custom alert message to configured Alerters. Response: [Update].
+ * Alias: `alert`
+ */
+export interface SendAlert {
+    /** The alert level. */
+    level?: SeverityLevel;
+    /** The alert message. Required. */
+    message: string;
+    /** The alert details. Optional. */
+    details?: string;
+    /**
+     * Specific alerter names or ids.
+     * If empty / not passed, sends to all configured alerters
+     * with the `Custom` alert type whitelisted / not blacklisted.
+     */
+    alerters?: string[];
+}
 /** The health of a part of the server. */
 export interface ServerHealthState {
     level: SeverityLevel;
@@ -4750,6 +4988,11 @@ export interface SingleNetworkInterfaceUsage {
     /** The egress in bytes */
     egress_bytes: number;
 }
+/** Configuration for a Slack alerter. */
+export interface SlackAlerterEndpoint {
+    /** The Slack app webhook url */
+    url: string;
+}
 /** Sleeps for the specified time. */
 export interface Sleep {
     duration_ms?: I64;
@@ -4774,6 +5017,11 @@ export interface StopStack {
      */
     services?: string[];
 }
+/** Tests an Alerters ability to reach the configured endpoint. Response: [Update] */
+export interface TestAlerter {
+    /** Name or id */
+    alerter: string;
+}
 /** Info for the all system disks combined. */
 export interface TotalDiskUsage {
     /** Used portion in GB */
@@ -4796,6 +5044,20 @@ export interface UpdateAction {
     id: string;
     /** The partial config update to apply. */
     config: _PartialActionConfig;
+}
+/**
+ * Update the alerter at the given id, and return the updated alerter. Response: [Alerter].
+ *
+ * Note. This method updates only the fields which are set in the [PartialAlerterConfig][crate::entities::alerter::PartialAlerterConfig],
+ * effectively merging diffs into the final document. This is helpful when multiple users are using
+ * the same resources concurrently by ensuring no unintentional
+ * field changes occur from out of date local state.
+ */
+export interface UpdateAlerter {
+    /** The id of the alerter to update. */
+    id: string;
+    /** The partial config update to apply. */
+    config: _PartialAlerterConfig;
 }
 /**
  * **Admin only.** Update a git provider account.
@@ -5122,6 +5384,12 @@ export type ExecuteRequest = {
     type: "RunSync";
     params: RunSync;
 } | {
+    type: "TestAlerter";
+    params: TestAlerter;
+} | {
+    type: "SendAlert";
+    params: SendAlert;
+} | {
     type: "PruneImages";
     params: PruneImages;
 } | {
@@ -5379,6 +5647,18 @@ export type ReadRequest = {
     type: "ListFullResourceSyncs";
     params: ListFullResourceSyncs;
 } | {
+    type: "GetAlertersSummary";
+    params: GetAlertersSummary;
+} | {
+    type: "GetAlerter";
+    params: GetAlerter;
+} | {
+    type: "ListAlerters";
+    params: ListAlerters;
+} | {
+    type: "ListFullAlerters";
+    params: ListFullAlerters;
+} | {
     type: "ExportAllResourcesToToml";
     params: ExportAllResourcesToToml;
 } | {
@@ -5612,6 +5892,21 @@ export type WriteRequest = {
 } | {
     type: "RefreshResourceSyncPending";
     params: RefreshResourceSyncPending;
+} | {
+    type: "CreateAlerter";
+    params: CreateAlerter;
+} | {
+    type: "CopyAlerter";
+    params: CopyAlerter;
+} | {
+    type: "DeleteAlerter";
+    params: DeleteAlerter;
+} | {
+    type: "UpdateAlerter";
+    params: UpdateAlerter;
+} | {
+    type: "RenameAlerter";
+    params: RenameAlerter;
 } | {
     type: "CreateOnboardingKey";
     params: CreateOnboardingKey;

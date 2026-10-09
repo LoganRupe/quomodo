@@ -51,6 +51,10 @@ export type ReadResponses = {
     GetResourceSyncActionState: Types.GetResourceSyncActionStateResponse;
     ListResourceSyncs: Types.ListResourceSyncsResponse;
     ListFullResourceSyncs: Types.ListFullResourceSyncsResponse;
+    GetAlertersSummary: Types.GetAlertersSummaryResponse;
+    GetAlerter: Types.GetAlerterResponse;
+    ListAlerters: Types.ListAlertersResponse;
+    ListFullAlerters: Types.ListFullAlertersResponse;
     ExportAllResourcesToToml: Types.ExportAllResourcesToTomlResponse;
     ExportResourcesToToml: Types.ExportResourcesToTomlResponse;
     GetTag: Types.GetTagResponse;
@@ -114,6 +118,11 @@ export type WriteResponses = {
     CommitSync: Types.Update;
     WriteSyncFileContents: Types.Update;
     RefreshResourceSyncPending: Types.ResourceSync;
+    CreateAlerter: Types.Alerter;
+    CopyAlerter: Types.Alerter;
+    DeleteAlerter: Types.Alerter;
+    UpdateAlerter: Types.Alerter;
+    RenameAlerter: Types.Update;
     CreateOnboardingKey: Types.CreateOnboardingKeyResponse;
     UpdateOnboardingKey: Types.UpdateOnboardingKeyResponse;
     DeleteOnboardingKey: Types.DeleteOnboardingKeyResponse;
@@ -171,6 +180,8 @@ export type ExecuteResponses = {
     BatchRunAction: Types.BatchExecutionResponse;
     CancelAction: Types.Update;
     RunSync: Types.Update;
+    TestAlerter: Types.Update;
+    SendAlert: Types.Update;
     PruneImages: Types.Update;
     PruneSystem: Types.Update;
     ClearRepoCache: Types.Update;

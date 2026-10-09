@@ -10,6 +10,7 @@ use komodo_client::{
   entities::{
     Operation, ResourceTarget, ResourceTargetVariant,
     action::Action,
+    alerter::Alerter,
     permission::PermissionLevel,
     procedure::{
       PartialProcedureConfig, Procedure, ProcedureConfig,
@@ -240,6 +241,22 @@ async fn validate_config(
               .await?;
               params.sync = sync.id;
             }
+            // Special: SendAlert checks a Vec of alerters
+            Execution::SendAlert(params) => {
+              let mut alerters = Vec::with_capacity(params.alerters.len());
+              for alerter in &params.alerters {
+                alerters.push(
+                  super::get_check_permissions::<Alerter>(
+                    alerter,
+                    user,
+                    PermissionLevel::Execute.into(),
+                  )
+                  .await?
+                  .id,
+                );
+              }
+              params.alerters = alerters;
+            }
             Execution::None(_) | Execution::Sleep(_) => {}
           }
         };
@@ -270,6 +287,7 @@ async fn validate_config(
           (StopStack, Stack, stack),
           (DestroyStack, Stack, stack),
           // Alerter
+          (TestAlerter, Alerter, alerter),
           // Swarm
         ],
         batch_admin: [

@@ -421,5 +421,19 @@ async fn extract_resource_target_with_validation(
         .id;
       Ok((ResourceTargetVariant::ResourceSync, id))
     }
+    ResourceTarget::Alerter(ident) => {
+      let filter = match ObjectId::from_str(ident) {
+        Ok(id) => doc! { "_id": id },
+        Err(_) => doc! { "name": ident },
+      };
+      let id = db_client()
+        .alerters
+        .find_one(filter)
+        .await
+        .context("Failed to query db for alerters")?
+        .context("No matching alerter found")?
+        .id;
+      Ok((ResourceTargetVariant::Alerter, id))
+    }
   }
 }

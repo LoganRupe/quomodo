@@ -10,6 +10,7 @@ import { usableResourcePath } from "@/lib/utils";
 import {
   RequiredResourceComponents,
   ResourceComponents,
+  SETTINGS_RESOURCES,
   UsableResource,
 } from "@/resources";
 import { ICONS } from "@/lib/icons";
@@ -28,14 +29,18 @@ export default function DashboardTables() {
 
   const Tables = useMemo(
     () =>
-      Object.entries(ResourceComponents).map(([type, RC]) => (
-        <TableSection
-          key={type}
-          type={type as UsableResource}
-          RC={RC}
-          terms={terms}
-        />
-      )),
+      Object.entries(ResourceComponents)
+        .filter(
+          ([type]) => !SETTINGS_RESOURCES.includes(type as UsableResource),
+        )
+        .map(([type, RC]) => (
+          <TableSection
+            key={type}
+            type={type as UsableResource}
+            RC={RC}
+            terms={terms}
+          />
+        )),
     [terms],
   );
   return (

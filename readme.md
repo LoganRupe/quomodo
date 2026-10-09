@@ -44,12 +44,12 @@ format may still change between releases.
   with a resolved secret touches mongo. First provider: Vaultwarden or
   Bitwarden, over the Bitwarden vault protocol.
 
-Resources: Server, Stack, Repo, ResourceSync, Procedure, Action.
+Resources: Server, Stack, Repo, ResourceSync, Procedure, Action, Alerter.
 Auth: local, OIDC, API keys. Webhooks: GitHub (Forgejo and Gitea send the
-same format) and GitLab. Alerts are recorded and shown in the UI; nothing
-sends them.
+same format) and GitLab. Alerters send alerts to a Custom webhook, Slack,
+Discord, ntfy or Pushover, with their tokens kept in the secret store.
 
-Gone from upstream: Deployment, Build, Builder, Swarm, Alerter, Variables,
+Gone from upstream: Deployment, Build, Builder, Swarm, Variables,
 Google and GitHub OAuth, terminals and container exec, docker and compose,
 image update polling. The Rust module names inside still say `komodo` and `periphery`,
 and config environment variables still start with `KOMODO_` / `PERIPHERY_`.
@@ -61,6 +61,8 @@ There is no migration from Komodo: stacks have to be rewritten as quadlets.
 - [Stacks](docs/stacks.md): files, secrets, what a deploy
   restarts, user namespaces
 - [Secrets](docs/secrets.md): providers and the vault service account
+- [Alerters](docs/alerters.md): where alerts go, and keeping webhook tokens
+  out of the database
 - [Releasing](docs/releasing.md): tags, images, binaries
 - [Security](SECURITY.md): trust model and reporting
 - [Contributing](CONTRIBUTING.md)

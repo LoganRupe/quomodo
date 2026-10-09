@@ -2,8 +2,9 @@ use anyhow::anyhow;
 use komodo_client::{
   api::write::{UpdateResourceMeta, UpdateResourceMetaResponse},
   entities::{
-    ResourceTarget, action::Action, procedure::Procedure, repo::Repo,
-    server::Server, stack::Stack, sync::ResourceSync,
+    ResourceTarget, action::Action, alerter::Alerter,
+    procedure::Procedure, repo::Repo, server::Server, stack::Stack,
+    sync::ResourceSync,
   },
 };
 use mogh_error::AddStatusCodeError;
@@ -57,6 +58,9 @@ impl Resolve<WriteArgs> for UpdateResourceMeta {
       }
       ResourceTarget::Action(id) => {
         resource::update_meta::<Action>(&id, meta, args).await?;
+      }
+      ResourceTarget::Alerter(id) => {
+        resource::update_meta::<Alerter>(&id, meta, args).await?;
       }
       ResourceTarget::ResourceSync(id) => {
         resource::update_meta::<ResourceSync>(&id, meta, args)

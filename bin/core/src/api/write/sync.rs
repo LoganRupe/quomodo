@@ -15,6 +15,7 @@ use komodo_client::{
     self, Operation, RepoExecutionArgs, ResourceTarget,
     action::Action,
     alert::{Alert, AlertData, SeverityLevel},
+    alerter::Alerter,
     all_logs_success, komodo_timestamp,
     permission::PermissionLevel,
     procedure::Procedure,
@@ -31,6 +32,7 @@ use mogh_resolver::Resolve;
 use tracing::Instrument;
 
 use crate::{
+  alert::send_alerts,
   api::read::ReadArgs,
   config::core_config,
   helpers::{
@@ -791,6 +793,7 @@ impl Resolve<WriteArgs> for RefreshResourceSyncPending {
             (Repo, repos),
             (Procedure, procedures),
             (Action, actions),
+            (Alerter, alerters),
             (ResourceSync, resource_syncs),
           );
 
@@ -865,6 +868,7 @@ impl Resolve<WriteArgs> for RefreshResourceSyncPending {
     // check to update alert
     let id = sync.id.clone();
     let name = sync.name.clone();
+    let pending_alert = sync.config.pending_alert;
     tokio::task::spawn(async move {
       let db = db_client();
       let Some(existing) = db_client()
@@ -899,6 +903,9 @@ impl Resolve<WriteArgs> for RefreshResourceSyncPending {
             .context("failed to open existing pending resource sync updates alert")
             .inspect_err(|e| warn!("{e:#}"))
             .ok();
+          if pending_alert {
+            send_alerts(&[alert]).await;
+          }
         }
         // CLOSE ALERT
         (Some(existing), false) => {

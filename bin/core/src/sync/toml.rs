@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use anyhow::Context;
 use indexmap::IndexMap;
 use komodo_client::entities::{
-  action::Action, procedure::Procedure, repo::Repo,
+  action::Action, alerter::Alerter, procedure::Procedure, repo::Repo,
   resource::Resource, server::Server, stack::Stack,
   sync::ResourceSync, tag::Tag, toml::ResourceToml,
 };
@@ -143,6 +143,7 @@ pub fn convert_resource<R: KomodoResource>(
 
 impl ToToml for Server {}
 impl ToToml for Action {}
+impl ToToml for Alerter {}
 impl ToToml for ResourceSync {}
 
 impl ToToml for Stack {

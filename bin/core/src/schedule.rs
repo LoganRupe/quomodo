@@ -24,6 +24,7 @@ use mogh_resolver::Resolve;
 use uuid::Uuid;
 
 use crate::{
+  alert::send_alerts,
   api::execute::{ExecuteArgs, ExecuteRequest},
   config::core_config,
   helpers::update::init_execution_update,
@@ -83,6 +84,7 @@ pub fn spawn_schedule_executor() {
                         "Failed to record schedule alert | {e:#}"
                       );
                     }
+                    send_alerts(&[alert]).await;
                   }
 
                   let request =
@@ -162,6 +164,7 @@ pub fn spawn_schedule_executor() {
                         "Failed to record schedule alert | {e:#}"
                       );
                     }
+                    send_alerts(&[alert]).await;
                   }
 
                   let request =

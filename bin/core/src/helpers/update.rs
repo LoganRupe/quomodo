@@ -6,6 +6,7 @@ use database::mungos::{
 use komodo_client::entities::{
   Operation, ResourceTarget,
   action::Action,
+  alerter::Alerter,
   komodo_timestamp,
   procedure::Procedure,
   repo::Repo,
@@ -178,6 +179,8 @@ pub async fn init_execution_update(
       (CancelAction, Action, action),
       // Resource Sync
       (RunSync, ResourceSync, sync),
+      // Alerter
+      (TestAlerter, Alerter, alerter),
       // Stack (simple)
     ],
     batch: [
@@ -199,6 +202,7 @@ pub async fn init_execution_update(
       DestroyStack,
     ],
     system: [
+      SendAlert,
       ClearRepoCache,
       BackupCoreDatabase,
       RotateAllServerKeys,

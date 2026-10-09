@@ -45,5 +45,8 @@ Know these before you deploy it:
 - **Core can read the vault.** With the Vaultwarden provider, Core holds an
   API key and master password that decrypt every collection the service
   account can see. Limit that account to the collections Stacks use.
+- **Alerters send outbound.** Core posts alerts to the endpoints you
+  configure. Keep webhook tokens in the secret store with `[[NAME]]`;
+  a token typed straight into an endpoint url is stored in mongo.
 - **Agents listen on nothing.** There is no inbound port, passkey or
   terminal on an agent host.

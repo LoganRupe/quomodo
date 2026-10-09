@@ -24,6 +24,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
+  alert::send_alerts,
   helpers::{procedure::execute_procedure, update::update_update},
   permission::get_check_permissions,
   resource::refresh_procedure_state_cache,
@@ -198,6 +199,7 @@ fn resolve_inner(
         if let Err(e) = db_client().alerts.insert_one(&alert).await {
           error!("Failed to record procedure failure alert | {e:#}");
         }
+        send_alerts(&[alert]).await;
       });
     }
 

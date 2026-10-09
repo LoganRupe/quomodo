@@ -7,7 +7,9 @@ never written to mongo, the repo clone, or a file under `/etc`.
 them.
 
 Each Stack names one collection with `secrets_collection`. A Stack that
-references a secret without naming a collection fails to deploy.
+references a secret without naming a collection fails to deploy. Alerters
+resolve `[[NAME]]` in their endpoint url the same way, from their own
+`secrets_collection` ([alerters.md](alerters.md)).
 
 ## Providers
 

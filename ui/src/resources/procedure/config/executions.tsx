@@ -565,6 +565,31 @@ export const PROCEDURE_EXECUTIONS: ProcedureExecutions = {
       </Group>
     ),
   },
+  TestAlerter: {
+    params: { alerter: "" },
+    Component: ({ params, setParams, disabled }) => (
+      <ResourceSelector
+        type="Alerter"
+        selected={params.alerter}
+        onSelect={(alerter) => setParams({ alerter })}
+        disabled={disabled}
+      />
+    ),
+  },
+  SendAlert: {
+    params: { message: "" },
+    Component: ({ params, setParams, disabled }) => (
+      <TextUpdateModal
+        title="Alert message"
+        value={params.message}
+        placeholder="Configure custom alert message"
+        onUpdate={(message) => setParams({ ...params, message })}
+        disabled={disabled}
+        useMonaco
+        monacoLanguage={undefined}
+      />
+    ),
+  },
   Sleep: {
     params: { duration_ms: 0 },
     Component: ({ params, setParams, disabled }) => {

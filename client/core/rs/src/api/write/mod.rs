@@ -1,5 +1,6 @@
 mod action;
 mod alert;
+mod alerter;
 mod api_key;
 mod onboarding_key;
 mod permissions;
@@ -16,6 +17,7 @@ mod user_group;
 
 pub use action::*;
 pub use alert::*;
+pub use alerter::*;
 pub use api_key::*;
 pub use onboarding_key::*;
 pub use permissions::*;

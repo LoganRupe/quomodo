@@ -11,6 +11,7 @@ use komodo_client::{
   entities::{
     self, ResourceTargetVariant,
     action::Action,
+    alerter::Alerter,
     komodo_timestamp,
     permission::PermissionLevel,
     procedure::Procedure,
@@ -157,6 +158,7 @@ impl Resolve<ExecuteArgs> for RunSync {
             (Repo, repos),
             (Procedure, procedures),
             (Action, actions),
+            (Alerter, alerters),
             (ResourceSync, syncs),
           )
         })
@@ -214,6 +216,7 @@ impl Resolve<ExecuteArgs> for RunSync {
       (repo_deltas, Repo, repos),
       (procedure_deltas, Procedure, procedures),
       (action_deltas, Action, actions),
+      (alerter_deltas, Alerter, alerters),
       (resource_sync_deltas, ResourceSync, resource_syncs),
     );
 
@@ -242,6 +245,7 @@ impl Resolve<ExecuteArgs> for RunSync {
       && repo_deltas.no_changes()
       && procedure_deltas.no_changes()
       && action_deltas.no_changes()
+      && alerter_deltas.no_changes()
       && user_groups_to_create.is_empty()
       && user_groups_to_update.is_empty()
       && user_groups_to_delete.is_empty()
@@ -286,6 +290,10 @@ impl Resolve<ExecuteArgs> for RunSync {
     maybe_extend(
       &mut update.logs,
       Action::execute_sync_updates(action_deltas).await,
+    );
+    maybe_extend(
+      &mut update.logs,
+      Alerter::execute_sync_updates(alerter_deltas).await,
     );
 
     // Depends on server

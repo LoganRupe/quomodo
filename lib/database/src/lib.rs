@@ -4,6 +4,7 @@ use anyhow::{Context, anyhow};
 use komodo_client::entities::{
   action::Action,
   alert::Alert,
+  alerter::Alerter,
   api_key::ApiKey,
   config::DatabaseConfig,
   onboarding_key::OnboardingKey,
@@ -54,6 +55,7 @@ pub struct Client {
   pub repos: Collection<Repo>,
   pub procedures: Collection<Procedure>,
   pub actions: Collection<Action>,
+  pub alerters: Collection<Alerter>,
   pub resource_syncs: Collection<ResourceSync>,
   pub stacks: Collection<Stack>,
   //
@@ -86,6 +88,7 @@ impl Client {
       repos: resource_collection(&db, "Repo").await?,
       procedures: resource_collection(&db, "Procedure").await?,
       actions: resource_collection(&db, "Action").await?,
+      alerters: resource_collection(&db, "Alerter").await?,
       resource_syncs: resource_collection(&db, "ResourceSync")
         .await?,
       stacks: resource_collection(&db, "Stack").await?,

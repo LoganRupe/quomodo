@@ -161,10 +161,6 @@ pub enum AlertData {
     core_version: String,
   },
 
-  /// A container's state has changed unexpectedly.
-  /// For swarms, this refers to swarm service.
-  /// A Deployment has an image update available
-  /// A Deployment has an image update available
   /// A stack's state has changed unexpectedly.
   StackStateChange {
     /// The id of the stack
@@ -181,9 +177,6 @@ pub enum AlertData {
     to: StackState,
   },
 
-  /// A Stack has an image update available
-  /// A Stack was auto updated
-  /// An AWS builder failed to terminate.
   /// A resource sync has pending updates
   ResourceSyncPendingUpdates {
     /// The id of the resource sync
@@ -193,7 +186,6 @@ pub enum AlertData {
   },
 
   /// A build has failed
-  /// A repo has failed
   /// A procedure has failed
   ProcedureFailed {
     /// The id of the procedure

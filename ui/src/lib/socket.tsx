@@ -256,6 +256,15 @@ function onUpdate(
         ["GetResourceSync"],
       );
     }
+
+    if (update.target.type === "Alerter") {
+      invalidate(
+        ["ListAlerters"],
+        ["ListFullAlerters"],
+        ["GetAlertersSummary"],
+        ["GetAlerter"],
+      );
+    }
   }
 
   // Run any attached handlers

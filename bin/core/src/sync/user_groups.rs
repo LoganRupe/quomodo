@@ -365,6 +365,13 @@ pub async fn get_updates_for_execution(
             .map(|b| b.name.clone())
             .unwrap_or_default()
         }
+        ResourceTarget::Alerter(id) => {
+          *id = all_resources
+            .alerters
+            .get(id)
+            .map(|b| b.name.clone())
+            .unwrap_or_default()
+        }
       }
       PermissionToml {
         target: p.resource_target,
@@ -828,6 +835,18 @@ async fn expand_user_group_permissions(
           });
         expanded.extend(permissions);
       }
+      ResourceTargetVariant::Alerter => {
+        let permissions = all_resources
+          .alerters
+          .values()
+          .filter(|resource| matcher.is_match(&resource.name))
+          .map(|resource| PermissionToml {
+            target: ResourceTarget::Alerter(resource.name.clone()),
+            level: permission.level,
+            specific: permission.specific.clone(),
+          });
+        expanded.extend(permissions);
+      }
       ResourceTargetVariant::ResourceSync => {
         let permissions = all_resources
           .syncs
@@ -1002,6 +1021,13 @@ pub async fn convert_user_groups(
         ResourceTarget::ResourceSync(id) => {
           *id = all
             .syncs
+            .get(id)
+            .map(|r| r.name.clone())
+            .unwrap_or_default()
+        }
+        ResourceTarget::Alerter(id) => {
+          *id = all
+            .alerters
             .get(id)
             .map(|r| r.name.clone())
             .unwrap_or_default()

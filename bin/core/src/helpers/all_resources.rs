@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use komodo_client::entities::{
-  action::Action, procedure::Procedure, repo::Repo, server::Server,
-  stack::Stack, sync::ResourceSync,
+  action::Action, alerter::Alerter, procedure::Procedure, repo::Repo,
+  server::Server, stack::Stack, sync::ResourceSync,
 };
 
 #[derive(Debug, Default)]
@@ -12,6 +12,7 @@ pub struct AllResourcesById {
   pub repos: HashMap<String, Repo>,
   pub procedures: HashMap<String, Procedure>,
   pub actions: HashMap<String, Action>,
+  pub alerters: HashMap<String, Alerter>,
   pub syncs: HashMap<String, ResourceSync>,
 }
 
@@ -36,6 +37,10 @@ impl AllResourcesById {
         )
         .await?,
       actions: crate::resource::get_id_to_resource_map::<Action>(
+        id_to_tags, match_tags,
+      )
+      .await?,
+      alerters: crate::resource::get_id_to_resource_map::<Alerter>(
         id_to_tags, match_tags,
       )
       .await?,

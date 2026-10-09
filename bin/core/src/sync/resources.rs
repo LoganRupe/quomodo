@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use formatting::{Color, bold, colored, muted};
 use komodo_client::entities::{
-  ResourceTargetVariant, action::Action, procedure::Procedure,
-  repo::Repo, server::Server, stack::Stack, sync::ResourceSync,
-  tag::Tag, update::Log, user::sync_user,
+  ResourceTargetVariant, action::Action, alerter::Alerter,
+  procedure::Procedure, repo::Repo, server::Server, stack::Stack,
+  sync::ResourceSync, tag::Tag, update::Log, user::sync_user,
 };
 use partial_derive2::MaybeNone;
 
@@ -30,6 +30,9 @@ impl ExecuteResourceSync for Repo {}
 
 impl ResourceSyncTrait for Action {}
 impl ExecuteResourceSync for Action {}
+
+impl ResourceSyncTrait for Alerter {}
+impl ExecuteResourceSync for Alerter {}
 
 impl ResourceSyncTrait for ResourceSync {
   fn include_resource(

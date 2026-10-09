@@ -286,6 +286,8 @@ async fn execute_execution(
     Execution::PruneImages(req) => resolve_execute!(PruneImages, req),
     Execution::PruneSystem(req) => resolve_execute!(PruneSystem, req),
     Execution::RunSync(req) => resolve_execute!(RunSync, req),
+    Execution::TestAlerter(req) => resolve_execute!(TestAlerter, req),
+    Execution::SendAlert(req) => resolve_execute!(SendAlert, req),
     Execution::DeployStack(req) => resolve_execute!(DeployStack, req),
     Execution::DeployStackIfChanged(req) => {
       resolve_execute!(DeployStackIfChanged, req)
@@ -479,6 +481,20 @@ pub fn replace_procedure_stage_ids_with_names(
                     .unwrap_or_default();
                 }
               )*
+              // SendAlert maps a Vec of alerter ids
+              Execution::SendAlert(config) => {
+                config.alerters = config
+                  .alerters
+                  .iter()
+                  .map(|alerter| {
+                    all
+                      .alerters
+                      .get(alerter)
+                      .map(|a| a.name.clone())
+                      .unwrap_or_default()
+                  })
+                  .collect();
+              }
               // No-op variants
               Execution::None(_)
               | Execution::BatchRunProcedure(_)
@@ -516,6 +532,7 @@ pub fn replace_procedure_stage_ids_with_names(
         RestartStack => stack, stacks;
         StopStack => stack, stacks;
         DestroyStack => stack, stacks;
+        TestAlerter => alerter, alerters;
       );
     }
   }

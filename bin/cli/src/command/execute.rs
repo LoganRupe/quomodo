@@ -96,6 +96,8 @@ pub async fn handle(
       RestartStack,
       StopStack,
       DestroyStack,
+      TestAlerter,
+      SendAlert,
       ClearRepoCache,
       BackupCoreDatabase,
       RotateAllServerKeys,

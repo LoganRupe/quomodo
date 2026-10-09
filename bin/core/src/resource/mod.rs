@@ -52,6 +52,7 @@ use crate::{
 };
 
 mod action;
+mod alerter;
 mod procedure;
 mod refresh;
 mod repo;
@@ -820,6 +821,7 @@ fn resource_target<T: KomodoResource>(id: String) -> ResourceTarget {
     ResourceTargetVariant::ResourceSync => {
       ResourceTarget::ResourceSync(id)
     }
+    ResourceTargetVariant::Alerter => ResourceTarget::Alerter(id),
   }
 }
 
@@ -1070,6 +1072,7 @@ where
     ResourceTarget::Procedure(id) => ("recents.Procedure", id),
     ResourceTarget::Action(id) => ("recents.Action", id),
     ResourceTarget::ResourceSync(id) => ("recents.ResourceSync", id),
+    ResourceTarget::Alerter(id) => ("recents.Alerter", id),
     ResourceTarget::System(_) => return,
   };
   if let Err(e) = db_client()

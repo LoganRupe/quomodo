@@ -8,6 +8,7 @@ use komodo_client::entities::{
 };
 
 use crate::{
+  alert::send_alerts,
   resource,
   state::{action_states, db_client, stack_status_cache},
 };
@@ -84,8 +85,9 @@ pub async fn alert_stacks(
   if alerts.is_empty() {
     return;
   }
-  let res = db_client().alerts.insert_many(alerts).await;
+  let res = db_client().alerts.insert_many(&alerts).await;
   if let Err(e) = res {
     error!("failed to record stack status alerts to db | {e:#}");
   }
+  send_alerts(&alerts).await;
 }

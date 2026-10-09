@@ -5,6 +5,7 @@ use strum::{AsRefStr, Display, EnumDiscriminants, EnumString};
 use typeshare::typeshare;
 
 mod action;
+mod alerter;
 mod maintenance;
 mod procedure;
 mod repo;
@@ -13,6 +14,7 @@ mod stack;
 mod sync;
 
 pub use action::*;
+pub use alerter::*;
 pub use maintenance::*;
 pub use procedure::*;
 pub use repo::*;
@@ -120,6 +122,11 @@ pub enum Execution {
   /// Commit a Resource Sync. (alias: `commit`)
   #[clap(alias = "commit")]
   CommitSync(CommitSync), // This is a special case, its actually a write operation.
+
+  // ALERTER
+  TestAlerter(TestAlerter),
+  #[clap(alias = "alert")]
+  SendAlert(SendAlert),
 
   // SERVER
   PruneImages(PruneImages),

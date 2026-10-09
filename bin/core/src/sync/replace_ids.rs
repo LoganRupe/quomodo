@@ -1,6 +1,6 @@
 use komodo_client::entities::{
-  action::Action, procedure::Procedure, repo::Repo, server::Server,
-  stack::Stack, sync::ResourceSync,
+  action::Action, alerter::Alerter, procedure::Procedure, repo::Repo,
+  server::Server, stack::Stack, sync::ResourceSync,
 };
 
 use crate::{
@@ -69,5 +69,50 @@ impl ReplaceIds for Repo {
 impl ReplaceIds for Procedure {
   fn replace_ids(config: &mut Self::Config) {
     replace_procedure_stage_ids_with_names(&mut config.stages);
+  }
+}
+
+macro_rules! replace_resource_target_ids {
+  ($target:expr, $all:expr, { $( $variant:ident => $field:ident ),* $(,)? }) => {
+    match $target {
+      komodo_client::entities::ResourceTarget::System(_) => {}
+      $(
+        komodo_client::entities::ResourceTarget::$variant(id) => {
+          *id = $all
+            .$field
+            .get(id)
+            .map(|r| r.name.clone())
+            .unwrap_or_default();
+        }
+      )*
+    }
+  };
+}
+
+impl ReplaceIds for Alerter {
+  fn replace_ids(config: &mut Self::Config) {
+    if config.resources.is_empty()
+      && config.except_resources.is_empty()
+    {
+      return;
+    }
+
+    let all = all_resources_cache().load();
+
+    for resource in config
+      .resources
+      .iter_mut()
+      .chain(config.except_resources.iter_mut())
+    {
+      replace_resource_target_ids!(resource, all, {
+        Server => servers,
+        Stack => stacks,
+        Repo => repos,
+        Procedure => procedures,
+        Action => actions,
+        Alerter => alerters,
+        ResourceSync => syncs,
+      });
+    }
   }
 }

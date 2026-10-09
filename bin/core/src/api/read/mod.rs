@@ -36,6 +36,7 @@ use super::Variant;
 
 mod action;
 mod alert;
+mod alerter;
 mod container;
 mod onboarding_key;
 mod permission;
@@ -157,6 +158,10 @@ enum ReadRequest {
   // ==== BUILDER ====
 
   // ==== ALERTER ====
+  GetAlertersSummary(GetAlertersSummary),
+  GetAlerter(GetAlerter),
+  ListAlerters(ListAlerters),
+  ListFullAlerters(ListFullAlerters),
 
   // ==== TOML ====
   ExportAllResourcesToToml(ExportAllResourcesToToml),

@@ -39,11 +39,18 @@
         "$ref": "#/definitions/ResourceToml5"
       }
     },
-    "resource_sync": {
-      "description": "Declare an alerter\nDeclare a builder\nDeclare a resource sync",
+    "alerter": {
+      "description": "Declare an alerter",
       "type": "array",
       "items": {
         "$ref": "#/definitions/ResourceToml6"
+      }
+    },
+    "resource_sync": {
+      "description": "Declare a resource sync",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ResourceToml7"
       }
     },
     "user_group": {
@@ -1343,6 +1350,38 @@
           "properties": {
             "type": {
               "type": "string",
+              "const": "TestAlerter"
+            },
+            "params": {
+              "$ref": "#/definitions/TestAlerter"
+            }
+          },
+          "required": [
+            "type",
+            "params"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "SendAlert"
+            },
+            "params": {
+              "$ref": "#/definitions/SendAlert"
+            }
+          },
+          "required": [
+            "type",
+            "params"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
               "const": "PruneImages"
             },
             "params": {
@@ -1899,6 +1938,7 @@
         "Repo",
         "Procedure",
         "Action",
+        "Alerter",
         "ResourceSync"
       ]
     },
@@ -1913,6 +1953,74 @@
       },
       "required": [
         "sync"
+      ]
+    },
+    "TestAlerter": {
+      "description": "Tests an Alerters ability to reach the configured endpoint. Response: [Update]",
+      "type": "object",
+      "properties": {
+        "alerter": {
+          "description": "Name or id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "alerter"
+      ]
+    },
+    "SendAlert": {
+      "description": "Send a custom alert message to configured Alerters. Response: [Update].\nAlias: `alert`",
+      "type": "object",
+      "properties": {
+        "level": {
+          "description": "The alert level.",
+          "default": "OK",
+          "allOf": [
+            {
+              "$ref": "#/definitions/SeverityLevel"
+            }
+          ]
+        },
+        "message": {
+          "description": "The alert message. Required.",
+          "type": "string"
+        },
+        "details": {
+          "description": "The alert details. Optional.",
+          "type": "string",
+          "default": ""
+        },
+        "alerters": {
+          "description": "Specific alerter names or ids.\nIf empty / not passed, sends to all configured alerters\nwith the `Custom` alert type whitelisted / not blacklisted.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      },
+      "required": [
+        "message"
+      ]
+    },
+    "SeverityLevel": {
+      "description": "Severity level of problem.",
+      "oneOf": [
+        {
+          "description": "No problem.\n\nAliases: ok, low, l",
+          "type": "string",
+          "const": "OK"
+        },
+        {
+          "description": "Problem is imminent.\n\nAliases: warning, w, medium, m",
+          "type": "string",
+          "const": "WARNING"
+        },
+        {
+          "description": "Problem fully realized.\n\nAliases: critical, c, high, h",
+          "type": "string",
+          "const": "CRITICAL"
+        }
       ]
     },
     "PruneImages": {
@@ -2178,6 +2286,476 @@
           "description": "Resource specific configuration.",
           "allOf": [
             {
+              "$ref": "#/definitions/PartialAlerterConfig"
+            }
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "PartialAlerterConfig": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Whether the alerter is enabled",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "endpoint": {
+          "description": "Where to route the alert messages.\n\nThe endpoint url (and the ntfy email) may contain `[[NAME]]`\nreferences, resolved from `secrets_collection` when an alert is sent.\nWebhook urls carry their token, so keep them in the secret store.\n\nDefault: Custom endpoint `http://localhost:7000`",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AlerterEndpoint"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "secrets_collection": {
+          "description": "The secret store collection `[[NAME]]` references in the endpoint\nresolve from. Required if the endpoint references a secret.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "alert_types": {
+          "description": "Only send specific alert types.\nIf empty, will send all alert types.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/AlertDataVariant"
+          }
+        },
+        "resources": {
+          "description": "Only send alerts on specific resources.\nIf empty, will send alerts for all resources.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/ResourceTarget"
+          }
+        },
+        "except_resources": {
+          "description": "DON'T send alerts on these resources.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/ResourceTarget"
+          }
+        },
+        "maintenance_windows": {
+          "description": "Scheduled maintenance windows during which alerts will be suppressed.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/MaintenanceWindow"
+          }
+        }
+      }
+    },
+    "AlerterEndpoint": {
+      "oneOf": [
+        {
+          "description": "Send alert serialized to JSON to an http endpoint.",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "Custom"
+            },
+            "params": {
+              "$ref": "#/definitions/CustomAlerterEndpoint"
+            }
+          },
+          "required": [
+            "type",
+            "params"
+          ]
+        },
+        {
+          "description": "Send alert to a Slack app",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "Slack"
+            },
+            "params": {
+              "$ref": "#/definitions/SlackAlerterEndpoint"
+            }
+          },
+          "required": [
+            "type",
+            "params"
+          ]
+        },
+        {
+          "description": "Send alert to a Discord app",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "Discord"
+            },
+            "params": {
+              "$ref": "#/definitions/DiscordAlerterEndpoint"
+            }
+          },
+          "required": [
+            "type",
+            "params"
+          ]
+        },
+        {
+          "description": "Send alert to Ntfy",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "Ntfy"
+            },
+            "params": {
+              "$ref": "#/definitions/NtfyAlerterEndpoint"
+            }
+          },
+          "required": [
+            "type",
+            "params"
+          ]
+        },
+        {
+          "description": "Send alert to Pushover",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "Pushover"
+            },
+            "params": {
+              "$ref": "#/definitions/PushoverAlerterEndpoint"
+            }
+          },
+          "required": [
+            "type",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CustomAlerterEndpoint": {
+      "description": "Configuration for a Custom alerter endpoint.",
+      "type": "object",
+      "properties": {
+        "url": {
+          "description": "The http/s endpoint to send the POST to",
+          "type": "string",
+          "default": "http://localhost:7000"
+        }
+      }
+    },
+    "SlackAlerterEndpoint": {
+      "description": "Configuration for a Slack alerter.",
+      "type": "object",
+      "properties": {
+        "url": {
+          "description": "The Slack app webhook url",
+          "type": "string",
+          "default": "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+        }
+      }
+    },
+    "DiscordAlerterEndpoint": {
+      "description": "Configuration for a Discord alerter.",
+      "type": "object",
+      "properties": {
+        "url": {
+          "description": "The Discord webhook url",
+          "type": "string",
+          "default": "https://discord.com/api/webhooks/XXXXXXXXXXXX/XXXX-XXXXXXXXXX"
+        }
+      }
+    },
+    "NtfyAlerterEndpoint": {
+      "description": "Configuration for a Ntfy alerter.",
+      "type": "object",
+      "properties": {
+        "url": {
+          "description": "The ntfy topic URL",
+          "type": "string",
+          "default": "http://localhost:8080/komodo"
+        },
+        "email": {
+          "description": "Optional E-Mail Address to enable ntfy email notifications.\nSMTP must be configured on the ntfy server.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "PushoverAlerterEndpoint": {
+      "description": "Configuration for a Pushover alerter.",
+      "type": "object",
+      "properties": {
+        "url": {
+          "description": "The pushover URL including application and user tokens in parameters.",
+          "type": "string",
+          "default": "https://api.pushover.net/1/messages.json?token=XXXXXXXXXXXXX&user=XXXXXXXXXXXXX"
+        }
+      }
+    },
+    "AlertDataVariant": {
+      "description": "Auto-generated discriminant enum variants",
+      "oneOf": [
+        {
+          "description": "A null alert",
+          "type": "string",
+          "const": "None"
+        },
+        {
+          "description": "The user triggered a test of the\nAlerter configuration.",
+          "type": "string",
+          "const": "Test"
+        },
+        {
+          "description": "A server could not be reached.\nA server could not be reached.",
+          "type": "string",
+          "const": "ServerUnreachable"
+        },
+        {
+          "description": "A server has high CPU usage.",
+          "type": "string",
+          "const": "ServerCpu"
+        },
+        {
+          "description": "A server has high memory usage.",
+          "type": "string",
+          "const": "ServerMem"
+        },
+        {
+          "description": "A server has high disk usage.",
+          "type": "string",
+          "const": "ServerDisk"
+        },
+        {
+          "description": "A server has a version mismatch with the core.",
+          "type": "string",
+          "const": "ServerVersionMismatch"
+        },
+        {
+          "description": "A stack's state has changed unexpectedly.",
+          "type": "string",
+          "const": "StackStateChange"
+        },
+        {
+          "description": "A resource sync has pending updates",
+          "type": "string",
+          "const": "ResourceSyncPendingUpdates"
+        },
+        {
+          "description": "A build has failed\nA procedure has failed",
+          "type": "string",
+          "const": "ProcedureFailed"
+        },
+        {
+          "description": "An action has failed",
+          "type": "string",
+          "const": "ActionFailed"
+        },
+        {
+          "description": "A schedule was run",
+          "type": "string",
+          "const": "ScheduleRun"
+        },
+        {
+          "description": "Custom header / body.\nProduced using `/execute/SendAlert`",
+          "type": "string",
+          "const": "Custom"
+        }
+      ]
+    },
+    "ResourceTarget": {
+      "description": "Used to reference a specific resource across all resource types",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "System"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "Server"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "Stack"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "Repo"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "Procedure"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "Action"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "Alerter"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "ResourceSync"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id"
+          ]
+        }
+      ]
+    },
+    "ResourceToml7": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "The resource name. Required",
+          "type": "string"
+        },
+        "description": {
+          "description": "The resource description. Optional.",
+          "type": "string"
+        },
+        "template": {
+          "description": "Mark resource as a template",
+          "type": "boolean"
+        },
+        "tags": {
+          "description": "Tag ids or names. Optional",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deploy": {
+          "description": "Optional. Only relevant for deployments / stacks.\n\nWill ensure deployment / stack is running with the latest configuration.\nDeploy actions to achieve this will be included in the sync.\nDefault is false.",
+          "type": "boolean"
+        },
+        "after": {
+          "description": "Optional. Only relevant for deployments / stacks using the 'deploy' sync feature.\n\nSpecify other deployments / stacks by name as dependencies.\nThe sync will ensure the deployment / stack will only be deployed 'after' its dependencies.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "config": {
+          "description": "Resource specific configuration.",
+          "allOf": [
+            {
               "$ref": "#/definitions/PartialResourceSyncConfig"
             }
           ]
@@ -2351,6 +2929,9 @@
             "Action": {
               "$ref": "#/definitions/PermissionLevelAndSpecifics"
             },
+            "Alerter": {
+              "$ref": "#/definitions/PermissionLevelAndSpecifics"
+            },
             "Procedure": {
               "$ref": "#/definitions/PermissionLevelAndSpecifics"
             },
@@ -2486,123 +3067,6 @@
       },
       "required": [
         "target"
-      ]
-    },
-    "ResourceTarget": {
-      "description": "Used to reference a specific resource across all resource types",
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "System"
-            },
-            "id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "id"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "Server"
-            },
-            "id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "id"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "Stack"
-            },
-            "id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "id"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "Repo"
-            },
-            "id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "id"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "Procedure"
-            },
-            "id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "id"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "Action"
-            },
-            "id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "id"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "ResourceSync"
-            },
-            "id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "id"
-          ]
-        }
       ]
     }
   }

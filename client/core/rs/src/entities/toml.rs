@@ -5,6 +5,7 @@ use typeshare::typeshare;
 use super::{
   ResourceTarget, ResourceTargetVariant,
   action::_PartialActionConfig,
+  alerter::_PartialAlerterConfig,
   permission::{
     PermissionLevel, PermissionLevelAndSpecifics, SpecificPermission,
   },
@@ -69,7 +70,14 @@ pub struct ResourcesToml {
   pub actions: Vec<ResourceToml<_PartialActionConfig>>,
 
   /// Declare an alerter
-  /// Declare a builder
+  #[serde(
+    default,
+    alias = "alerter",
+    skip_serializing_if = "Vec::is_empty"
+  )]
+  #[cfg_attr(feature = "schemars", schemars(rename = "alerter"))]
+  pub alerters: Vec<ResourceToml<_PartialAlerterConfig>>,
+
   /// Declare a resource sync
   #[serde(
     default,

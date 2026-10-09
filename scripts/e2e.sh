@@ -12,6 +12,9 @@
 #      the Server shows Ok
 #  1b. a renewed certificate written over the old files is served without a
 #      Core restart; the connected agent stays Ok and reconnects on the new one
+#  1c. an Alerter with a Custom webhook gets TestAlerter, then a real
+#      ServerUnreachable alert when the agent stops, and the resolved alert
+#      when it comes back
 #   2. DeployStack installs the quadlet units, systemd starts them, podman runs
 #      them; every pod and standalone container gets its own fixed user
 #      namespace slice, a pod member shares the pod's
@@ -37,6 +40,7 @@ WORK=${WORK:-/tmp/quomodo-e2e}
 BRIDGE_IP=${BRIDGE_IP:-$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')}
 CORE_PORT=${CORE_PORT:-9131}
 GIT_PORT=${GIT_PORT:-8791}
+HOOK_PORT=${HOOK_PORT:-8792}
 DB_PORT=${DB_PORT:-27127}
 HOST_NAME=quomodo-e2e-host
 DB_NAME=quomodo-e2e-db
@@ -50,6 +54,7 @@ hexec() { docker exec "$HOST_NAME" "$@"; }
 teardown() {
   [ -f "$WORK/core.pid" ] && kill "$(cat "$WORK/core.pid")" 2>/dev/null || true
   [ -f "$WORK/git.pid" ] && kill "$(cat "$WORK/git.pid")" 2>/dev/null || true
+  [ -f "$WORK/hook.pid" ] && kill "$(cat "$WORK/hook.pid")" 2>/dev/null || true
   docker rm -f "$HOST_NAME" "$DB_NAME" >/dev/null 2>&1 || true
 }
 cleanup() {
@@ -215,6 +220,15 @@ elif cmd in ("DeployStack", "DeployStackIfChanged", "DestroyStack", "RestartStac
         raise SystemExit(cmd + " failed")
 elif cmd == "refresh":
     print(api("write", "RefreshStackCache", {"stack": "$STACK"}))
+elif cmd == "create-alerter":
+    r = api("write", "CreateAlerter", {"name": "e2e-hook", "config": {"enabled": True, "endpoint": {"type": "Custom", "params": {"url": sys.argv[2]}}}})
+    if "error" in r: raise SystemExit("CreateAlerter failed: %s" % r["error"])
+    print(r["name"])
+elif cmd == "test-alerter":
+    u = api("execute", "TestAlerter", {"alerter": "e2e-hook"})
+    if "error" in u: raise SystemExit("TestAlerter refused: %s" % u["error"])
+    u = wait_update(u.get("id") or u["_id"]["\$oid"])
+    print(json.dumps({"success": u["success"]}))
 PY
 API="python3 $WORK/api.py"
 
@@ -278,6 +292,36 @@ for i in $(seq 1 30); do relogged && break; sleep 1; done
 relogged || { hexec journalctl -u quomodo-agent --no-pager | tail -20; fail "agent did not reconnect on the new certificate"; }
 [ "$($API server-state)" = "Ok" ] || fail "server not Ok after the agent reconnected"
 echo "served $SERIAL_BEFORE then $SERIAL_AFTER, same Core pid $CORE_PID, agent reconnected"
+
+log "1c. alerters: a Custom webhook gets test, unreachable and resolved alerts"
+# A webhook that appends every POST body, one per line.
+cat > "$WORK/hook.py" <<'HOOK'
+import http.server, sys
+class H(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        body = self.rfile.read(int(self.headers.get("content-length", 0)))
+        with open(sys.argv[2], "ab") as f: f.write(body.replace(b"\n", b" ") + b"\n")
+        self.send_response(200); self.end_headers()
+    def log_message(self, *a): pass
+http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+HOOK
+: > "$WORK/hook.jsonl"
+python3 "$WORK/hook.py" "$HOOK_PORT" "$WORK/hook.jsonl" > "$WORK/hook.log" 2>&1 & echo $! > "$WORK/hook.pid"
+sleep 1
+$API create-alerter "http://127.0.0.1:$HOOK_PORT/hook"
+$API test-alerter
+hooked() { python3 -c "import json,sys; sys.exit(0 if any(all(eval(c, {}, {'a': json.loads(l)}) for c in sys.argv[1:]) for l in open('$WORK/hook.jsonl') if l.strip()) else 1)" "$@"; }
+for i in $(seq 1 15); do hooked "a['data']['type']=='Test'" && break; sleep 1; done
+hooked "a['data']['type']=='Test'" || { cat "$WORK/hook.jsonl"; tail -20 "$WORK/core.log"; fail "the webhook never got the test alert"; }
+hexec systemctl stop quomodo-agent
+for i in $(seq 1 90); do hooked "a['data']['type']=='ServerUnreachable'" "a['level']=='CRITICAL'" && break; sleep 1; done
+hooked "a['data']['type']=='ServerUnreachable'" "a['level']=='CRITICAL'" || { cat "$WORK/hook.jsonl"; tail -20 "$WORK/core.log"; fail "no ServerUnreachable alert reached the webhook"; }
+hexec systemctl start quomodo-agent
+for i in $(seq 1 90); do hooked "a['data']['type']=='ServerUnreachable'" "a['level']=='OK'" && break; sleep 1; done
+hooked "a['data']['type']=='ServerUnreachable'" "a['level']=='OK'" || { cat "$WORK/hook.jsonl"; fail "the resolved ServerUnreachable alert never reached the webhook"; }
+for i in $(seq 1 30); do [ "$($API server-state)" = "Ok" ] && break; sleep 1; done
+[ "$($API server-state)" = "Ok" ] || fail "server not Ok after the agent came back"
+echo "webhook got: $(python3 -c "import json; print(', '.join(json.loads(l)['data']['type']+'/'+json.loads(l)['level'] for l in open('$WORK/hook.jsonl') if l.strip()))")"
 
 log "2. deploy"
 $API create-stack; echo

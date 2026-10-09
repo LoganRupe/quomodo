@@ -7,10 +7,10 @@ use komodo_client::{
     ListUserGroups,
   },
   entities::{
-    ResourceTarget, action::Action, permission::PermissionLevel,
-    procedure::Procedure, repo::Repo, resource::ResourceQuery,
-    server::Server, stack::Stack, sync::ResourceSync,
-    toml::ResourcesToml, user::User,
+    ResourceTarget, action::Action, alerter::Alerter,
+    permission::PermissionLevel, procedure::Procedure, repo::Repo,
+    resource::ResourceQuery, server::Server, stack::Stack,
+    sync::ResourceSync, toml::ResourcesToml, user::User,
   },
 };
 use mogh_resolver::Resolve;
@@ -69,6 +69,7 @@ async fn get_all_targets(
     Repo,
     Procedure,
     Action,
+    Alerter,
     ResourceSync,
   );
 
@@ -163,6 +164,9 @@ impl Resolve<ReadArgs> for ExportResourcesToToml {
         ResourceTarget::Action(id) => {
           convert_target!(id, Action, actions)
         }
+        ResourceTarget::Alerter(id) => {
+          convert_target!(id, Alerter, alerters)
+        }
         ResourceTarget::ResourceSync(id) => {
           let mut sync = get_check_permissions::<ResourceSync>(
             &id,
@@ -243,6 +247,7 @@ fn serialize_resources_toml(
     (Repo, repos, "repo"),
     (Procedure, procedures, "procedure"),
     (Action, actions, "action"),
+    (Alerter, alerters, "alerter"),
     (ResourceSync, resource_syncs, "resource_sync"),
   );
 

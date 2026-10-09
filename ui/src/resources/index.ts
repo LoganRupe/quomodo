@@ -7,6 +7,7 @@ import { StackComponents } from "./stack";
 import { RepoComponents } from "./repo";
 import { ProcedureComponents } from "./procedure";
 import { ResourceSyncComponents } from "./sync";
+import { AlerterComponents } from "./alerter";
 import { BoxProps, TableProps } from "@mantine/core";
 
 export type UsableResourceTarget = Exclude<
@@ -21,10 +22,11 @@ export const RESOURCE_TARGETS = [
   "Repo",
   "Procedure",
   "Action",
+  "Alerter",
   "ResourceSync",
 ] as const;
 
-export const SETTINGS_RESOURCES: UsableResource[] = [];
+export const SETTINGS_RESOURCES: UsableResource[] = ["Alerter"];
 
 export const SIDEBAR_RESOURCES: UsableResource[] = RESOURCE_TARGETS.filter(
   (target) => !SETTINGS_RESOURCES.includes(target),
@@ -39,6 +41,7 @@ export const ResourceComponents: {
   Procedure: ProcedureComponents,
   Action: ActionComponents,
   ResourceSync: ResourceSyncComponents,
+  Alerter: AlerterComponents,
 };
 
 type IdComponent = React.FC<{ id: string }>;

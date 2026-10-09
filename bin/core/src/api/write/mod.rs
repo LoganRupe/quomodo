@@ -20,6 +20,7 @@ use super::Variant;
 
 mod action;
 mod alert;
+mod alerter;
 mod onboarding;
 mod permissions;
 mod procedure;
@@ -113,6 +114,11 @@ pub enum WriteRequest {
   // ==== BUILDER ====
 
   // ==== ALERTER ====
+  CreateAlerter(CreateAlerter),
+  CopyAlerter(CopyAlerter),
+  DeleteAlerter(DeleteAlerter),
+  UpdateAlerter(UpdateAlerter),
+  RenameAlerter(RenameAlerter),
 
   // ==== ONBOARDING KEY ====
   CreateOnboardingKey(CreateOnboardingKey),

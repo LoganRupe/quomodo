@@ -40,6 +40,7 @@ use tokio::fs;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
+  alert::send_alerts,
   api::execute::ExecuteRequest,
   auth::KomodoAuthImpl,
   config::core_config,
@@ -285,6 +286,7 @@ impl Resolve<ExecuteArgs> for RunAction {
         if let Err(e) = db_client().alerts.insert_one(&alert).await {
           error!("Failed to record action failure alert | {e:#}");
         }
+        send_alerts(&[alert]).await;
       });
     }
 

@@ -1,4 +1,5 @@
 import {
+  SettingsView,
   useAllResources,
   useRead,
   useSettingsView,
@@ -6,7 +7,11 @@ import {
 } from "@/lib/hooks";
 import { ICONS } from "@/lib/icons";
 import { termMatchesTypeKeyword, usableResourcePath } from "@/lib/utils";
-import { RESOURCE_TARGETS, ResourceComponents } from "@/resources";
+import {
+  RESOURCE_TARGETS,
+  ResourceComponents,
+  SETTINGS_RESOURCES,
+} from "@/resources";
 import {
   createSpotlight,
   SpotlightActionData,
@@ -109,7 +114,14 @@ export function useOmniSearch(opened: boolean) {
               id: type + "s",
               label: type + "s",
               leftSection: <Components.Icon size="1.3rem" />,
-              onClick: () => nav(usableResourcePath(_type)),
+              onClick: () => {
+                if (SETTINGS_RESOURCES.includes(_type)) {
+                  setSettingsView((type + "s") as SettingsView);
+                  nav("/settings");
+                } else {
+                  nav(usableResourcePath(_type));
+                }
+              },
             };
           }),
 

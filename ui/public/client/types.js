@@ -52,6 +52,16 @@ export var TemplatesQueryBehavior;
     /** Results *only* includes templates. */
     TemplatesQueryBehavior["Only"] = "Only";
 })(TemplatesQueryBehavior || (TemplatesQueryBehavior = {}));
+/** Types of maintenance schedules */
+export var MaintenanceScheduleType;
+(function (MaintenanceScheduleType) {
+    /** Daily at the specified time */
+    MaintenanceScheduleType["Daily"] = "Daily";
+    /** Weekly on the specified day and time */
+    MaintenanceScheduleType["Weekly"] = "Weekly";
+    /** One-time maintenance on a specific date and time */
+    MaintenanceScheduleType["OneTime"] = "OneTime";
+})(MaintenanceScheduleType || (MaintenanceScheduleType = {}));
 export var Operation;
 (function (Operation) {
     Operation["None"] = "None";
@@ -98,6 +108,12 @@ export var Operation;
     Operation["WriteSyncContents"] = "WriteSyncContents";
     Operation["CommitSync"] = "CommitSync";
     Operation["RunSync"] = "RunSync";
+    Operation["CreateAlerter"] = "CreateAlerter";
+    Operation["UpdateAlerter"] = "UpdateAlerter";
+    Operation["RenameAlerter"] = "RenameAlerter";
+    Operation["DeleteAlerter"] = "DeleteAlerter";
+    Operation["TestAlerter"] = "TestAlerter";
+    Operation["SendAlert"] = "SendAlert";
     Operation["ClearRepoCache"] = "ClearRepoCache";
     Operation["BackupCoreDatabase"] = "BackupCoreDatabase";
     Operation["RotateAllServerKeys"] = "RotateAllServerKeys";
@@ -199,16 +215,6 @@ export var Timelength;
     /** `30-day` */
     Timelength["ThirtyDays"] = "30-day";
 })(Timelength || (Timelength = {}));
-/** Types of maintenance schedules */
-export var MaintenanceScheduleType;
-(function (MaintenanceScheduleType) {
-    /** Daily at the specified time */
-    MaintenanceScheduleType["Daily"] = "Daily";
-    /** Weekly on the specified day and time */
-    MaintenanceScheduleType["Weekly"] = "Weekly";
-    /** One-time maintenance on a specific date and time */
-    MaintenanceScheduleType["OneTime"] = "OneTime";
-})(MaintenanceScheduleType || (MaintenanceScheduleType = {}));
 /** The kind of quadlet unit, by file extension. */
 export var QuadletKind;
 (function (QuadletKind) {
@@ -391,6 +397,15 @@ export var ActionSortBy;
     /** Sort by next scheduled run. */
     ActionSortBy["NextRun"] = "NextRun";
 })(ActionSortBy || (ActionSortBy = {}));
+export var AlerterSortBy;
+(function (AlerterSortBy) {
+    /** Sort by name. Default. */
+    AlerterSortBy["Name"] = "Name";
+    /** Sort by endpoint type. */
+    AlerterSortBy["Type"] = "Type";
+    /** Sort by enabled. */
+    AlerterSortBy["Enabled"] = "Enabled";
+})(AlerterSortBy || (AlerterSortBy = {}));
 export var ContainerSortBy;
 (function (ContainerSortBy) {
     /** Sort by container name. Default. */

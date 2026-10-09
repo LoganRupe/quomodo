@@ -25,6 +25,7 @@ pub mod action;
 /// Subtypes of [Alert][alert::Alert].
 pub mod alert;
 /// Subtypes of [Alerter][alerter::Alerter].
+pub mod alerter;
 /// Subtypes of [ApiKey][api_key::ApiKey].
 pub mod api_key;
 /// Subtypes of [Build][build::Build].
@@ -1142,6 +1143,14 @@ pub enum Operation {
   CommitSync,
   RunSync,
 
+  // Alerter
+  CreateAlerter,
+  UpdateAlerter,
+  RenameAlerter,
+  DeleteAlerter,
+  TestAlerter,
+  SendAlert,
+
   // Maintenance
   ClearRepoCache,
   BackupCoreDatabase,
@@ -1272,6 +1281,7 @@ pub enum ResourceTarget {
   Repo(String),
   Procedure(String),
   Action(String),
+  Alerter(String),
   ResourceSync(String),
 }
 
@@ -1296,6 +1306,7 @@ impl ResourceTarget {
       ResourceTarget::Repo(id) => id.is_empty(),
       ResourceTarget::Procedure(id) => id.is_empty(),
       ResourceTarget::Action(id) => id.is_empty(),
+      ResourceTarget::Alerter(id) => id.is_empty(),
       ResourceTarget::ResourceSync(id) => id.is_empty(),
     }
   }
@@ -1314,6 +1325,7 @@ impl ResourceTarget {
       ResourceTarget::Repo(id) => id,
       ResourceTarget::Procedure(id) => id,
       ResourceTarget::Action(id) => id,
+      ResourceTarget::Alerter(id) => id,
       ResourceTarget::ResourceSync(id) => id,
     };
     (self.into(), id)
@@ -1350,6 +1362,12 @@ impl From<&action::Action> for ResourceTarget {
   }
 }
 
+impl From<&alerter::Alerter> for ResourceTarget {
+  fn from(alerter: &alerter::Alerter) -> Self {
+    Self::Alerter(alerter.id.clone())
+  }
+}
+
 impl From<&sync::ResourceSync> for ResourceTarget {
   fn from(resource_sync: &sync::ResourceSync) -> Self {
     Self::ResourceSync(resource_sync.id.clone())
@@ -1367,6 +1385,7 @@ impl ResourceTargetVariant {
       ResourceTargetVariant::Procedure => "procedure",
       ResourceTargetVariant::Action => "action",
       ResourceTargetVariant::ResourceSync => "resource_sync",
+      ResourceTargetVariant::Alerter => "alerter",
     }
   }
 }
@@ -1420,6 +1439,9 @@ pub fn resource_link(
     }
     ResourceTargetVariant::ResourceSync => {
       format!("/resource-syncs/{id}")
+    }
+    ResourceTargetVariant::Alerter => {
+      format!("/alerters/{id}")
     }
   };
   format!("{host}{path}")

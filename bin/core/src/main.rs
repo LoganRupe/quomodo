@@ -11,6 +11,7 @@ use tracing::Instrument;
 
 use crate::config::{core_config, core_keys};
 
+mod alert;
 mod api;
 mod auth;
 mod config;

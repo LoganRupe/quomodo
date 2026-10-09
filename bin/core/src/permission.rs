@@ -11,6 +11,7 @@ use komodo_client::{
   entities::{
     ResourceTarget,
     action::Action,
+    alerter::Alerter,
     permission::SpecificPermission,
     permission::{
       Permission, PermissionLevel, PermissionLevelAndSpecifics,
@@ -529,6 +530,21 @@ pub async fn user_resource_target_query(
     })
     .unwrap_or_else(|| doc! { "target.type": "Action" });
 
+    let alerter_query = list_resource_ids_for_user::<Alerter>(
+      None,
+      None,
+      None,
+      user,
+      PermissionLevel::Read.into(),
+    )
+    .await?
+    .map(|ids| {
+      doc! {
+        "target.type": "Alerter", "target.id": { "$in": ids }
+      }
+    })
+    .unwrap_or_else(|| doc! { "target.type": "Alerter" });
+
     let resource_sync_query =
       list_resource_ids_for_user::<ResourceSync>(
         None,
@@ -557,6 +573,7 @@ pub async fn user_resource_target_query(
               repo_query,
               procedure_query,
               action_query,
+              alerter_query,
               resource_sync_query,
             ]
           },
@@ -571,6 +588,7 @@ pub async fn user_resource_target_query(
           repo_query,
           procedure_query,
           action_query,
+          alerter_query,
           resource_sync_query,
         ]
       }
@@ -617,6 +635,14 @@ pub async fn check_user_target_access(
     }
     ResourceTarget::ResourceSync(id) => {
       get_check_permissions::<ResourceSync>(
+        id,
+        user,
+        required_permissions,
+      )
+      .await?;
+    }
+    ResourceTarget::Alerter(id) => {
+      get_check_permissions::<Alerter>(
         id,
         user,
         required_permissions,

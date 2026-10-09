@@ -267,6 +267,14 @@ const OPERATIONS_BY_RESOURCE: { [key: string]: Types.Operation[] } = {
     Types.Operation.DeleteProcedure,
     Types.Operation.RunProcedure,
   ],
+  Alerter: [
+    Types.Operation.CreateAlerter,
+    Types.Operation.UpdateAlerter,
+    Types.Operation.RenameAlerter,
+    Types.Operation.DeleteAlerter,
+    Types.Operation.TestAlerter,
+    Types.Operation.SendAlert,
+  ],
   ResourceSync: [
     Types.Operation.CreateResourceSync,
     Types.Operation.UpdateResourceSync,

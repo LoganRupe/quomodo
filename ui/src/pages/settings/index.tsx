@@ -1,3 +1,4 @@
+import { lazy } from "react";
 import { useSettingsView, useUser } from "@/lib/hooks";
 import { Stack } from "@mantine/core";
 import SettingsCoreInfo from "./core-info";
@@ -7,6 +8,8 @@ import SettingsProviders from "./providers";
 import { ICONS } from "@/lib/icons";
 import SettingsOnboardingKeys from "./onboarding";
 import SettingsUsers from "./users";
+
+const Resources = lazy(() => import("@/pages/resources"));
 
 export default function Settings() {
   const user = useUser().data;
@@ -23,6 +26,11 @@ export default function Settings() {
             value: "Tags",
             content: <SettingsTags />,
             icon: ICONS.Tag,
+          },
+          {
+            value: "Alerters",
+            content: <Resources _type="Alerter" />,
+            icon: ICONS.Alerter,
           },
           {
             value: "Providers",

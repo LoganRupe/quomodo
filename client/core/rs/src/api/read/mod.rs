@@ -4,6 +4,7 @@ use typeshare::typeshare;
 
 mod action;
 mod alert;
+mod alerter;
 mod container;
 mod onboarding_key;
 mod permission;
@@ -22,6 +23,7 @@ mod user_group;
 
 pub use action::*;
 pub use alert::*;
+pub use alerter::*;
 pub use container::*;
 pub use onboarding_key::*;
 pub use permission::*;

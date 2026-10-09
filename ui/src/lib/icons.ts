@@ -1,4 +1,5 @@
 import {
+  AlarmClock,
   ArrowDownToDot,
   ArrowDownToLine,
   Ban,
@@ -72,6 +73,7 @@ export const ICONS = {
   // RESOURCES
   Resources: LayoutDashboard,
   Action: Clapperboard,
+  Alerter: AlarmClock,
   Procedure: Route,
   Repo: FolderGit,
   Server,

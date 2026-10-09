@@ -52,7 +52,7 @@ fn provider() -> &'static Provider {
   })
 }
 
-async fn resolve_from_provider(
+pub async fn resolve_from_provider(
   collection: &str,
   names: &[String],
 ) -> anyhow::Result<HashMap<String, String>> {
