@@ -103,6 +103,9 @@ pub enum ListCommand {
   /// List scheduled Procedures / Actions (aliases: `sched`, `sc`)
   #[clap(alias = "sched", alias = "sc")]
   Schedules(ResourceFilters),
+  /// List Alerters (aliases: `alerter`, `alrt`)
+  #[clap(alias = "alerter", alias = "alrt")]
+  Alerters(ResourceFilters),
 }
 
 #[derive(Debug, Clone, clap::Parser)]

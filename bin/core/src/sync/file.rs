@@ -257,6 +257,7 @@ pub fn extend_resources(
     repos,
     procedures,
     actions,
+    alerters,
     resource_syncs,
   );
   resources.user_groups.extend(more.user_groups);
@@ -272,4 +273,55 @@ fn filter_by_tag<T: Default>(
       match_tags.iter().all(|tag| resource.tags.contains(tag))
     })
     .collect()
+}
+
+#[cfg(test)]
+mod tests {
+  use komodo_client::entities::toml::ResourcesToml;
+
+  use super::extend_resources;
+
+  /// One of every resource type a sync file can declare. A new type
+  /// belongs here too, so `extend_resources` can't silently drop it.
+  const EVERY_TYPE: &str = r#"
+[[server]]
+name = "server"
+
+[[stack]]
+name = "stack"
+
+[[repo]]
+name = "repo"
+
+[[procedure]]
+name = "procedure"
+
+[[action]]
+name = "action"
+
+[[alerter]]
+name = "alerter"
+[alerter.config]
+endpoint.type = "Custom"
+endpoint.params.url = "http://localhost:7000"
+
+[[resource_sync]]
+name = "resource_sync"
+
+[[user_group]]
+name = "user_group"
+"#;
+
+  #[test]
+  fn extend_resources_keeps_every_resource_type() {
+    let parsed = super::super::deserialize_resources_toml(EVERY_TYPE)
+      .expect("parse sync file");
+    let expected = serde_json::to_value(&parsed).unwrap();
+
+    let mut merged = ResourcesToml::default();
+    extend_resources(&mut merged, parsed, &[]);
+
+    assert_eq!(serde_json::to_value(&merged).unwrap(), expected);
+    assert_eq!(merged.alerters.len(), 1);
+  }
 }

@@ -48,8 +48,12 @@ use crate::api::write;
     write::delete_action,
     write::update_action,
     write::rename_action,
-    // builder
     // alerter
+    write::create_alerter,
+    write::copy_alerter,
+    write::delete_alerter,
+    write::update_alerter,
+    write::rename_alerter,
     // resource_sync
     write::create_resource_sync,
     write::copy_resource_sync,

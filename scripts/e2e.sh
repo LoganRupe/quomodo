@@ -14,7 +14,8 @@
 #      Core restart; the connected agent stays Ok and reconnects on the new one
 #  1c. an Alerter with a Custom webhook gets TestAlerter, then a real
 #      ServerUnreachable alert when the agent stops, and the resolved alert
-#      when it comes back
+#      when it comes back; an [[alerter]] in a ResourceSync file is created
+#      by RunSync
 #   2. DeployStack installs the quadlet units, systemd starts them, podman runs
 #      them; every pod and standalone container gets its own fixed user
 #      namespace slice, a pod member shares the pod's
@@ -224,6 +225,17 @@ elif cmd == "create-alerter":
     r = api("write", "CreateAlerter", {"name": "e2e-hook", "config": {"enabled": True, "endpoint": {"type": "Custom", "params": {"url": sys.argv[2]}}}})
     if "error" in r: raise SystemExit("CreateAlerter failed: %s" % r["error"])
     print(r["name"])
+elif cmd == "sync-alerter":
+    contents = '[[alerter]]\nname = "e2e-synced"\n[alerter.config]\nendpoint.type = "Custom"\nendpoint.params.url = "http://127.0.0.1:9/never"\n'
+    r = api("write", "CreateResourceSync", {"name": "e2e-sync", "config": {"file_contents": contents}})
+    if "error" in r: raise SystemExit("CreateResourceSync failed: %s" % r["error"])
+    u = api("execute", "RunSync", {"sync": "e2e-sync"})
+    if "error" in u: raise SystemExit("RunSync refused: %s" % u["error"])
+    u = wait_update(u.get("id") or u["_id"]["\$oid"])
+    if not u["success"]: raise SystemExit("RunSync failed: %s" % [l["stderr"][-500:] for l in u["logs"]])
+    a = api("read", "GetAlerter", {"alerter": "e2e-synced"})
+    if "error" in a: raise SystemExit("the synced Alerter was not created: %s" % a["error"])
+    print(a["name"], a["config"]["endpoint"]["type"])
 elif cmd == "test-alerter":
     u = api("execute", "TestAlerter", {"alerter": "e2e-hook"})
     if "error" in u: raise SystemExit("TestAlerter refused: %s" % u["error"])
@@ -321,6 +333,8 @@ for i in $(seq 1 90); do hooked "a['data']['type']=='ServerUnreachable'" "a['lev
 hooked "a['data']['type']=='ServerUnreachable'" "a['level']=='OK'" || { cat "$WORK/hook.jsonl"; fail "the resolved ServerUnreachable alert never reached the webhook"; }
 for i in $(seq 1 30); do [ "$($API server-state)" = "Ok" ] && break; sleep 1; done
 [ "$($API server-state)" = "Ok" ] || fail "server not Ok after the agent came back"
+SYNCED=$($API sync-alerter 2>&1) || fail "$SYNCED"
+echo "synced alerter: $SYNCED"
 echo "webhook got: $(python3 -c "import json; print(', '.join(json.loads(l)['data']['type']+'/'+json.loads(l)['level'] for l in open('$WORK/hook.jsonl') if l.strip()))")"
 
 log "2. deploy"

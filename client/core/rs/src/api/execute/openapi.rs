@@ -37,6 +37,8 @@ use crate::api::execute;
     execute::batch_run_action,
     execute::cancel_action,
     // alerter
+    execute::test_alerter,
+    execute::send_alert,
     // resource_sync
     execute::run_sync,
     // maintenance

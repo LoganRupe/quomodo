@@ -62,6 +62,10 @@ use crate::api::read;
     read::get_actions_summary,
     // builder
     // alerter
+    read::list_alerters,
+    read::list_full_alerters,
+    read::get_alerter,
+    read::get_alerters_summary,
     // resource_sync
     read::list_resource_syncs,
     read::list_full_resource_syncs,

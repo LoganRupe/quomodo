@@ -5,12 +5,14 @@ use futures_util::{FutureExt, try_join};
 use komodo_client::{
   KomodoClient,
   api::read::{
-    ListActions, ListProcedures, ListRepos, ListResourceSyncs,
-    ListSchedules, ListServers, ListStacks, ListTags,
+    ListActions, ListAlerters, ListProcedures, ListRepos,
+    ListResourceSyncs, ListSchedules, ListServers, ListStacks,
+    ListTags,
   },
   entities::{
     ResourceTargetVariant,
     action::{ActionListItem, ActionListItemInfo, ActionState},
+    alerter::{AlerterListItem, AlerterListItemInfo},
     config::cli::args::{
       self,
       list::{ListCommand, ResourceFilters},
@@ -69,6 +71,10 @@ pub async fn handle(list: &args::list::List) -> anyhow::Result<()> {
     }
     Some(ListCommand::Schedules(filters)) => {
       list_schedules(filters).await
+    }
+    Some(ListCommand::Alerters(filters)) => {
+      list_resources::<AlerterListItem>(filters, list.page, false)
+        .await
     }
   }
 }
@@ -835,5 +841,74 @@ impl PrintTable for Schedule {
       )));
     }
     res
+  }
+}
+
+impl ListResources for AlerterListItem {
+  type Info = AlerterListItemInfo;
+  async fn list(
+    client: &KomodoClient,
+    filters: &ResourceFilters,
+    page: u64,
+    minimal: bool,
+  ) -> anyhow::Result<Vec<Self>> {
+    let names = parse_wildcards(&filters.names);
+    let mut alerters = client
+      .read(ListAlerters {
+        query: ResourceQuery::builder()
+          .tags(filters.tags.clone())
+          // .tag_behavior(TagQueryBehavior::Any)
+          .templates(filters.templates)
+          .build(),
+        limit: None,
+        page: page.saturating_sub(1),
+        sort_by: Default::default(),
+        sort_desc: false,
+      })
+      .await?
+      .into_iter()
+      .filter(|alerter| {
+        (!minimal || filters.all)
+          && matches_wildcards(&names, &[alerter.name.as_str()])
+      })
+      .collect::<Vec<_>>();
+    alerters.sort_by(|a, b| {
+      a.info
+        .enabled
+        .cmp(&b.info.enabled)
+        .then(a.name.cmp(&b.name))
+        .then(a.info.endpoint_type.cmp(&b.info.endpoint_type))
+    });
+    Ok(alerters)
+  }
+}
+
+impl PrintTable for ResourceListItem<AlerterListItemInfo> {
+  fn header(links: bool) -> &'static [&'static str] {
+    if links {
+      &["Alerter", "Type", "Enabled", "Tags", "Link"]
+    } else {
+      &["Alerter", "Type", "Enabled", "Tags"]
+    }
+  }
+  fn row(self, links: bool) -> Vec<comfy_table::Cell> {
+    let mut row = vec![
+      Cell::new(self.name).add_attribute(Attribute::Bold),
+      Cell::new(self.info.endpoint_type),
+      if self.info.enabled {
+        Cell::new(self.info.enabled.to_string()).fg(Color::Green)
+      } else {
+        Cell::new(self.info.enabled.to_string()).fg(Color::Red)
+      },
+      Cell::new(self.tags.join(", ")),
+    ];
+    if links {
+      row.push(Cell::new(resource_link(
+        &cli_config().host,
+        ResourceTargetVariant::Alerter,
+        &self.id,
+      )));
+    }
+    row
   }
 }
