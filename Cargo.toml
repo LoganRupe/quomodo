@@ -38,13 +38,13 @@ mogh_auth_client = "1.7.0"
 mogh_auth_server = "1.8.0"
 mogh_secret_file = "1.0.1"
 mogh_validations = "1.0.1"
-mogh_rate_limit = "1.0.1"
+mogh_rate_limit = "2.2.1"
 partial_derive2 = "0.5.0"
 mongo_indexed = "2.1.0"
 mogh_resolver = "1.0.0"
 mogh_config = "1.4.2"
 mogh_logger = "1.3.4"
-mogh_server = "1.5.0"
+mogh_server = "2.1.0"
 toml_pretty = "2.0.0"
 mogh_cache = "1.1.2"
 mogh_pki = "1.1.3"
@@ -53,8 +53,8 @@ svi = "1.2.0"
 
 # SECRETS (Vaultwarden vault protocol)
 aws-lc-rs = "1.16"
-argon2 = "0.5"
-base64 = "0.22"
+argon2 = "0.6"
+base64 = "0.23"
 
 # BUILD ENV
 # Vendored so release binaries do not depend on the host libssl version.
@@ -75,15 +75,15 @@ axum = { version = "0.8.9", features = ["ws", "json", "macros"] }
 axum-extra = { version = "0.12.6", features = ["typed-header"] }
 
 # OPENAPI
-utoipa-scalar = { version = "0.3.0", features = ["axum"] }
-utoipa = "5.5.0"
+utoipa-scalar = { version = "0.4.0", features = ["axum"] }
+utoipa = "6.0.0"
 
 # SER/DE
 ipnetwork = { version = "0.21.1", features = ["serde"] }
 indexmap = { version = "2.14.0", features = ["serde"] }
 serde = { version = "1.0.229", features = ["derive"] }
 strum = { version = "0.28.0", features = ["derive"] }
-bson = { version = "2.15.0" } # must keep in sync with mongodb version
+bson = { version = "3.1.0" } # must keep in sync with mongodb version
 toml = "1.1.4"
 serde_yaml_ng = "0.10.0"
 serde_json = "1.0.151"
