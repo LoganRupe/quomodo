@@ -1,6 +1,7 @@
 # Contributing
 
-Issues and pull requests are welcome. For anything bigger than a bug fix,
+Issues and pull requests are welcome. Everyone taking part follows the
+[Code of Conduct](CODE_OF_CONDUCT.md). For anything bigger than a bug fix,
 open an issue first so we can agree on the shape before you write it.
 
 ## Scope
