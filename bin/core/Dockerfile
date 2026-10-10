@@ -2,7 +2,7 @@
 ## Build from the repo root:
 ##   podman build -f bin/core/Dockerfile --build-arg VERSION=1.0.0 -t quomodo .
 
-FROM rust:1.98.0-bookworm AS binaries
+FROM rust:1.98.1-bookworm AS binaries
 RUN cargo install cargo-strip cargo-edit
 WORKDIR /builder
 COPY Cargo.toml Cargo.lock ./
