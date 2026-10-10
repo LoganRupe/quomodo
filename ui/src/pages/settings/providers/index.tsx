@@ -95,7 +95,7 @@ function Providers({ type }: { type: "GitProvider" | "ImageRegistry" }) {
                         setUpdateMenuData({
                           title: "Set Domain",
                           value: row.original.domain ?? "",
-                          placeholder: "Input domain, eg. git.komo.do",
+                          placeholder: "Input domain, eg. git.example.com",
                           titleRight:
                             type === "GitProvider" ? (
                               <Group gap="xs">

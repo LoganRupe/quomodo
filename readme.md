@@ -8,7 +8,8 @@
 A hard fork of [Komodo](https://github.com/moghtech/komodo) v2.3.3 for
 podman: stacks are directories of quadlet files, agents only dial out, and
 stack secrets come from a vault at deploy time instead of the database.
-GPL-3.0-or-later, same as upstream.
+GPL-3.0-or-later, same as upstream. Quomodo is an independent project, not
+affiliated with or endorsed by Komodo or moghtech.
 
 It runs one home lab today. It is young (0.x) and the config
 format may still change between releases.
