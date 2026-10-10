@@ -67,6 +67,7 @@ There is no migration from Komodo: stacks have to be rewritten as quadlets.
 - [Releasing](docs/releasing.md): tags, images, binaries
 - [Security](SECURITY.md): trust model and reporting
 - [Contributing](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
 
 ## Layout
 
