@@ -5,18 +5,39 @@ updates:
     schedule: { interval: monthly }
     cooldown: { default-days: 14 }
     groups:
-      cargo: { patterns: ["*"] }
+      # The mogh_* crates share utoipa types: mogh_error 1.1 moved to utoipa 6
+      # while mogh_auth_client 1.7 is still on 5, so they only build when
+      # they move together.
+      mogh:
+        patterns: ["mogh_*", "utoipa", "utoipa-*"]
+      # bson must match the version mongodb uses.
+      mongodb:
+        patterns: ["mongodb", "bson"]
+      cargo:
+        patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: npm
     directories: [/ui, /client/core/ts]
     schedule: { interval: monthly }
     cooldown: { default-days: 14 }
     groups:
-      npm: { patterns: ["*"] }
+      mogh:
+        patterns: ["mogh_*"]
+      npm:
+        patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: monthly }
     cooldown: { default-days: 14 }
+    groups:
+      actions: { patterns: ["*"] }
   - package-ecosystem: docker
     directory: /bin/core
     schedule: { interval: monthly }
     cooldown: { default-days: 14 }
+    ignore:
+      # Node majors are a deliberate move to the next LTS. node:25+ images
+      # ship without yarn, which the UI build stage needs.
+      - dependency-name: node
+        update-types: [version-update:semver-major]
