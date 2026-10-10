@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security issue
+    url: https://github.com/LoganRupe/quomodo/security/advisories/new
+    about: Report vulnerabilities privately, not as a public issue.
+  - name: Docker or compose deployments
+    url: https://github.com/moghtech/komodo
+    about: Quomodo is podman-only. Komodo, which Quomodo is forked from, deploys docker and compose.

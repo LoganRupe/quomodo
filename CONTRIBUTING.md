@@ -1,7 +1,9 @@
 # Contributing
 
 Issues and pull requests are welcome. Everyone taking part follows the
-[Code of Conduct](CODE_OF_CONDUCT.md). For anything bigger than a bug fix,
+[Code of Conduct](CODE_OF_CONDUCT.md). [AGENTS.md](AGENTS.md) lists the rules a
+change must keep and the files to regenerate; AI coding agents read it, and
+it's worth a skim for humans too. For anything bigger than a bug fix,
 open an issue first so we can agree on the shape before you write it.
 
 ## Scope

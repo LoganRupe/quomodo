@@ -1,0 +1,65 @@
+name: Bug report
+description: Something doesn't work as the docs describe.
+labels: [bug]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Core (API, UI)
+        - Agent
+        - Stack deploy
+        - Secrets / vault
+        - Alerters
+        - ResourceSync
+        - km CLI
+        - Install / docs
+    validations:
+      required: true
+  - type: input
+    id: core-version
+    attributes:
+      label: Core version
+      description: The version in the UI's top bar, or `curl https://core.example.com/version` with your Core's address.
+      placeholder: 0.2.3
+    validations:
+      required: true
+  - type: input
+    id: agent-version
+    attributes:
+      label: Agent version
+      description: "`quomodo-agent --version` on the affected host."
+      placeholder: 0.2.3
+  - type: input
+    id: host
+    attributes:
+      label: Host OS and podman version
+      description: "`podman --version` on the affected host."
+      placeholder: Fedora 42, podman 5.6.1
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Steps to reproduce, what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        The failing Update's log from the UI, `journalctl -u quomodo-agent`, or Core's log.
+        Remove secret values, tokens and hostnames you don't want public first.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues.
+          required: true
+        - label: The logs above contain no secrets.
+          required: true
