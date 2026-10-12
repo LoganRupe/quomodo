@@ -12,7 +12,7 @@ GPL-3.0-or-later, same as upstream. Quomodo is an independent project, not
 affiliated with or endorsed by Komodo or moghtech.
 
 <p align="center">
-  <a href="docs/images/demo.mp4">
+  <a href="https://github.com/user-attachments/assets/b931a219-2a44-47d1-b46d-21f50d0ab74f">
     <img src="docs/images/demo.gif" alt="A one-line image bump in gitea.container is pushed; the push webhook runs DeployStackIfChanged and only gitea.service restarts while the other containers keep their uptime" width="960">
   </a>
   <br>
