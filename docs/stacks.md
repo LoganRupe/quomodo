@@ -94,6 +94,14 @@ What the agent does with each `UserNS=` setting:
 | A pod member with `UserNS=auto` | Error. Podman would run it in the host namespace |
 | `host`, `keep-id`, `nomap`, `ns:`, `container:`, or an explicit `UIDMap=` / `GIDMap=` | Left alone |
 
+Outside Quomodo, podman's `:idmap` mount option is the usual fix. A volume
+mounted with `Volume=data.volume:/data:idmap` keeps the same file owners
+whatever uid range the container got, so `UserNS=auto` stops turning them
+into `nobody`. The agent passes `Volume=` options through as written, so
+`:idmap` works alongside a fixed slice too. It needs a filesystem that
+supports idmapped mounts (ext4, xfs and btrfs do; NFS does not) and has to be
+on every mount. The fixed slices need neither.
+
 ## Resource files
 
 Stacks, Servers, Procedures and the rest can live in git as ResourceSync TOML.

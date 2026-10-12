@@ -50,7 +50,8 @@ hosts in docker.
   container's root to another host uid (podman's `UserNS=auto` does, and
   files in volumes turn into `nobody`). `UserNS=auto:uidmapping=...` keeps
   its carve-outs; `UserNS=host` and friends are left alone; a pod member
-  shares the pod's namespace.
+  shares the pod's namespace. Podman's `:idmap` volume option solves the
+  same problem per mount, and the agent passes it through as written.
 - **Secrets**: `[[NAME]]` in a stack file is always a secret, read from the
   secret store named by the Stack's `secrets_collection`. Core fetches the
   values at deploy time, sends them to the agent over the key-authenticated
