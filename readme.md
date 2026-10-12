@@ -14,6 +14,19 @@ affiliated with or endorsed by Komodo or moghtech.
 It runs one home lab today. It is young (0.x) and the config
 format may still change between releases.
 
+![A one-line image bump in gitea.container is pushed; the push webhook runs DeployStackIfChanged and only gitea.service restarts while the other containers keep their uptime](docs/images/demo.gif)
+
+One line of `gitea.container` changes and gets pushed. The push webhook
+deploys the Stack, the agent restarts `gitea.service` and nothing else.
+([MP4](docs/images/demo.mp4))
+
+| Servers | A Stack | A deploy |
+| --- | --- | --- |
+| [![Four servers, all Ok](docs/images/servers.png)](docs/images/servers.png) | [![The gitea Stack and its units](docs/images/stack.png)](docs/images/stack.png) | [![A webhook deploy that restarted only gitea.service](docs/images/deploy-result.png)](docs/images/deploy-result.png) |
+
+The pictures come from `scripts/demo.sh`, a throwaway lab of four podman
+hosts in docker.
+
 ## What it is
 
 - **Core** (`quomodo`): the API and UI. Runs as a root quadlet pod with mongo.
