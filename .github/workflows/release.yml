@@ -1,57 +1,117 @@
 # Tagged releases only. No edge builds. The tag must match the
 # [workspace.package] version in Cargo.toml, or nothing is built.
 #
-# - x86_64 agent binary attached to the GitHub release as `quomodo-agent-x86_64`
-#   (plus its .sha256)
-# - core image pushed to ghcr.io/<owner>/<repo>:<tag> and :latest, or to the
-#   repository variable QUOMODO_IMAGE if set (another ghcr.io path)
+# - agent binaries attached to the GitHub release as `quomodo-agent-x86_64`
+#   and `quomodo-agent-aarch64` (each with a .sha256), built in a Debian
+#   bookworm container so they run on glibc 2.36 and newer
+# - core image for linux/amd64 and linux/arm64, pushed to
+#   ghcr.io/<owner>/<repo>:<tag> and :latest, or to the repository variable
+#   QUOMODO_IMAGE if set (another ghcr.io path)
 #
-# Both jobs use the automatic GITHUB_TOKEN; nothing else to configure.
-# aarch64 is added when a host needs it.
+# Each architecture builds on its own native runner. The image jobs push by
+# digest and a last job merges the two into one manifest list per tag.
+#
+# Running the workflow by hand (workflow_dispatch) is a dry run: it builds and
+# checks everything, keeps the binaries as workflow artifacts, creates no
+# release, and pushes the image to <image>-dryrun:run-<run id> instead of the
+# real tags.
+#
+# Every job uses the automatic GITHUB_TOKEN; nothing else to configure.
 name: Release
 
 on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
+  # The Core image's build stage uses the same image.
+  RUST_IMAGE: rust:1.98.1-bookworm
 
 jobs:
   version:
     name: tag matches Cargo.toml
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
       - name: Compare the tag with [workspace.package] version
+        id: version
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
           CARGO=$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\(.*\)"/\1/p}' Cargo.toml)
-          if [ "$TAG" != "$CARGO" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match Cargo.toml version $CARGO."
-            echo "Bump [workspace.package] version, commit, and tag that commit."
-            exit 1
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            TAG="${GITHUB_REF_NAME#v}"
+            if [ "$TAG" != "$CARGO" ]; then
+              echo "Tag $GITHUB_REF_NAME does not match Cargo.toml version $CARGO."
+              echo "Bump [workspace.package] version, commit, and tag that commit."
+              exit 1
+            fi
+            echo "releasing $CARGO"
+          else
+            echo "dry run of $CARGO from $GITHUB_REF_NAME"
           fi
-          echo "releasing $CARGO"
+          echo "version=$CARGO" >> "$GITHUB_OUTPUT"
 
   agent:
-    name: agent binary (x86_64)
+    name: agent binary (${{ matrix.arch }})
     needs: version
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    env:
+      ASSET: quomodo-agent-${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v7
+      # The runner's own glibc is 2.39, and C dependencies built against it
+      # need 2.38 symbols. Debian 12 and Raspberry Pi OS bookworm have 2.36.
+      - name: Build
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src -e CARGO_TERM_COLOR "$RUST_IMAGE" \
+            cargo build -p komodo_periphery --release
+          cp target/release/quomodo-agent "$ASSET"
+          sha256sum "$ASSET" > "$ASSET.sha256"
+      - name: Check the binary
+        run: |
+          file "$ASSET"
+          case "$(file -b "$ASSET")" in
+            *x86-64*) [ "${{ matrix.arch }}" = x86_64 ] ;;
+            *aarch64*) [ "${{ matrix.arch }}" = aarch64 ] ;;
+            *) false ;;
+          esac
+          GLIBC=$(objdump -T "$ASSET" | grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -1)
+          echo "needs $GLIBC"
+          [ "$(printf '%s\n' "$GLIBC" GLIBC_2.36 | sort -V | tail -1)" = GLIBC_2.36 ]
+          docker run --rm -v "$PWD:/w:ro" debian:bookworm-slim "/w/$ASSET" --version
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.ASSET }}
+          path: |
+            ${{ env.ASSET }}
+            ${{ env.ASSET }}.sha256
+          if-no-files-found: error
+
+  release:
+    name: GitHub release
+    if: github.event_name == 'push'
+    needs: agent
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v7
-      - name: Install Rust
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
-      - name: Build
-        run: |
-          cargo build -p komodo_periphery --release
-          cp target/release/quomodo-agent quomodo-agent-x86_64
-          sha256sum quomodo-agent-x86_64 > quomodo-agent-x86_64.sha256
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: quomodo-agent-*
+          merge-multiple: true
+          path: assets
       - name: Create release and upload assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -59,12 +119,19 @@ jobs:
           set -eu
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
             || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --verify-tag --generate-notes
-          gh release upload "$GITHUB_REF_NAME" quomodo-agent-x86_64 quomodo-agent-x86_64.sha256 --clobber
+          gh release upload "$GITHUB_REF_NAME" assets/* --clobber
 
   core-image:
-    name: core image
+    name: core image (${{ matrix.platform }})
     needs: version
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
     permissions:
       contents: read
       packages: write
@@ -73,22 +140,94 @@ jobs:
       - name: Image name
         env:
           QUOMODO_IMAGE: ${{ vars.QUOMODO_IMAGE }}
+          PLATFORM: ${{ matrix.platform }}
         run: |
           IMAGE="${QUOMODO_IMAGE:-ghcr.io/${GITHUB_REPOSITORY}}"
+          [ "$GITHUB_EVENT_NAME" = push ] || IMAGE="$IMAGE-dryrun"
           echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
-          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          echo "ARCH=${PLATFORM#linux/}" >> "$GITHUB_ENV"
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      - uses: docker/build-push-action@v7
+      - name: Build
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: bin/core/Dockerfile
-          build-args: VERSION=${{ env.VERSION }}
-          tags: |
-            ${{ env.IMAGE }}:${{ github.ref_name }}
-            ${{ env.IMAGE }}:latest
-          push: true
+          platforms: ${{ matrix.platform }}
+          build-args: VERSION=${{ needs.version.outputs.version }}
+          tags: quomodo-smoke:${{ env.ARCH }}
+          load: true
+      - name: Start it
+        run: scripts/core-image-smoke.sh "quomodo-smoke:$ARCH"
+      # Same build, all cached: only exports it.
+      - name: Push by digest
+        id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: bin/core/Dockerfile
+          platforms: ${{ matrix.platform }}
+          build-args: VERSION=${{ needs.version.outputs.version }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+      - name: Save the digest
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          mkdir digests
+          touch "digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digest-${{ env.ARCH }}
+          path: digests/*
+          if-no-files-found: error
+
+  core-manifest:
+    name: core image manifest
+    needs: core-image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: digest-*
+          merge-multiple: true
+          path: digests
+      - name: Image name and tags
+        env:
+          QUOMODO_IMAGE: ${{ vars.QUOMODO_IMAGE }}
+        run: |
+          IMAGE="${QUOMODO_IMAGE:-ghcr.io/${GITHUB_REPOSITORY}}"
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            IMAGE="${IMAGE,,}"
+            echo "TAGS=-t $IMAGE:$GITHUB_REF_NAME -t $IMAGE:latest" >> "$GITHUB_ENV"
+            echo "REF=$IMAGE:$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          else
+            IMAGE="${IMAGE,,}-dryrun"
+            echo "TAGS=-t $IMAGE:run-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+            echo "REF=$IMAGE:run-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+          fi
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Merge the platform images
+        working-directory: digests
+        run: |
+          # shellcheck disable=SC2046,SC2086
+          docker buildx imagetools create $TAGS $(printf "$IMAGE@sha256:%s " *)
+      - name: Check both platforms are in it
+        run: |
+          docker buildx imagetools inspect "$REF"
+          PLATFORMS=$(docker buildx imagetools inspect "$REF" --format '{{json .Manifest}}' \
+            | jq -r '.manifests[].platform | select(.os != "unknown") | .os + "/" + .architecture' | sort | xargs)
+          echo "platforms: $PLATFORMS"
+          [ "$PLATFORMS" = "linux/amd64 linux/arm64" ]

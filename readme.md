@@ -87,8 +87,9 @@ cd client/core/ts && yarn && yarn build && yarn link
 cd ui && yarn link komodo_client && yarn && yarn build
 ```
 
-Tagged releases publish the x86_64 agent binary as a release asset and the
-Core image to `ghcr.io/loganrupe/quomodo` ([releasing](docs/releasing.md)).
+Tagged releases publish the agent binary for x86_64 and aarch64 as release
+assets and the Core image for amd64 and arm64 to `ghcr.io/loganrupe/quomodo`
+([releasing](docs/releasing.md)).
 
 ## Upstream
 
