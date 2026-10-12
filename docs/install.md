@@ -25,7 +25,9 @@ range as an agent host ([Agent](#agent), step 2).
 1. Copy them to the host and edit `quomodo-core.container`:
    - `KOMODO_HOST`: the URL users open Core on.
    - `Image=`: the image and tag to run. Releases are published to
-     `ghcr.io/loganrupe/quomodo:<tag>` and `:latest`.
+     `ghcr.io/loganrupe/quomodo:<tag>` and `:latest`, for amd64 and arm64.
+     podman pulls the one matching the host. The example's `mongo:8` needs
+     an ARMv8.2 CPU on arm64: a Raspberry Pi 5 runs it, a Pi 4 does not.
    - Login: local admin is on by default. Uncomment the OIDC block to add an
      OIDC provider, and create its client secret in step 2.
    - TLS: uncomment that block if Core serves TLS itself rather than sitting
@@ -125,16 +127,19 @@ on their own. Alert on expiry, for example with the blackbox exporter's
 
 Repeat on every host that deploys stacks.
 
-1. Install the binary. Releases attach `quomodo-agent-x86_64` and its
-   `.sha256`:
+1. Install the binary. Releases attach `quomodo-agent-x86_64` and
+   `quomodo-agent-aarch64`, each with its `.sha256`. Both need glibc 2.36
+   or newer: Debian 12, Ubuntu 24.04 and Raspberry Pi OS bookworm have it,
+   Ubuntu 22.04 does not. `uname -m` prints the architecture to pick:
 
    ```sh
    VERSION=v0.1.1   # the release tag to install
+   ASSET=quomodo-agent-$(uname -m)
    cd /tmp
-   curl -fLO https://github.com/LoganRupe/quomodo/releases/download/$VERSION/quomodo-agent-x86_64
-   curl -fLO https://github.com/LoganRupe/quomodo/releases/download/$VERSION/quomodo-agent-x86_64.sha256
-   sha256sum -c quomodo-agent-x86_64.sha256
-   sudo install -m 0755 quomodo-agent-x86_64 /usr/local/bin/quomodo-agent
+   curl -fLO https://github.com/LoganRupe/quomodo/releases/download/$VERSION/$ASSET
+   curl -fLO https://github.com/LoganRupe/quomodo/releases/download/$VERSION/$ASSET.sha256
+   sha256sum -c $ASSET.sha256
+   sudo install -m 0755 $ASSET /usr/local/bin/quomodo-agent
    ```
 
 2. Give podman's `containers` user a subordinate id range. The agent cuts a
