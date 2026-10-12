@@ -11,14 +11,16 @@ stack secrets come from a vault at deploy time instead of the database.
 GPL-3.0-or-later, same as upstream. Quomodo is an independent project, not
 affiliated with or endorsed by Komodo or moghtech.
 
+<p align="center">
+  <a href="docs/images/demo.mp4">
+    <img src="docs/images/demo.gif" alt="A one-line image bump in gitea.container is pushed; the push webhook runs DeployStackIfChanged and only gitea.service restarts while the other containers keep their uptime" width="960">
+  </a>
+  <br>
+  <sub>One line of <code>gitea.container</code> changes and gets pushed. The webhook deploys and only <code>gitea.service</code> restarts. Click for the video (0:22).</sub>
+</p>
+
 It runs one home lab today. It is young (0.x) and the config
 format may still change between releases.
-
-![A one-line image bump in gitea.container is pushed; the push webhook runs DeployStackIfChanged and only gitea.service restarts while the other containers keep their uptime](docs/images/demo.gif)
-
-One line of `gitea.container` changes and gets pushed. The push webhook
-deploys the Stack, the agent restarts `gitea.service` and nothing else.
-([MP4](docs/images/demo.mp4))
 
 | Servers | A Stack | A deploy |
 | --- | --- | --- |
