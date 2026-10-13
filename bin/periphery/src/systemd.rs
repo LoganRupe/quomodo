@@ -1,4 +1,5 @@
-//! Thin wrappers over systemctl / journalctl for quadlet units.
+//! Thin wrappers over systemctl / journalctl for quadlet units. A rootless
+//! agent drives its own user's systemd with `--user`.
 
 use std::time::Duration;
 
@@ -8,10 +9,21 @@ use command::{
 use komodo_client::entities::update::Log;
 use shell_escape::unix::escape;
 
+use crate::host::scope;
+
+/// `systemctl`, or `systemctl --user` for a rootless agent.
+fn systemctl_cmd() -> &'static str {
+  if scope().is_rootless() {
+    "systemctl --user"
+  } else {
+    "systemctl"
+  }
+}
+
 pub async fn daemon_reload() -> Log {
   run_komodo_standard_command(
     "Reload systemd",
-    "systemctl daemon-reload",
+    format!("{} daemon-reload", systemctl_cmd()),
     CommandOptions::default().timeout(Duration::from_secs(60)),
   )
   .await
@@ -33,7 +45,7 @@ pub async fn systemctl(
     .join(" ");
   run_komodo_standard_command(
     stage,
-    format!("systemctl {action} -- {units}"),
+    format!("{} {action} -- {units}", systemctl_cmd()),
     CommandOptions::default().timeout(Duration::from_secs(600)),
   )
   .await
@@ -42,7 +54,8 @@ pub async fn systemctl(
 pub async fn is_active(unit: &str) -> bool {
   run_standard_command(
     &format!(
-      "systemctl is-active --quiet -- {}",
+      "{} is-active --quiet -- {}",
+      systemctl_cmd(),
       escape(unit.into())
     ),
     CommandOptions::default().timeout(Duration::from_secs(10)),
@@ -54,7 +67,8 @@ pub async fn is_active(unit: &str) -> bool {
 pub async fn journal_tail(unit: &str, lines: u32) -> String {
   let output = run_standard_command(
     &format!(
-      "journalctl --no-pager -n {lines} -u {}",
+      "journalctl{} --no-pager -n {lines} -u {}",
+      if scope().is_rootless() { " --user" } else { "" },
       escape(unit.into())
     ),
     CommandOptions::default().timeout(Duration::from_secs(10)),

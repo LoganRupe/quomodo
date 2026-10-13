@@ -46,11 +46,14 @@ async fn periphery_information(
   podman_connected: bool,
 ) -> PeripheryInformation {
   let config = periphery_config();
+  let scope = crate::host::scope();
   PeripheryInformation {
     version: env!("CARGO_PKG_VERSION").to_string(),
     public_key: periphery_keys().load().public.to_string(),
     stats_polling_rate: config.stats_polling_rate,
     podman_connected,
     public_ip: host_public_ip().await.cloned(),
+    rootless: scope.is_rootless(),
+    user: scope.user().to_string(),
   }
 }

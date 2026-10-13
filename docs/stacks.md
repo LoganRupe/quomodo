@@ -69,6 +69,16 @@ changed or not. `auto_pull = true` pulls every container image before the
 restart. `ignore_units` leaves units out of the stack's health state, for
 example an init container that exits.
 
+## Unit names
+
+Quadlet names each systemd service after its unit file's name alone, not
+the directory the file is in. `web.container` in two stacks on one host
+would be one `web.service`, and `Network=app.network` could mean either
+stack's file. A deploy fails if any of its units would share a service with
+a unit file already under the quadlet directory, from another stack or put
+there by hand. Prefix unit files that recur across stacks with the stack
+name, for example `forgejo-newt.container`.
+
 ## User namespaces
 
 Podman's `UserNS=auto` picks a new uid range each time a container is
@@ -93,6 +103,24 @@ What the agent does with each `UserNS=` setting:
 | A pod member with no `UserNS=` | Shares the pod's namespace |
 | A pod member with `UserNS=auto` | Error. Podman would run it in the host namespace |
 | `host`, `keep-id`, `nomap`, `ns:`, `container:`, or an explicit `UIDMap=` / `GIDMap=` | Left alone |
+
+A carve-out (`uidmapping=C:H:S`) may not map onto the ids slices are taken
+from, or it would share them with another unit. The deploy fails if it does.
+
+A [rootless agent](install.md#rootless-agent) takes its slices from its
+user's own subordinate ids instead of `containers`, and records them in
+`~/.local/share/quomodo/idmap.json`. In a rootless unit, the host side of
+`UIDMap=` and `GIDMap=` counts in the user's namespace: 0 is the user and
+1 onwards are the user's subordinate ids, every range of theirs in
+`/etc/subuid` order. Slices start at 1. A carve-out may only map onto the
+user, as `uidmapping=1000:0:1`, which makes container uid 1000 the user on
+the host.
+
+Rootless quadlets written by hand often leave out `UserNS=`, so the
+container's root is the user, and their volumes hold files owned by the
+user. Deployed through Quomodo, such a unit gets a slice, and those files
+read as `nobody` inside it. Set `UserNS=` (empty) to keep the user as root,
+or `UserNS=keep-id` to run as the user, before the first deploy.
 
 Outside Quomodo, podman's `:idmap` mount option is the usual fix. A volume
 mounted with `Volume=data.volume:/data:idmap` keeps the same file owners

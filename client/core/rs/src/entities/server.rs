@@ -71,6 +71,9 @@ pub struct ServerListItemInfo {
   pub version: Option<String>,
   /// The public key of Periphery
   pub public_key: Option<String>,
+  /// The user a rootless agent runs as. None for an agent running as
+  /// root, or one not connected.
+  pub rootless_user: Option<String>,
   /// If a Periphery fails to authenticate to Core with invalid Periphery public key,
   /// it will be stored here to accept the connection later on.
   pub attempted_public_key: Option<String>,
@@ -405,6 +408,13 @@ pub struct PeripheryInformation {
   pub podman_connected: bool,
   /// The host public ip, if it can be resolved.
   pub public_ip: Option<String>,
+  /// Whether the agent runs as a user other than root, deploying that
+  /// user's rootless quadlets.
+  #[serde(default)]
+  pub rootless: bool,
+  /// The user the agent runs as.
+  #[serde(default)]
+  pub user: String,
 }
 
 /// Current pending actions on the server.

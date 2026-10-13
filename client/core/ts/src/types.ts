@@ -1116,6 +1116,13 @@ export interface PeripheryInformation {
 	podman_connected: boolean;
 	/** The host public ip, if it can be resolved. */
 	public_ip?: string;
+	/**
+	 * Whether the agent runs as a user other than root, deploying that
+	 * user's rootless quadlets.
+	 */
+	rootless?: boolean;
+	/** The user the agent runs as. */
+	user?: string;
 }
 
 export type GetPeripheryInformationResponse = PeripheryInformation;
@@ -2331,6 +2338,11 @@ export interface ServerListItemInfo {
 	version?: string;
 	/** The public key of Periphery */
 	public_key?: string;
+	/**
+	 * The user a rootless agent runs as. None for an agent running as
+	 * root, or one not connected.
+	 */
+	rootless_user?: string;
 	/**
 	 * If a Periphery fails to authenticate to Core with invalid Periphery public key,
 	 * it will be stored here to accept the connection later on.

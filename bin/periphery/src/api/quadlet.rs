@@ -123,6 +123,22 @@ impl Resolve<crate::api::Args> for DeployStack {
         return Ok(res);
       }
     };
+    if let Err(e) = crate::host::preflight(&prepared) {
+      res.logs.push(Log::error(
+        "Rootless Checks",
+        format_serror(&e.into()),
+      ));
+      return Ok(res);
+    }
+    if let Err(e) =
+      quadlet::check_unit_names(&stack.name, &prepared.units).await
+    {
+      res
+        .logs
+        .push(Log::error("Unit Names", format_serror(&e.into())));
+      return Ok(res);
+    }
+    res.logs.extend(crate::host::user_targets(&mut prepared));
     match idmap::assign(&stack.name, &mut prepared).await {
       Ok(log) => res.logs.push(log),
       Err(e) => {

@@ -11,6 +11,8 @@ use sha2::{Digest, Sha256};
 
 pub mod idmap;
 pub mod ignore;
+pub mod install;
+pub mod ports;
 pub mod prepare;
 pub mod read;
 pub mod unit;

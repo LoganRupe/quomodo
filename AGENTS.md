@@ -7,8 +7,10 @@ this repo. Human contributors: the same rules apply.
 
 Quomodo is a hard fork of [Komodo](https://github.com/moghtech/komodo) v2.3.3
 that deploys podman quadlets. Core (API, UI, mongo) runs as a pod; an agent
-runs as root on each host and dials out to Core over `wss://`. Stacks are git
-directories of quadlet files. Stack secrets come from a vault at deploy time.
+runs on each host and dials out to Core over `wss://`. As root it deploys
+rootful quadlets; as any other user, that user's rootless ones
+(`bin/periphery/src/host.rs`). Stacks are git directories of quadlet files.
+Stack secrets come from a vault at deploy time.
 
 The readme's first line credits Komodo as the starting point. Komodo's author
 asked for that attribution as the condition for the fork: never remove or bury
@@ -44,7 +46,8 @@ Breaking one of these is a bug, whatever the change was for.
   verify" switch, or an inbound listener on the agent.
 - **Fixed user namespace slices.** The agent gives each pod and standalone
   container a fixed 65536-id slice, recorded in `idmap.json`. A slice is never
-  reused or moved.
+  reused or moved. A rootless agent takes them from its user's own
+  subordinate ids, counting up from 1, so adding a range never moves a slice.
 - **Names stay.** Crates are `komodo_*` and `periphery`; env vars start with
   `KOMODO_` and `PERIPHERY_`. Renaming them breaks every install.
 - **Removed on purpose:** docker, compose, Swarm, Deployments, Builds,

@@ -1,8 +1,10 @@
 # Install
 
 Quomodo has two parts. Core (API, UI, mongo) runs as a root podman pod on one
-host. The agent runs as root on every host that deploys stacks, including the
-Core host if it deploys stacks too, and dials out to Core.
+host. The agent runs on every host that deploys stacks, including the Core
+host if it deploys stacks too, and dials out to Core. As root it deploys
+rootful quadlets; run as a user, it deploys that user's rootless quadlets
+([Rootless agent](#rootless-agent)).
 
 ## Requirements
 
@@ -217,6 +219,121 @@ Repeat on every host that deploys stacks.
 
 Back up `idmap.json` with the host. If it is lost, the next deploy hands out
 new slices and every volume's files belong to the wrong uids.
+
+### Rootless agent
+
+An agent started as any user but root deploys that user's rootless quadlets:
+units go to `~/.config/containers/systemd/<stack>/`, systemd is driven with
+`systemctl --user`, and podman containers, images and secrets are the
+user's own. No root process holds the Core connection, so a compromised Core
+reaches that user and not the host. Each such agent is its own Server on
+Core, shown as `rootless (<user>)`. A host can run a root agent and any
+number of user agents side by side, each with its own `connect_as`.
+
+Give each stack, or each group of stacks that trust each other, its own
+service user rather than a person's account: a compromised container then
+reaches that user's files and stacks only. Make it a regular user with a real
+home and no login shell:
+
+```sh
+sudo useradd --create-home --home-dir /var/lib/web-app --shell /usr/sbin/nologin web-app
+```
+
+Not `useradd --system`: journald keeps a separate journal only for uids of
+1000 and up, so a system user's units log to the system journal, which the
+user cannot read, and the agent's `journalctl --user` comes back empty when a
+unit fails. A system user also gets no subordinate ids.
+
+The steps below use the user `alice`. Run the root ones once per user.
+
+1. Install the binary as in [Agent](#agent) step 1.
+
+2. As root, turn on lingering, so alice's systemd starts at boot and her
+   stacks keep running with nobody logged in. The agent checks for it and
+   refuses to deploy without it.
+
+   ```sh
+   sudo loginctl enable-linger alice
+   ```
+
+3. As root, give alice subordinate ids for her stacks. The agent cuts the
+   same fixed 65536-id slices out of her own range that a root agent cuts
+   out of `containers` ([stacks.md](stacks.md#user-namespaces)). `useradd`
+   usually gives a user 65536 ids, which is one slice. Add a range of
+   4194304 ids (64 slices) after it. Pick a start no other entry in
+   `/etc/subuid` or `/etc/subgid` overlaps:
+
+   ```sh
+   sudo usermod --add-subuids 1000000-5194303 --add-subgids 1000000-5194303 alice
+   ```
+
+   Only ever add ranges. Slices are laid out over alice's ranges in file
+   order, so removing or moving one moves her slices, and the files in her
+   volumes end up owned by the wrong ids.
+
+4. A rootless agent cannot publish host ports below
+   `net.ipv4.ip_unprivileged_port_start`, usually 1024, and a deploy whose
+   `PublishPort=` lines try fails before anything is written. Use higher
+   ports, put a root reverse proxy in front, or lower the limit host-wide in
+   `/etc/sysctl.d/`. A `Network=host` container binds whatever port its
+   program picks, which the agent cannot see: one below the limit fails when
+   the unit starts, not at deploy.
+
+   Rootless containers on a `.network` see every client as an address of
+   that network (`10.89.x.x`), not the real source address. On podman's
+   default rootless network (pasta, no `Network=` line) or `Network=host`
+   they see the real one. Anything that logs, limits or bans by client
+   address, such as a reverse proxy, CrowdSec or a syslog receiver, belongs
+   on one of those, or on the root agent.
+
+5. As alice, write `~/.config/quomodo/config.toml` as in [Agent](#agent)
+   step 3. Leave out `config_directory`, `root_directory` and
+   `quadlet_dir`: run as alice they default to `~/.config/quomodo`,
+   `~/.local/share/quomodo` and `~/.config/containers/systemd`.
+
+6. As alice, install the unit as
+   `~/.config/systemd/user/quomodo-agent.service`:
+
+   ```ini
+   [Unit]
+   Description=Quomodo agent (rootless)
+
+   [Service]
+   ExecStart=/usr/local/bin/quomodo-agent --config-path %h/.config/quomodo/config.toml
+   Restart=always
+   RestartSec=5
+
+   [Install]
+   WantedBy=default.target
+   ```
+
+   ```sh
+   systemctl --user daemon-reload
+   systemctl --user enable --now quomodo-agent
+   quomodo-agent --config-path ~/.config/quomodo/config.toml public-key
+   ```
+
+   `systemctl --user` needs alice's `XDG_RUNTIME_DIR`, and the agent finds
+   its directories through `$HOME`. A login shell as alice sets both. From
+   root, set them yourself; this also works for a service user with no
+   login shell:
+
+   ```sh
+   sudo runuser -u alice -- env HOME=/home/alice XDG_RUNTIME_DIR=/run/user/$(id -u alice) \
+     systemctl --user enable --now quomodo-agent
+   ```
+
+7. Register the Server as in [Agent](#agent) step 6.
+
+A user's systemd has no `multi-user.target`, so a rootless agent installs
+units with `WantedBy=multi-user.target` or `graphical.target` as
+`WantedBy=default.target`. The same stack files then start at boot under
+either agent. A user unit cannot order itself after a system unit such as
+`tailscaled.service`; give units that need the network `Restart=` instead.
+
+Alice's agent keeps the files in the table above under her home instead:
+the config and keys in `~/.config/quomodo/`, repos, state and `idmap.json`
+in `~/.local/share/quomodo/`. Back up her `idmap.json` too.
 
 ## First stack
 

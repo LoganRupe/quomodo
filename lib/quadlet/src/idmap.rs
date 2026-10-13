@@ -24,6 +24,15 @@
 //! Slices are taken from the top of the range down. `auto` fills from the
 //! bottom, so a container still running on an `auto` range from before the
 //! agent allocated for it cannot overlap a slice.
+//!
+//! A rootless agent maps from its own user's subordinate ranges instead.
+//! Rootless podman reads the host side of `UIDMap=` as an id in the user's
+//! namespace, where 0 is the user and 1 to N are the user's subordinate ids
+//! in `/etc/subuid` order. Slices there count up from 1, so a range widened
+//! with `usermod --add-subuids` adds slices at the end and moves none.
+//!
+//! A carve-out may not map onto ids slices are taken from: it would share
+//! them with another unit. Rootless, that leaves only the user itself.
 
 use std::collections::BTreeMap;
 
@@ -46,35 +55,6 @@ pub struct SubIdRange {
   pub count: u32,
 }
 
-impl SubIdRange {
-  /// Slices this range holds. The top one is left out: it ends at
-  /// `u32::MAX`, which the kernel treats as "no id".
-  fn slots(&self) -> u32 {
-    (self.count / SLOT).saturating_sub(1)
-  }
-
-  /// First host id of slice `index`, counting down from the top.
-  pub fn host_start(&self, index: u32) -> anyhow::Result<u32> {
-    let slots = self.slots();
-    if index >= slots {
-      return Err(anyhow!(
-        "subordinate id range {}:{} is used up: slice {index} of {slots}",
-        self.start,
-        self.count
-      ));
-    }
-    let start =
-      self.start as u64 + (slots - 1 - index) as u64 * SLOT as u64;
-    u32::try_from(start).map_err(|_| {
-      anyhow!(
-        "subordinate id range {}:{} runs past u32",
-        self.start,
-        self.count
-      )
-    })
-  }
-}
-
 /// The entry for `user` in a subuid / subgid file. The first one wins, as
 /// in shadow-utils; a numeric first field is a uid, not a name, and is
 /// skipped.
@@ -89,6 +69,140 @@ pub fn parse_subid(contents: &str, user: &str) -> Option<SubIdRange> {
     let count = parts.next()?.trim().parse().ok()?;
     Some(SubIdRange { start, count })
   })
+}
+
+/// How many ids a rootless user's namespace has past the user itself: the
+/// sum of every entry whose first field is one of `owners` (the user name
+/// and uid), as podman lays them out.
+pub fn subid_count(contents: &str, owners: &[&str]) -> u64 {
+  contents
+    .lines()
+    .filter_map(|line| {
+      let mut parts = line.trim().split(':');
+      let name = parts.next()?;
+      if !owners.contains(&name) {
+        return None;
+      }
+      let _start = parts.next()?.trim().parse::<u32>().ok()?;
+      parts.next()?.trim().parse::<u64>().ok()
+    })
+    .sum()
+}
+
+/// Where the slices of one id kind (uid or gid) come from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pool {
+  /// Who owns the range, for errors.
+  owner: String,
+  /// First host id of the lowest slice.
+  base: u64,
+  slots: u32,
+  /// Slice 0 is the highest (rootful) or the lowest (rootless).
+  top_down: bool,
+  /// Host ids slices are taken from, end exclusive.
+  span: (u64, u64),
+  /// Host ids the namespace can map at all, end exclusive. None when any
+  /// host id can be mapped (rootful).
+  valid: Option<(u64, u64)>,
+}
+
+impl Pool {
+  /// The `containers` range of a rootful host. The top slice is left out:
+  /// it ends at `u32::MAX`, which the kernel treats as "no id".
+  pub fn rootful(range: SubIdRange) -> Pool {
+    Pool {
+      owner: SUBID_USER.to_string(),
+      base: range.start as u64,
+      slots: (range.count / SLOT).saturating_sub(1),
+      top_down: true,
+      span: (
+        range.start as u64,
+        range.start as u64 + range.count as u64,
+      ),
+      valid: None,
+    }
+  }
+
+  /// A rootless user's namespace, `count` ids past the user itself (see
+  /// [subid_count]).
+  pub fn rootless(user: &str, count: u64) -> Pool {
+    // The namespace is u32 wide, the user takes id 0.
+    let count = count.min(u32::MAX as u64);
+    Pool {
+      owner: user.to_string(),
+      base: 1,
+      slots: (count / SLOT as u64) as u32,
+      top_down: false,
+      span: (1, 1 + count),
+      valid: Some((0, 1 + count)),
+    }
+  }
+
+  pub fn slots(&self) -> u32 {
+    self.slots
+  }
+
+  /// First host id of slice `index`. `needed` is how many slices the host
+  /// holds with this one, for the error when the range is too small.
+  pub fn host_start(
+    &self,
+    index: u32,
+    needed: u32,
+  ) -> anyhow::Result<u32> {
+    if index >= self.slots {
+      let hint = if self.top_down {
+        String::new()
+      } else {
+        // Rootless: a range added after the current ones moves no slice.
+        format!(
+          ". As root, add a free range to '{0}' with 'usermod --add-subuids <start>-<end> --add-subgids <start>-<end> {0}'; 4194304 ids hold 64 slices",
+          self.owner
+        )
+      };
+      return Err(anyhow!(
+        "the subordinate id range of '{}' holds {} slice(s) of {SLOT} ids, this host needs {}{hint}",
+        self.owner,
+        self.slots,
+        needed.max(index + 1),
+      ));
+    }
+    let step = if self.top_down {
+      self.slots - 1 - index
+    } else {
+      index
+    };
+    let start = self.base + step as u64 * SLOT as u64;
+    u32::try_from(start).map_err(|_| {
+      anyhow!(
+        "the subordinate id range of '{}' runs past u32",
+        self.owner
+      )
+    })
+  }
+
+  /// Fail if a carve-out maps onto ids slices are taken from, or onto ids
+  /// the namespace cannot map.
+  fn check_carve_out(&self, m: &Mapping) -> anyhow::Result<()> {
+    let (from, to) = (m.host as u64, m.host as u64 + m.size as u64);
+    if from < self.span.1 && self.span.0 < to {
+      return Err(anyhow!(
+        "{} maps onto host ids {}-{}, which slices are taken from; it would share them with another unit",
+        m.render(),
+        self.span.0,
+        self.span.1 - 1,
+      ));
+    }
+    if let Some((lo, hi)) = self.valid
+      && (from < lo || to > hi)
+    {
+      return Err(anyhow!(
+        "{} maps onto host ids outside the namespace of '{}'",
+        m.render(),
+        self.owner
+      ));
+    }
+    Ok(())
+  }
 }
 
 /// Slice index for `key`, allocating the lowest unused one on first sight.
@@ -309,8 +423,8 @@ pub fn apply(
   stack: &str,
   write: &mut BTreeMap<String, String>,
   table: &mut BTreeMap<String, u32>,
-  subuid: &SubIdRange,
-  subgid: &SubIdRange,
+  uid_pool: &Pool,
+  gid_pool: &Pool,
 ) -> anyhow::Result<Vec<Assigned>> {
   let mut assigned = Vec::new();
   for (path, contents) in write.iter_mut() {
@@ -328,9 +442,19 @@ pub fn apply(
           replace_userns(contents, section, &["UserNS=".to_string()]);
       }
       Request::Slice { size, uids, gids } => {
+        for (pool, carve) in [(uid_pool, &uids), (gid_pool, &gids)] {
+          for m in carve {
+            pool
+              .check_carve_out(m)
+              .map_err(|e| anyhow!("{path}: UserNS=auto: {e}"))?;
+          }
+        }
         let index = slot_for(table, &format!("{stack}/{path}"));
-        let uids = build_map(size, subuid.host_start(index)?, &uids);
-        let gids = build_map(size, subgid.host_start(index)?, &gids);
+        let needed = table.values().max().map_or(0, |max| max + 1);
+        let uids =
+          build_map(size, uid_pool.host_start(index, needed)?, &uids);
+        let gids =
+          build_map(size, gid_pool.host_start(index, needed)?, &gids);
         let lines = uids
           .iter()
           .map(|m| format!("UIDMap={}", m.render()))
@@ -440,6 +564,10 @@ mod tests {
     count: 2147483648,
   };
 
+  fn pool() -> Pool {
+    Pool::rootful(RANGE)
+  }
+
   fn m(container: u32, host: u32, size: u32) -> Mapping {
     Mapping {
       container,
@@ -457,18 +585,87 @@ mod tests {
     assert_eq!(parse_subid("containers:bad:1\n", "containers"), None);
 
     // 32768 slices, the top one skipped: slice 0 ends one below it.
-    assert_eq!(RANGE.slots(), 32767);
-    assert_eq!(RANGE.host_start(0).unwrap(), 4294836223);
-    assert_eq!(RANGE.host_start(1).unwrap(), 4294836223 - SLOT);
-    assert_eq!(RANGE.host_start(32766).unwrap(), RANGE.start);
-    assert!(RANGE.host_start(32767).is_err());
+    let pool = pool();
+    assert_eq!(pool.slots(), 32767);
+    assert_eq!(pool.host_start(0, 1).unwrap(), 4294836223);
+    assert_eq!(pool.host_start(1, 2).unwrap(), 4294836223 - SLOT);
+    assert_eq!(pool.host_start(32766, 32767).unwrap(), RANGE.start);
+    assert!(pool.host_start(32767, 32768).is_err());
     assert!(
-      SubIdRange {
+      Pool::rootful(SubIdRange {
         start: 100000,
         count: 65536
-      }
-      .host_start(0)
+      })
+      .host_start(0, 1)
       .is_err()
+    );
+  }
+
+  #[test]
+  fn rootless_pools_count_up_from_one() {
+    // Entries by name and by uid add up, in file order.
+    let file =
+      "alice:100000:65536\nbob:165536:65536\n1000:231072:131072\n";
+    assert_eq!(subid_count(file, &["alice", "1000"]), 196608);
+    assert_eq!(subid_count(file, &["carol"]), 0);
+
+    let pool = Pool::rootless("alice", 196608);
+    assert_eq!(pool.slots(), 3);
+    assert_eq!(pool.host_start(0, 1).unwrap(), 1);
+    assert_eq!(pool.host_start(2, 3).unwrap(), 1 + 2 * SLOT);
+    let err = pool.host_start(3, 5).unwrap_err().to_string();
+    assert!(err.contains("'alice' holds 3 slice(s)"), "{err}");
+    assert!(err.contains("needs 5"), "{err}");
+
+    // Widening the range keeps every slice where it was.
+    let wider = Pool::rootless("alice", 4194304);
+    assert_eq!(wider.slots(), 64);
+    assert_eq!(wider.host_start(2, 3).unwrap(), 1 + 2 * SLOT);
+
+    // A default useradd range is one slice; none at all is none.
+    assert_eq!(Pool::rootless("alice", 65536).slots(), 1);
+    assert!(Pool::rootless("alice", 0).host_start(0, 1).is_err());
+  }
+
+  #[test]
+  fn carve_outs_stay_out_of_the_slices() {
+    let rootful = pool();
+    assert!(rootful.check_carve_out(&m(1000, 1000, 1)).is_ok());
+    assert!(
+      rootful
+        .check_carve_out(&m(1000, RANGE.start + 5, 1))
+        .is_err()
+    );
+    let rootless = Pool::rootless("alice", 131072);
+    assert!(rootless.check_carve_out(&m(1000, 0, 1)).is_ok());
+    assert!(rootless.check_carve_out(&m(1000, 1000, 1)).is_err());
+    assert!(rootless.check_carve_out(&m(1000, 0, 2)).is_err());
+    assert!(rootless.check_carve_out(&m(1000, 131073, 1)).is_err());
+
+    let mut write = BTreeMap::from([(
+      "x.container".to_string(),
+      "[Container]\nUserNS=auto:uidmapping=1000:1000:1\n".to_string(),
+    )]);
+    let mut table = BTreeMap::new();
+    let err =
+      apply("s", &mut write, &mut table, &rootless, &rootless)
+        .unwrap_err()
+        .to_string();
+    assert!(
+      err.starts_with("x.container: UserNS=auto: 1000:1000:1"),
+      "{err}"
+    );
+    assert!(table.is_empty());
+
+    let mut write = BTreeMap::from([(
+      "x.container".to_string(),
+      "[Container]\nUserNS=auto:uidmapping=1000:0:1,gidmapping=1000:0:1\n"
+        .to_string(),
+    )]);
+    apply("s", &mut write, &mut table, &rootless, &rootless).unwrap();
+    assert_eq!(
+      write["x.container"],
+      "[Container]\nUIDMap=0:1:1000\nUIDMap=1000:0:1\nUIDMap=1001:1001:64535\nGIDMap=0:1:1000\nGIDMap=1000:0:1\nGIDMap=1001:1001:64535\n"
     );
   }
 
@@ -583,11 +780,11 @@ mod tests {
     ]);
     let mut table = BTreeMap::new();
     let out =
-      apply("my stack", &mut write, &mut table, &RANGE, &RANGE)
+      apply("my stack", &mut write, &mut table, &pool(), &pool())
         .unwrap();
 
-    let s0 = RANGE.host_start(0).unwrap();
-    let s1 = RANGE.host_start(1).unwrap();
+    let s0 = pool().host_start(0, 1).unwrap();
+    let s1 = pool().host_start(1, 2).unwrap();
     assert_eq!(
       write["app.pod"],
       format!(
@@ -622,7 +819,7 @@ mod tests {
     // pass keeps them, and the table does not grow.
     let before = write.clone();
     let again =
-      apply("my stack", &mut write, &mut table, &RANGE, &RANGE)
+      apply("my stack", &mut write, &mut table, &pool(), &pool())
         .unwrap();
     assert_eq!(write, before);
     assert!(again.is_empty());
@@ -633,13 +830,14 @@ mod tests {
       "solo.container".to_string(),
       "[Container]\nImage=y\n".to_string(),
     )]);
-    apply("other", &mut other, &mut table, &RANGE, &RANGE).unwrap();
+    apply("other", &mut other, &mut table, &pool(), &pool()).unwrap();
     assert_eq!(table["other/solo.container"], 2);
     let mut back = BTreeMap::from([(
       "solo.container".to_string(),
       "[Container]\nImage=z\n".to_string(),
     )]);
-    apply("my stack", &mut back, &mut table, &RANGE, &RANGE).unwrap();
+    apply("my stack", &mut back, &mut table, &pool(), &pool())
+      .unwrap();
     assert!(
       back["solo.container"]
         .contains(&format!("UIDMap=0:{s1}:65536"))

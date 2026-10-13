@@ -174,6 +174,83 @@ pub async fn installed_units(
   Ok(parse_units(&read_stack_files(&dir).await?.files))
 }
 
+/// Fail if a unit of `stack` would generate the same systemd service as a
+/// quadlet file already installed outside the stack's directory: by another
+/// stack, or by hand. Two stacks shipping `newt.container` would otherwise
+/// overwrite each other's `newt.service`.
+pub async fn check_unit_names(
+  stack: &str,
+  units: &[ParsedUnit],
+) -> anyhow::Result<()> {
+  let root = periphery_config().quadlet_dir.clone();
+  let own = path_name(stack);
+  // As root, `users/` holds quadlets for every user's systemd, not ours.
+  let skip_users = !crate::host::scope().is_rootless();
+  let installed = tokio::task::spawn_blocking(move || {
+    installed_elsewhere(&root, &own, skip_users)
+  })
+  .await
+  .context("Quadlet directory reader panicked")?;
+  let collisions = unit::name_collisions(
+    units,
+    installed.iter().map(|(o, f)| (o.as_str(), f.as_str())),
+  );
+  if collisions.is_empty() {
+    return Ok(());
+  }
+  Err(anyhow!(
+    "{}\nRename the unit files in this stack, or destroy the other stack first",
+    collisions.join("\n")
+  ))
+}
+
+/// Every file under `root` outside `root/own`, as (where it is, file name).
+/// Symlinks are not followed.
+fn installed_elsewhere(
+  root: &Path,
+  own: &str,
+  skip_users: bool,
+) -> Vec<(String, String)> {
+  let mut out = Vec::new();
+  let Ok(entries) = std::fs::read_dir(root) else {
+    return out;
+  };
+  for entry in entries.flatten() {
+    let Ok(file_type) = entry.file_type() else {
+      continue;
+    };
+    let name = entry.file_name().to_string_lossy().into_owned();
+    if file_type.is_file() {
+      out.push((format!("{}", root.display()), name));
+      continue;
+    }
+    if !file_type.is_dir()
+      || name == own
+      || (skip_users && name == "users")
+    {
+      continue;
+    }
+    let owner = format!("stack directory '{name}'");
+    let mut dirs = vec![entry.path()];
+    while let Some(dir) = dirs.pop() {
+      let Ok(entries) = std::fs::read_dir(&dir) else {
+        continue;
+      };
+      for entry in entries.flatten() {
+        match entry.file_type() {
+          Ok(t) if t.is_dir() => dirs.push(entry.path()),
+          Ok(t) if t.is_file() => out.push((
+            owner.clone(),
+            entry.file_name().to_string_lossy().into_owned(),
+          )),
+          _ => {}
+        }
+      }
+    }
+  }
+  out
+}
+
 /// Resolve the requested unit files (eg `web.container`) against the units,
 /// accepting the file name, its stem, or its service name.
 pub fn select_units<'a>(

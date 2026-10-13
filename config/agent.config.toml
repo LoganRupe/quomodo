@@ -59,14 +59,14 @@ connect_as = ""
 
 ## Holds the config and keys.
 ## Env: PERIPHERY_CONFIG_DIRECTORY
-## Default: /etc/quomodo
-config_directory = "/etc/quomodo"
+## Default: /etc/quomodo, or ~/.config/quomodo when not run as root
+# config_directory = "/etc/quomodo"
 
 ## Working state: repo clones under ./repos, deploy state under ./state,
 ## the user namespace slice table in ./idmap.json.
 ## Env: PERIPHERY_ROOT_DIRECTORY
-## Default: /var/lib/quomodo
-root_directory = "/var/lib/quomodo"
+## Default: /var/lib/quomodo, or ~/.local/share/quomodo when not run as root
+# root_directory = "/var/lib/quomodo"
 
 ## Override the directory repos are cloned into.
 ## Env: PERIPHERY_REPO_DIR
@@ -75,8 +75,9 @@ root_directory = "/var/lib/quomodo"
 
 ## The systemd quadlet directory. Each Stack is installed as a subdirectory.
 ## Env: PERIPHERY_QUADLET_DIR
-## Default: /etc/containers/systemd
-quadlet_dir = "/etc/containers/systemd"
+## Default: /etc/containers/systemd, or ~/.config/containers/systemd when
+## not run as root
+# quadlet_dir = "/etc/containers/systemd"
 
 #########
 # STATS #

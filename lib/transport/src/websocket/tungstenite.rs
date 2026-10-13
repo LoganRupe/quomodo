@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Arc};
+use std::{path::Path, sync::Arc, time::Duration};
 
 use anyhow::{Context, anyhow};
 use axum::http::{self, HeaderValue};
@@ -172,6 +172,12 @@ impl WebsocketReceiver for TungsteniteWebsocketReceiver {
   }
 }
 
+/// How long one connection attempt (TCP, TLS and the websocket upgrade)
+/// may take. Without it a SYN sent before the route to Core exists, as at
+/// boot when the agent starts beside its VPN, waits out the kernel's SYN
+/// retries (about two minutes) before the caller gets to retry.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
 impl TungsteniteWebsocket {
   /// Connect to a `wss://` url, verifying the server certificate.
   /// With `ca_file`, only the CA certificates in that PEM file are
@@ -194,13 +200,22 @@ impl TungsteniteWebsocket {
       }
       None => None,
     };
-    let res = tokio_tungstenite::connect_async_tls_with_config(
-      make_request(url)?,
-      None,
-      false,
-      connector,
+    let res = tokio::time::timeout(
+      CONNECT_TIMEOUT,
+      tokio_tungstenite::connect_async_tls_with_config(
+        make_request(url)?,
+        None,
+        false,
+        connector,
+      ),
     )
-    .await;
+    .await
+    .map_err(|_| {
+      anyhow!(
+        "Timed out after {}s connecting to websocket | url: {url}",
+        CONNECT_TIMEOUT.as_secs()
+      )
+    })?;
     Self::handle_connection_result(url, res)
   }
 

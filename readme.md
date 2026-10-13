@@ -32,8 +32,10 @@ hosts in docker.
 ## What it is
 
 - **Core** (`quomodo`): the API and UI. Runs as a root quadlet pod with mongo.
-- **Agent** (`quomodo-agent`): runs as root on every host and dials out to
-  Core over `wss://` only. No inbound listener, no passkeys, no terminals.
+- **Agent** (`quomodo-agent`): runs on every host and dials out to Core over
+  `wss://` only. No inbound listener, no passkeys, no terminals. Run as root
+  it deploys rootful quadlets; run as a user it deploys that user's rootless
+  ones with `systemctl --user`.
 - **Stacks**: a directory in git holding raw `.pod`, `.container`, `.network`,
   `.volume`, `.build`, `.image` or `.kube` files plus config files. Deploying
   copies the directory to `/etc/containers/systemd/<stack>/`, reloads systemd

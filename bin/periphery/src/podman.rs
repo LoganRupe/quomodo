@@ -1,5 +1,7 @@
 //! Thin wrappers over the podman CLI.
-//! The agent runs as root against the rootful podman engine.
+//! Every call runs as the agent's user: as root against the rootful podman
+//! engine, as any other user against that user's rootless one, with its
+//! own containers, images, secrets and registry logins.
 
 use std::{collections::HashMap, time::Duration};
 

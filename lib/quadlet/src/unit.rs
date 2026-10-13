@@ -405,6 +405,37 @@ fn join(dir: &str, rel: &str) -> Option<String> {
   Some(parts.join("/"))
 }
 
+/// One line per unit of a stack whose systemd service another installed
+/// quadlet file already generates. Quadlet names every service after its
+/// file name alone, so `web.container` in two stacks on one host is one
+/// `web.service`, and `Network=app.network` could mean either stack's.
+/// `installed` is every quadlet file outside the stack's own directory, as
+/// (where it is, file name).
+pub fn name_collisions<'a>(
+  units: &[ParsedUnit],
+  installed: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> Vec<String> {
+  let mut taken = BTreeMap::new();
+  for (owner, file) in installed {
+    let file = base_name(file);
+    if let Some(kind) = QuadletKind::from_file_name(file) {
+      taken
+        .entry(kind.service_name(stem(file)))
+        .or_insert((owner, file));
+    }
+  }
+  units
+    .iter()
+    .filter_map(|u| {
+      let (owner, file) = taken.get(&u.unit.service)?;
+      Some(format!(
+        "{}: {} is already {file}'s in {owner}",
+        u.unit.file, u.unit.service
+      ))
+    })
+    .collect()
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -570,5 +601,30 @@ mod tests {
     assert!(!custom.reads("app/tests/a.rs", &with_custom));
     assert!(custom.reads("build.ignore", &with_custom));
     assert!(custom.reads("app/Containerfile", &with_custom));
+  }
+
+  #[test]
+  fn name_collisions_across_stacks() {
+    let units = [
+      parse_unit("web.container", "[Container]\nImage=x\n").unwrap(),
+      parse_unit("net/app.network", "[Network]\n").unwrap(),
+      parse_unit("db.container", "[Container]\nImage=x\n").unwrap(),
+    ];
+    let installed = [
+      ("stack 'other'", "web.container"),
+      ("stack 'other'", "deep/app.network"),
+      ("stack 'kube'", "db.kube"),
+      ("stack 'other'", "README.md"),
+      ("stack 'other'", "db.pod"),
+    ];
+    assert_eq!(
+      name_collisions(&units, installed),
+      vec![
+        "web.container: web.service is already web.container's in stack 'other'",
+        "net/app.network: app-network.service is already app.network's in stack 'other'",
+        "db.container: db.service is already db.kube's in stack 'kube'",
+      ]
+    );
+    assert!(name_collisions(&units, [("x", "web.pod")]).is_empty());
   }
 }
