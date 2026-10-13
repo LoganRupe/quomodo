@@ -158,6 +158,25 @@ export const ServerComponents: RequiredResourceComponents<
   },
   Info: {
     ServerVersion,
+    AgentUser: ({ id }) => {
+      const info = useServer(id)?.info;
+      if (!info?.version) return null;
+      return (
+        <HoverCard position="bottom-start">
+          <HoverCard.Target>
+            <Group gap="xs">
+              <ICONS.User size="1rem" />
+              {info.rootless_user ? `rootless (${info.rootless_user})` : "root"}
+            </Group>
+          </HoverCard.Target>
+          <HoverCard.Dropdown>
+            {info.rootless_user
+              ? `The agent runs as ${info.rootless_user} and deploys that user's rootless quadlets`
+              : "The agent runs as root and deploys rootful quadlets"}
+          </HoverCard.Dropdown>
+        </HoverCard>
+      );
+    },
     PublicIp: ({ id }) => {
       const publicIp = useServer(id)?.info.public_ip;
       return (

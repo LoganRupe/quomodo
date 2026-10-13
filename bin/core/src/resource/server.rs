@@ -77,14 +77,16 @@ impl super::KomodoResource for Server {
         )
       })
       .unwrap_or_default();
-    let (version, public_key, public_ip) = match periphery_info {
-      Some(info) => (
-        Some(info.version.clone()),
-        Some(info.public_key.clone()),
-        info.public_ip.clone(),
-      ),
-      None => (None, None, None),
-    };
+    let (version, public_key, public_ip, rootless_user) =
+      match periphery_info {
+        Some(info) => (
+          Some(info.version.clone()),
+          Some(info.public_key.clone()),
+          info.public_ip.clone(),
+          info.rootless.then(|| info.user.clone()),
+        ),
+        None => (None, None, None, None),
+      };
     ServerListItem {
       name: server.name,
       id: server.id,
@@ -114,6 +116,7 @@ impl super::KomodoResource for Server {
           .send_version_mismatch_alerts,
         version,
         public_key,
+        rootless_user,
         attempted_public_key: optional_string(
           server.info.attempted_public_key,
         ),

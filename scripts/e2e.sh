@@ -30,6 +30,14 @@
 #   8. a changed binary file in the build context does the same
 #   9. a changed file the build's .containerignore excludes does not rebuild
 #  10. DestroyStack removes units and the directory
+#  11. a second agent running as the lingering user alice deploys a stack
+#      rootless: units under ~/.config/containers/systemd, `systemctl --user`,
+#      slices counted up from alice's own subordinate ids (her default range
+#      first, then the one added after it), a carve-out onto alice herself,
+#      units wanted by multi-user.target installed for default.target and
+#      back after a host restart with nobody logged in, no host ports below
+#      ip_unprivileged_port_start, a second stack reusing the unit names
+#      refused, and a destroy that keeps the slices
 #
 # Usage: scripts/e2e.sh              (from the repo root; needs docker, cargo, python3, openssl)
 #        KEEP=1 scripts/e2e.sh       (leave everything running for a look)
@@ -115,6 +123,29 @@ Exec=sleep infinity
 WantedBy=multi-user.target
 UNIT
 echo "hello v1" > "$WORK/git/work/$STACK/motd.txt"
+# Step 11's rootless stack: a pod with a member, and a standalone container
+# whose uid and gid 1000 are alice herself. Written for a root agent
+# (multi-user.target); the rootless agent installs them for default.target.
+mkdir -p "$WORK/git/work/rootless"
+printf '[Pod]\nPodName=r-pod\n' > "$WORK/git/work/rootless/r.pod"
+cat > "$WORK/git/work/rootless/r-member.container" <<UNIT
+[Container]
+Image=docker.io/library/alpine:3.20
+ContainerName=r-member
+Pod=r.pod
+Exec=sleep infinity
+[Install]
+WantedBy=multi-user.target
+UNIT
+cat > "$WORK/git/work/rootless/r-solo.container" <<UNIT
+[Container]
+Image=docker.io/library/alpine:3.20
+ContainerName=r-solo
+UserNS=auto:uidmapping=1000:0:1,gidmapping=1000:0:1
+Exec=sh -c 'echo r-solo up; exec sleep infinity'
+[Install]
+WantedBy=multi-user.target
+UNIT
 GIT="git -C $WORK/git/work -c user.email=e2e@test -c user.name=e2e"
 $GIT init -q -b main && $GIT add -A && $GIT commit -qm "v1"
 git clone -q --bare "$WORK/git/work" "$WORK/git/e2e.git" && git -C "$WORK/git/e2e.git" update-server-info
@@ -159,7 +190,11 @@ $CURL "$CORE_URL/version" >/dev/null || { tail -20 "$WORK/core.log"; fail "core 
 
 log "api helper"
 cat > "$WORK/api.py" <<PY
-import json, ssl, sys, time, urllib.request
+import json, os, ssl, sys, time, urllib.request
+# E2E_SERVER / E2E_STACK / E2E_RUN_DIR point the helper at the rootless pair.
+SERVER = os.environ.get("E2E_SERVER", "$HOST_NAME")
+STACK = os.environ.get("E2E_STACK", "$STACK")
+RUN_DIR = os.environ.get("E2E_RUN_DIR", "$STACK")
 BASE = "$CORE_URL"
 TLS = ssl.create_default_context(cafile="$WORK/tls/ca.pem")
 def post(path, body, jwt=None):
@@ -191,7 +226,7 @@ def execute(typ, params):
     if "error" in u: raise SystemExit("%s refused: %s" % (typ, u["error"]))
     uid = u.get("id") or (u.get("_id") or {}).get("\$oid")
     if uid: return wait_update(uid)
-    stack_id = api("read", "GetStack", {"stack": "$STACK"})["_id"]["\$oid"]
+    stack_id = api("read", "GetStack", {"stack": STACK})["_id"]["\$oid"]
     for _ in range(10):
         time.sleep(1)
         for it in api("read", "ListUpdates", {"query": {"target.id": stack_id}})["updates"]:
@@ -200,27 +235,30 @@ def execute(typ, params):
     return {"noop": True, "success": True, "logs": []}
 cmd = sys.argv[1]
 if cmd == "create-server":
-    print(json.dumps(api("write", "CreateServer", {"name": "$HOST_NAME", "config": {"enabled": True}, "public_key": sys.argv[2]})))
+    print(json.dumps(api("write", "CreateServer", {"name": SERVER, "config": {"enabled": True}, "public_key": sys.argv[2]})))
+elif cmd == "rootless-user":
+    s = [s for s in api("read", "ListServers", {}) if s["name"] == SERVER][0]
+    print(s["info"].get("rootless_user") or "root")
 elif cmd == "server-state":
-    print(api("read", "GetServerState", {"server": "$HOST_NAME"}).get("status"))
+    print(api("read", "GetServerState", {"server": SERVER}).get("status"))
 elif cmd == "create-stack":
-    print(json.dumps(api("write", "CreateStack", {"name": "$STACK", "config": {"server_id": "$HOST_NAME", "git_provider": "$BRIDGE_IP:$GIT_PORT", "git_https": False, "repo": "e2e.git", "branch": "main", "run_directory": "$STACK"}}))[:300])
+    print(json.dumps(api("write", "CreateStack", {"name": STACK, "config": {"server_id": SERVER, "git_provider": "$BRIDGE_IP:$GIT_PORT", "git_https": False, "repo": "e2e.git", "branch": "main", "run_directory": RUN_DIR}}))[:300])
 elif cmd == "stack":
-    s = api("read", "GetStack", {"stack": "$STACK"}); i = s["info"]
+    s = api("read", "GetStack", {"stack": STACK}); i = s["info"]
     print(json.dumps({"latest_units": [u["file"] for u in i.get("latest_units", [])], "deployed_units": [u["file"] for u in (i.get("deployed_units") or [])], "deployed_hash": i.get("deployed_hash"), "contents_hash": i.get("deployed_contents_hash")}))
 elif cmd == "state":
-    print(api("read", "ListStacks", {"query": {"names": ["$STACK"]}})[0]["info"]["state"])
+    print(api("read", "ListStacks", {"query": {"names": [STACK]}})[0]["info"]["state"])
 elif cmd == "services":
-    print(json.dumps([(s["service"], s["state"]) for s in api("read", "ListStackServices", {"stack": "$STACK"})]))
+    print(json.dumps([(s["service"], s["state"]) for s in api("read", "ListStackServices", {"stack": STACK})]))
 elif cmd in ("DeployStack", "DeployStackIfChanged", "DestroyStack", "RestartStack", "StopStack"):
-    u = execute(cmd, {"stack": "$STACK", **({"services": []} if cmd in ("DeployStack", "RestartStack", "StopStack") else {})})
+    u = execute(cmd, {"stack": STACK, **({"services": []} if cmd in ("DeployStack", "RestartStack", "StopStack") else {})})
     print(json.dumps({"success": u["success"], "noop": u.get("noop", False), "stages": [(l["stage"], l["success"]) for l in u["logs"]]}))
     if not u["success"]:
         for l in u["logs"]:
             if not l["success"]: print("--", l["stage"], "\n", l["stdout"][-1500:], "\n", l["stderr"][-1500:])
         raise SystemExit(cmd + " failed")
 elif cmd == "refresh":
-    print(api("write", "RefreshStackCache", {"stack": "$STACK"}))
+    print(api("write", "RefreshStackCache", {"stack": STACK}))
 elif cmd == "create-alerter":
     r = api("write", "CreateAlerter", {"name": "e2e-hook", "config": {"enabled": True, "endpoint": {"type": "Custom", "params": {"url": sys.argv[2]}}}})
     if "error" in r: raise SystemExit("CreateAlerter failed: %s" % r["error"])
@@ -469,5 +507,103 @@ hexec systemctl is-active web.service >/dev/null 2>&1 && fail "web.service still
 hexec systemctl is-active e2e-pod.service >/dev/null 2>&1 && fail "e2e-pod.service still active after destroy"
 hexec test ! -e /etc/containers/systemd/$STACK || fail "stack directory still present"
 echo "destroyed"
+
+log "11. a rootless agent deploys alice's stack"
+RL_SERVER=quomodo-e2e-alice; RL_STACK=e2e-rootless
+RL="env E2E_SERVER=$RL_SERVER E2E_STACK=$RL_STACK E2E_RUN_DIR=rootless $API"
+ALICE_UID=$(hexec id -u alice)
+aexec() { hexec runuser -u alice -- env HOME=/home/alice XDG_RUNTIME_DIR=/run/user/$ALICE_UID "$@"; }
+hexec loginctl enable-linger alice
+for i in $(seq 1 30); do hexec systemctl is-active --quiet "user@$ALICE_UID.service" && break; sleep 1; done
+hexec systemctl is-active --quiet "user@$ALICE_UID.service" || fail "lingering did not start alice's systemd"
+aexec mkdir -p /home/alice/.config/quomodo /home/alice/.config/systemd/user
+hexec install -o alice -g alice -m 644 /etc/quomodo/ca.pem /home/alice/.config/quomodo/ca.pem
+hexec sh -c "cat > /home/alice/.config/quomodo/config.toml <<CFG
+core_addresses = [\"wss://$BRIDGE_IP:$CORE_PORT\"]
+core_tls_ca_file = \"/home/alice/.config/quomodo/ca.pem\"
+connect_as = \"$RL_SERVER\"
+logging.level = \"info\"
+CFG
+cat > /home/alice/.config/systemd/user/quomodo-agent.service <<'UNIT'
+[Unit]
+Description=Quomodo agent (rootless)
+[Service]
+ExecStart=/usr/local/bin/quomodo-agent --config-path %h/.config/quomodo/config.toml
+Restart=always
+RestartSec=2
+[Install]
+WantedBy=default.target
+UNIT
+chown -R alice:alice /home/alice/.config"
+aexec systemctl --user daemon-reload
+aexec systemctl --user enable --now quomodo-agent
+RL_PUBKEY=$(aexec /usr/local/bin/quomodo-agent --config-path /home/alice/.config/quomodo/config.toml public-key)
+[ -n "$RL_PUBKEY" ] || fail "no public key from the rootless agent"
+$RL create-server "$RL_PUBKEY" | head -c 200; echo
+for i in $(seq 1 30); do [ "$($RL server-state)" = "Ok" ] && break; sleep 1; done
+[ "$($RL server-state)" = "Ok" ] || { aexec journalctl --user -u quomodo-agent --no-pager | tail -20; fail "rootless server never reached Ok"; }
+aexec journalctl --user -u quomodo-agent --no-pager | grep -q "Running as alice ($ALICE_UID): rootless quadlets" || fail "the agent did not detect it runs rootless"
+for i in $(seq 1 15); do [ "$($RL rootless-user)" = "alice" ] && break; sleep 1; done
+[ "$($RL rootless-user)" = "alice" ] || fail "Core shows the agent as $($RL rootless-user), expected alice"
+echo "rootless agent Ok, Core shows rootless (alice)"
+
+$RL create-stack; echo
+RL_DEPLOY=$($RL DeployStack) || { echo "$RL_DEPLOY"; fail "rootless DeployStack failed"; }
+echo "$RL_DEPLOY" | grep -q '"User Targets", true' || { echo "$RL_DEPLOY"; fail "no User Targets stage in the rootless deploy"; }
+aexec systemctl --user is-active r-pod.service r-member.service r-solo.service || { aexec journalctl --user -u r-pod.service -u r-member.service -u r-solo.service --no-pager | tail -30; fail "rootless units not active"; }
+RD=/home/alice/.config/containers/systemd/$RL_STACK
+[ "$(hexec stat -c %U "$RD/r.pod")" = "alice" ] || fail "rootless unit files are not alice's"
+hexec test ! -e "/etc/containers/systemd/$RL_STACK" || fail "rootless stack written to the system quadlet dir"
+# Slices count up from id 1 of alice's namespace, in file order: r-solo
+# takes 1-65536, carved around uid 1000 = id 0 = alice; the pod 65537-131072.
+hexec grep -q "^UIDMap=0:65537:65536$" "$RD/r.pod" || { hexec cat "$RD/r.pod"; fail "pod did not get rootless slice 1"; }
+for want in "UIDMap=0:1:1000" "UIDMap=1000:0:1" "UIDMap=1001:1001:64535" "GIDMap=1000:0:1"; do
+  hexec grep -q "^$want$" "$RD/r-solo.container" || { hexec cat "$RD/r-solo.container"; fail "r-solo is missing $want"; }
+done
+hexec grep -q '"e2e-rootless/r.pod": 1' /home/alice/.local/share/quomodo/idmap.json || { hexec cat /home/alice/.local/share/quomodo/idmap.json; fail "rootless slice table not recorded in alice's home"; }
+# On the host, slice 0 is alice's default range and slice 1 starts the one added after it.
+host_map() { hexec cat "/proc/$(aexec podman inspect -f '{{.State.Pid}}' "$1")/uid_map" | awk 'NR==1 {print $1":"$2":"$3}'; }
+[ "$(host_map r-solo)" = "0:524288:1000" ] || fail "r-solo runs on host ids $(host_map r-solo), expected 0:524288:1000"
+[ "$(host_map r-member)" = "0:1000000:65536" ] || fail "pod member runs on host ids $(host_map r-member), expected 0:1000000:65536"
+[ "$(aexec podman exec r-solo sh -c 'mkdir -p /tmp/o && chown 1000 /tmp/o && stat -c %u /tmp/o')" = "1000" ] || fail "uid 1000 in r-solo is not usable"
+aexec journalctl --user -u r-solo.service --no-pager | grep -q "r-solo up" || fail "journalctl --user cannot read r-solo's log"
+hexec podman ps --format '{{.Names}}' | grep -q r-solo && fail "alice's containers show up in root's podman"
+echo "rootless: slices 1 and 65537 in alice's namespace, host 524288 and 1000000"
+
+hexec grep -q '^WantedBy=default.target$' "$RD/r-solo.container" || { hexec cat "$RD/r-solo.container"; fail "r-solo was installed without default.target"; }
+docker restart -t 30 "$HOST_NAME" >/dev/null
+# Watch from root only: runuser goes through PAM, which can open a session
+# and start alice's systemd by itself, linger or not.
+for i in $(seq 1 60); do [ "$(hexec pgrep -c -u alice conmon || true)" -ge 3 ] && break; sleep 2; done
+[ "$(hexec pgrep -c -u alice conmon || true)" -ge 3 ] || { hexec journalctl -b --no-pager | tail -30; fail "alice's containers did not come back after a host restart"; }
+# systemd 256 lists each user manager as a session of class "manager"; only a "user" one is a login.
+hexec sh -c 'for s in $(loginctl list-sessions --no-legend | awk "{print \$1}"); do loginctl show-session "$s" -p Class --value; done' | grep -qx user && fail "a login session is open, so the restart proves nothing about linger"
+aexec systemctl --user is-active r-pod.service r-member.service r-solo.service || fail "rootless units not active after the restart"
+for i in $(seq 1 30); do [ "$($RL server-state)" = "Ok" ] && break; sleep 1; done
+[ "$($RL server-state)" = "Ok" ] || fail "rootless agent did not reconnect after the restart"
+echo "restart: rootless units back with no session, agent reconnected"
+
+DUP="env E2E_SERVER=$RL_SERVER E2E_STACK=e2e-rootless-dup E2E_RUN_DIR=rootless $API"
+$DUP create-stack >/dev/null
+if DUP_OUT=$($DUP DeployStack 2>&1); then fail "a second stack with the same unit files deployed"; fi
+echo "$DUP_OUT" | grep -q "r-solo.service is already r-solo.container's in stack directory 'e2e-rootless'" || { echo "$DUP_OUT" | tail -10; fail "the unit name refusal did not say why"; }
+hexec test ! -e /home/alice/.config/containers/systemd/e2e-rootless-dup || fail "the refused stack still wrote files"
+echo "same unit files in a second stack refused"
+
+sed -i '/^\[Container\]/a PublishPort=80:8080' "$WORK/git/work/rootless/r-solo.container"
+publish "rootless low port"
+# Core reuses a repo pull for 5 seconds; the refused stack above just pulled.
+sleep 6
+hexec sysctl -q -w net.ipv4.ip_unprivileged_port_start=1024
+if PORT_OUT=$($RL DeployStackIfChanged 2>&1); then fail "deployed host port 80 rootless"; fi
+echo "$PORT_OUT" | grep -q "cannot publish host ports below 1024" || { echo "$PORT_OUT" | tail -10; fail "the port refusal did not say why"; }
+hexec grep -q PublishPort "$RD/r-solo.container" && fail "the refused deploy still wrote files"
+echo "port 80 refused before anything was written"
+
+$RL DestroyStack
+aexec systemctl --user is-active r-solo.service >/dev/null 2>&1 && fail "r-solo.service still active after destroy"
+hexec test ! -e "$RD" || fail "rootless stack directory still present"
+hexec grep -q '"e2e-rootless/r.pod": 1' /home/alice/.local/share/quomodo/idmap.json || fail "destroy gave back a slice"
+echo "rootless stack destroyed, slices kept"
 
 log "PASS"

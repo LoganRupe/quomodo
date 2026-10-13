@@ -18,6 +18,7 @@ mod api;
 mod config;
 mod connection;
 mod helpers;
+mod host;
 mod podman;
 mod quadlet;
 mod state;
@@ -59,6 +60,16 @@ async fn app() -> anyhow::Result<()> {
     rustls::crypto::aws_lc_rs::default_provider()
       .install_default()
       .expect("Failed to install default crypto provider");
+
+    match host::scope() {
+      host::Scope::Root => info!("Running as root: rootful quadlets"),
+      host::Scope::User { name, uid } => {
+        info!("Running as {name} ({uid}): rootless quadlets");
+        if let Err(e) = host::check_linger() {
+          warn!("{e:#}");
+        }
+      }
+    }
 
     match podman::version().await {
       Ok(version) => info!("podman {version}"),

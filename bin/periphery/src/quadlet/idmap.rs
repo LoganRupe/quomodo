@@ -8,12 +8,15 @@ use std::{collections::BTreeMap, path::PathBuf};
 use anyhow::{Context, anyhow};
 use komodo_client::entities::update::Log;
 use quadlet::{
-  idmap::{self, SUBID_USER, SubIdRange},
+  idmap::{self, Pool, SUBID_USER},
   prepare::Prepared,
 };
 use tokio::sync::Mutex;
 
-use crate::config::periphery_config;
+use crate::{
+  config::periphery_config,
+  host::{Scope, scope},
+};
 
 /// Deploys of different stacks run at once; the table is one file.
 static TABLE: Mutex<()> = Mutex::const_new(());
@@ -22,15 +25,31 @@ fn table_path() -> PathBuf {
   periphery_config().root_directory.join("idmap.json")
 }
 
-async fn subid_range(file: &str) -> anyhow::Result<SubIdRange> {
+/// The slice pool in `file` (/etc/subuid or /etc/subgid) for whoever the
+/// agent runs as.
+async fn pool(file: &str) -> anyhow::Result<Pool> {
   let contents = tokio::fs::read_to_string(file)
     .await
     .with_context(|| format!("Failed to read {file}"))?;
-  idmap::parse_subid(&contents, SUBID_USER).ok_or_else(|| {
-    anyhow!(
-      "{file} has no entry for '{SUBID_USER}'. Add '{SUBID_USER}:2147483647:2147483648' (the quomodo_agent role does)"
-    )
-  })
+  match scope() {
+    Scope::Root => idmap::parse_subid(&contents, SUBID_USER)
+      .map(Pool::rootful)
+      .ok_or_else(|| {
+        anyhow!(
+          "{file} has no entry for '{SUBID_USER}'. Add '{SUBID_USER}:2147483647:2147483648' (the quomodo_agent role does)"
+        )
+      }),
+    Scope::User { name, uid } => {
+      let uid = uid.to_string();
+      let count = idmap::subid_count(&contents, &[name, &uid]);
+      if count == 0 {
+        return Err(anyhow!(
+          "{file} has no entry for '{name}'. As root, run 'usermod --add-subuids <start>-<end> --add-subgids <start>-<end> {name}' with a free range of 4194304 ids"
+        ));
+      }
+      Ok(Pool::rootless(name, count))
+    }
+  }
 }
 
 async fn load() -> anyhow::Result<BTreeMap<String, u32>> {
@@ -71,8 +90,8 @@ pub async fn assign(
   stack: &str,
   prepared: &mut Prepared,
 ) -> anyhow::Result<Log> {
-  let subuid = subid_range("/etc/subuid").await?;
-  let subgid = subid_range("/etc/subgid").await?;
+  let uid_pool = pool("/etc/subuid").await?;
+  let gid_pool = pool("/etc/subgid").await?;
 
   let _guard = TABLE.lock().await;
   let mut table = load().await?;
@@ -81,8 +100,8 @@ pub async fn assign(
     stack,
     &mut prepared.write,
     &mut table,
-    &subuid,
-    &subgid,
+    &uid_pool,
+    &gid_pool,
   )?;
   if table.len() != before {
     save(&table).await?;

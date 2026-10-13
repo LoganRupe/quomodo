@@ -258,7 +258,7 @@ pub struct PeripheryConfig {
   ///
   /// keys: ${config_directory}/keys
   ///
-  /// Default: `/etc/quomodo`
+  /// Default: `/etc/quomodo`, or `~/.config/quomodo` when not run as root
   #[serde(default = "default_config_directory")]
   pub config_directory: PathBuf,
 
@@ -267,7 +267,8 @@ pub struct PeripheryConfig {
   /// repo: ${root_directory}/repos
   /// stack state: ${root_directory}/stacks
   ///
-  /// Default: `/var/lib/quomodo`
+  /// Default: `/var/lib/quomodo`, or `~/.local/share/quomodo` when not run
+  /// as root
   #[serde(default = "default_root_directory")]
   pub root_directory: PathBuf,
 
@@ -278,7 +279,8 @@ pub struct PeripheryConfig {
 
   /// The systemd quadlet directory stacks are installed into,
   /// one subdirectory per stack.
-  /// Default: `/etc/containers/systemd`
+  /// Default: `/etc/containers/systemd`, or `~/.config/containers/systemd`
+  /// when not run as root
   #[serde(default = "default_quadlet_dir")]
   pub quadlet_dir: PathBuf,
 
@@ -315,16 +317,41 @@ pub struct PeripheryConfig {
   pub image_registries: ForgivingVec<ImageRegistry>,
 }
 
+/// The home directory when running as anyone but root: a rootless agent
+/// keeps everything under it. Read from /proc so the client crate needs no
+/// libc; off Linux this is always None.
+fn rootless_home() -> Option<PathBuf> {
+  let status = std::fs::read_to_string("/proc/self/status").ok()?;
+  let euid = status
+    .lines()
+    .find_map(|line| line.strip_prefix("Uid:"))?
+    .split_whitespace()
+    .nth(1)?;
+  if euid == "0" {
+    return None;
+  }
+  std::env::var_os("HOME").map(PathBuf::from)
+}
+
 fn default_config_directory() -> PathBuf {
-  "/etc/quomodo".parse().unwrap()
+  match rootless_home() {
+    Some(home) => home.join(".config/quomodo"),
+    None => "/etc/quomodo".parse().unwrap(),
+  }
 }
 
 fn default_root_directory() -> PathBuf {
-  "/var/lib/quomodo".parse().unwrap()
+  match rootless_home() {
+    Some(home) => home.join(".local/share/quomodo"),
+    None => "/var/lib/quomodo".parse().unwrap(),
+  }
 }
 
 fn default_quadlet_dir() -> PathBuf {
-  "/etc/containers/systemd".parse().unwrap()
+  match rootless_home() {
+    Some(home) => home.join(".config/containers/systemd"),
+    None => "/etc/containers/systemd".parse().unwrap(),
+  }
 }
 
 fn default_stats_polling_rate() -> Timelength {

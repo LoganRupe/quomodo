@@ -2606,6 +2606,7 @@ dependencies = [
  "git",
  "hickory-resolver",
  "komodo_client",
+ "libc",
  "mogh_cache",
  "mogh_config",
  "mogh_logger",
