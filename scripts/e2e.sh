@@ -37,7 +37,9 @@
 #      units wanted by multi-user.target installed for default.target and
 #      back after a host restart with nobody logged in, no host ports below
 #      ip_unprivileged_port_start, a second stack reusing the unit names
-#      refused, and a destroy that keeps the slices
+#      refused, a stack joining another's network deployed in parallel
+#      ahead of it, a failed unit started again by a redeploy with no
+#      changes, and a destroy that keeps the slices
 #
 # Usage: scripts/e2e.sh              (from the repo root; needs docker, cargo, python3, openssl)
 #        KEEP=1 scripts/e2e.sh       (leave everything running for a look)
@@ -137,12 +139,27 @@ Exec=sleep infinity
 [Install]
 WantedBy=multi-user.target
 UNIT
+printf '[Network]\n' > "$WORK/git/work/rootless/r.network"
 cat > "$WORK/git/work/rootless/r-solo.container" <<UNIT
 [Container]
 Image=docker.io/library/alpine:3.20
 ContainerName=r-solo
+Network=r.network
 UserNS=auto:uidmapping=1000:0:1,gidmapping=1000:0:1
 Exec=sh -c 'echo r-solo up; exec sleep infinity'
+[Install]
+WantedBy=multi-user.target
+UNIT
+# A second rootless stack that joins the first one's network. keep-id: it
+# takes no slice, so the first stack's slice numbers stay as asserted.
+mkdir -p "$WORK/git/work/rootless-joiner"
+cat > "$WORK/git/work/rootless-joiner/joiner.container" <<UNIT
+[Container]
+Image=docker.io/library/alpine:3.20
+ContainerName=r-joiner
+Network=r.network
+UserNS=keep-id
+Exec=sleep infinity
 [Install]
 WantedBy=multi-user.target
 UNIT
@@ -547,7 +564,13 @@ for i in $(seq 1 15); do [ "$($RL rootless-user)" = "alice" ] && break; sleep 1;
 [ "$($RL rootless-user)" = "alice" ] || fail "Core shows the agent as $($RL rootless-user), expected alice"
 echo "rootless agent Ok, Core shows rootless (alice)"
 
+JOIN="env E2E_SERVER=$RL_SERVER E2E_STACK=e2e-rootless-joiner E2E_RUN_DIR=rootless-joiner $API"
 $RL create-stack; echo
+$JOIN create-stack >/dev/null
+# The joiner deploys first and in parallel: r.network does not exist yet.
+( $JOIN DeployStack > "$WORK/joiner-deploy.log" 2>&1; echo "exit=$?" >> "$WORK/joiner-deploy.log" ) &
+JOIN_PID=$!
+sleep 2
 RL_DEPLOY=$($RL DeployStack) || { echo "$RL_DEPLOY"; fail "rootless DeployStack failed"; }
 echo "$RL_DEPLOY" | grep -q '"User Targets", true' || { echo "$RL_DEPLOY"; fail "no User Targets stage in the rootless deploy"; }
 aexec systemctl --user is-active r-pod.service r-member.service r-solo.service || { aexec journalctl --user -u r-pod.service -u r-member.service -u r-solo.service --no-pager | tail -30; fail "rootless units not active"; }
@@ -569,6 +592,10 @@ host_map() { hexec cat "/proc/$(aexec podman inspect -f '{{.State.Pid}}' "$1")/u
 aexec journalctl --user -u r-solo.service --no-pager | grep -q "r-solo up" || fail "journalctl --user cannot read r-solo's log"
 hexec podman ps --format '{{.Names}}' | grep -q r-solo && fail "alice's containers show up in root's podman"
 echo "rootless: slices 1 and 65537 in alice's namespace, host 524288 and 1000000"
+wait "$JOIN_PID" || true
+grep -q '^exit=0$' "$WORK/joiner-deploy.log" || { cat "$WORK/joiner-deploy.log"; fail "the joiner stack failed when deployed in parallel with the stack owning its network"; }
+aexec systemctl --user is-active --quiet joiner.service || { aexec journalctl --user -u joiner.service --no-pager | tail; fail "joiner.service not active"; }
+echo "a stack joining another's network deployed in parallel, ahead of it"
 
 hexec grep -q '^WantedBy=default.target$' "$RD/r-solo.container" || { hexec cat "$RD/r-solo.container"; fail "r-solo was installed without default.target"; }
 docker restart -t 30 "$HOST_NAME" >/dev/null
@@ -590,16 +617,23 @@ echo "$DUP_OUT" | grep -q "r-solo.service is already r-solo.container's in stack
 hexec test ! -e /home/alice/.config/containers/systemd/e2e-rootless-dup || fail "the refused stack still wrote files"
 echo "same unit files in a second stack refused"
 
+aexec systemctl --user kill -s KILL r-solo.service
+for i in $(seq 1 20); do [ "$(aexec systemctl --user is-active r-solo.service)" = failed ] && break; sleep 1; done
+[ "$(aexec systemctl --user is-active r-solo.service)" = failed ] || fail "r-solo did not fail after SIGKILL"
+RL_FIX=$($RL DeployStack) || { echo "$RL_FIX"; fail "the redeploy after r-solo failed did not succeed"; }
+echo "$RL_FIX" | grep -q '"Units Not Running", true' || { echo "$RL_FIX"; fail "the redeploy did not notice r-solo was down"; }
+aexec systemctl --user is-active --quiet r-solo.service || fail "r-solo still down after a redeploy with no changes"
+echo "a failed unit started again by a redeploy with no changes"
+
 sed -i '/^\[Container\]/a PublishPort=80:8080' "$WORK/git/work/rootless/r-solo.container"
 publish "rootless low port"
-# Core reuses a repo pull for 5 seconds; the refused stack above just pulled.
-sleep 6
 hexec sysctl -q -w net.ipv4.ip_unprivileged_port_start=1024
 if PORT_OUT=$($RL DeployStackIfChanged 2>&1); then fail "deployed host port 80 rootless"; fi
 echo "$PORT_OUT" | grep -q "cannot publish host ports below 1024" || { echo "$PORT_OUT" | tail -10; fail "the port refusal did not say why"; }
 hexec grep -q PublishPort "$RD/r-solo.container" && fail "the refused deploy still wrote files"
 echo "port 80 refused before anything was written"
 
+$JOIN DestroyStack >/dev/null
 $RL DestroyStack
 aexec systemctl --user is-active r-solo.service >/dev/null 2>&1 && fail "r-solo.service still active after destroy"
 hexec test ! -e "$RD" || fail "rootless stack directory still present"

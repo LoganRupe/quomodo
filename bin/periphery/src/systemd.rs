@@ -29,11 +29,22 @@ pub async fn daemon_reload() -> Log {
   .await
 }
 
-/// `systemctl <action> <units...>`. No-op with an empty list.
+/// How long `systemctl` may take when the units set no longer
+/// `TimeoutStartSec=`. See `quadlet::unit::start_timeout`.
+pub const SYSTEMCTL_TIMEOUT: Duration = Duration::from_secs(600);
+
+/// The longest the agent waits on one `systemctl` call, whatever the
+/// units allow (`TimeoutStartSec=infinity` included).
+const SYSTEMCTL_TIMEOUT_CAP: Duration =
+  Duration::from_secs(24 * 3600);
+
+/// `systemctl <action> <units...>`, waiting up to `timeout`. No-op with
+/// an empty list.
 pub async fn systemctl(
   stage: &str,
   action: &str,
   units: &[String],
+  timeout: Duration,
 ) -> Log {
   if units.is_empty() {
     return Log::simple(stage, String::from("No units to act on"));
@@ -46,7 +57,8 @@ pub async fn systemctl(
   run_komodo_standard_command(
     stage,
     format!("{} {action} -- {units}", systemctl_cmd()),
-    CommandOptions::default().timeout(Duration::from_secs(600)),
+    CommandOptions::default()
+      .timeout(timeout.min(SYSTEMCTL_TIMEOUT_CAP)),
   )
   .await
 }
@@ -62,6 +74,40 @@ pub async fn is_active(unit: &str) -> bool {
   )
   .await
   .success()
+}
+
+/// Whether `unit` should be running but is not: it failed, or it has
+/// never started since systemd loaded it (a unit quadlet generated after
+/// its deploy tried to start it, or one whose start was cut short). A
+/// unit that ran and exited on its own, like a one-shot init container,
+/// is left alone.
+pub async fn needs_start(unit: &str) -> bool {
+  let output = run_standard_command(
+    &format!(
+      "{} show -p ActiveState -p ExecMainStartTimestampMonotonic -- {}",
+      systemctl_cmd(),
+      escape(unit.into())
+    ),
+    CommandOptions::default().timeout(Duration::from_secs(10)),
+  )
+  .await;
+  if !output.success() {
+    return false;
+  }
+  let value = |key: &str| {
+    output
+      .stdout
+      .lines()
+      .find_map(|l| l.strip_prefix(key)?.strip_prefix('='))
+      .unwrap_or_default()
+      .trim()
+      .to_string()
+  };
+  match value("ActiveState").as_str() {
+    "failed" => true,
+    "inactive" => value("ExecMainStartTimestampMonotonic") == "0",
+    _ => false,
+  }
 }
 
 pub async fn journal_tail(unit: &str, lines: u32) -> String {

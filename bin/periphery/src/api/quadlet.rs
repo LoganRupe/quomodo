@@ -138,6 +138,10 @@ impl Resolve<crate::api::Args> for DeployStack {
         .push(Log::error("Unit Names", format_serror(&e.into())));
       return Ok(res);
     }
+    res.logs.extend(
+      quadlet::wait_for_external_deps(&stack.name, &prepared.units)
+        .await,
+    );
     res.logs.extend(crate::host::user_targets(&mut prepared));
     match idmap::assign(&stack.name, &mut prepared).await {
       Ok(log) => res.logs.push(log),
@@ -442,7 +446,11 @@ impl Resolve<crate::api::Args> for StackUnits {
       StackUnitAction::Stop => ("Stop Stack", "stop"),
       StackUnitAction::Restart => ("Restart Stack", "restart"),
     };
-    Ok(systemd::systemctl(stage, verb, &selected).await)
+    let timeout = quadlet::unit::start_timeout(
+      units.iter().filter(|u| selected.contains(&u.unit.service)),
+      systemd::SYSTEMCTL_TIMEOUT,
+    );
+    Ok(systemd::systemctl(stage, verb, &selected, timeout).await)
   }
 }
 
@@ -468,8 +476,13 @@ impl Resolve<crate::api::Args> for DestroyStack {
       .map(|u| u.unit.service.clone())
       .collect::<Vec<_>>();
     if !runnable.is_empty() {
-      let log =
-        systemd::systemctl("Stop Stack", "stop", &runnable).await;
+      let log = systemd::systemctl(
+        "Stop Stack",
+        "stop",
+        &runnable,
+        systemd::SYSTEMCTL_TIMEOUT,
+      )
+      .await;
       lines.push(format!(
         "stop {}: {}",
         runnable.join(" "),

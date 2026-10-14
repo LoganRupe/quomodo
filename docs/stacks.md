@@ -63,6 +63,21 @@ deploy, and for a plain `DeployStack`:
   containers using it. Files the build's `.containerignore` or
   `.dockerignore` excludes don't count.
 - A changed secret value restarts the units that reference it.
+- A unit that failed, or never started, starts again even with nothing
+  changed. A unit that ran and exited on its own, like an init container,
+  is left alone.
+
+A deploy waits for `systemctl start` as long as the stack's longest
+`TimeoutStartSec=` plus a minute, and at least 10 minutes. A first start
+that pulls large images, or a rootless one that re-owns every image layer
+for the user's namespace, can take that long; give such a unit a
+`TimeoutStartSec=` that covers it.
+
+A stack can reference a unit file from another stack on the same Server,
+such as `Network=app.network` from the stack that owns `app.network`.
+Stacks deploy in parallel, so the deploy waits up to 5 minutes for the
+other stack to install that file before it starts anything, then goes
+ahead with a warning.
 
 Pass `services` to `DeployStack` to restart named units only, whether they
 changed or not. `auto_pull = true` pulls every container image before the
