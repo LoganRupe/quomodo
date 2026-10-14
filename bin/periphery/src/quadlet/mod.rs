@@ -204,6 +204,70 @@ pub async fn check_unit_names(
   ))
 }
 
+/// How long a deploy waits for unit files it references from other
+/// stacks. Stacks on one Server deploy in parallel, so a stack joining
+/// another's network can start before that stack has written its
+/// `.network` file; quadlet then generates no unit and the start fails.
+const EXTERNAL_DEPS_WAIT: std::time::Duration =
+  std::time::Duration::from_secs(300);
+
+/// Wait for the unit files `units` reference but the stack does not have
+/// (`Network=other.network`, ...) to be installed by another stack. Gives
+/// up after EXTERNAL_DEPS_WAIT with a warning and lets the deploy go on:
+/// the file may live in a quadlet directory the agent does not manage.
+pub async fn wait_for_external_deps(
+  stack: &str,
+  units: &[ParsedUnit],
+) -> Option<Log> {
+  let wanted = unit::external_deps(units);
+  if wanted.is_empty() {
+    return None;
+  }
+  let root = periphery_config().quadlet_dir.clone();
+  let own = path_name(stack);
+  let skip_users = !crate::host::scope().is_rootless();
+  let start = std::time::Instant::now();
+  loop {
+    let (root, own) = (root.clone(), own.clone());
+    let installed = tokio::task::spawn_blocking(move || {
+      installed_elsewhere(&root, &own, skip_users)
+    })
+    .await
+    .unwrap_or_default();
+    let missing = wanted
+      .iter()
+      .filter(|w| !installed.iter().any(|(_, f)| f == *w))
+      .cloned()
+      .collect::<Vec<_>>();
+    if missing.is_empty() {
+      let waited = start.elapsed().as_secs();
+      return Some(Log::simple(
+        "Other Stacks' Units",
+        format!(
+          "Installed by other stacks: {}{}",
+          wanted.into_iter().collect::<Vec<_>>().join(", "),
+          if waited > 0 {
+            format!(" (waited {waited}s)")
+          } else {
+            String::new()
+          }
+        ),
+      ));
+    }
+    if start.elapsed() >= EXTERNAL_DEPS_WAIT {
+      return Some(Log::simple(
+        "Other Stacks' Units",
+        format!(
+          "WARNING: no stack on this Server has installed {} after {}s. Deploying anyway; the units referencing them will not start until they exist",
+          missing.join(", "),
+          EXTERNAL_DEPS_WAIT.as_secs()
+        ),
+      ));
+    }
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+  }
+}
+
 /// Every file under `root` outside `root/own`, as (where it is, file name).
 /// Symlinks are not followed.
 fn installed_elsewhere(

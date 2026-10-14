@@ -31,6 +31,13 @@ pub struct Plan {
   pub reasons: Vec<String>,
   /// Warnings about changes systemd will not apply on its own.
   pub warnings: Vec<String>,
+  /// The stack's other runnable services. Any of them that failed or
+  /// never started is started too, so a unit that could not start last
+  /// time (its network was not there yet, or its start was cut short)
+  /// does not stay down because its files have not changed since.
+  pub ensure: Vec<String>,
+  /// How long `systemctl start` / `restart` may take.
+  pub timeout: Duration,
 }
 
 /// Decide which units to (re)start.
@@ -50,7 +57,13 @@ pub fn plan(
   previous: Option<&StackState>,
   services: &[String],
 ) -> Plan {
-  let mut plan = Plan::default();
+  let mut plan = Plan {
+    timeout: super::unit::start_timeout(
+      &prepared.units,
+      systemd::SYSTEMCTL_TIMEOUT,
+    ),
+    ..Default::default()
+  };
   let units = &prepared.units;
   let by_file = units
     .iter()
@@ -278,6 +291,18 @@ pub fn plan(
   plan.restart.dedup();
   plan.wait.sort();
   plan.wait.dedup();
+  if services.is_empty() {
+    plan.ensure = units
+      .iter()
+      .filter(|u| u.unit.kind.is_runnable())
+      .map(|u| u.unit.service.clone())
+      .filter(|s| {
+        !plan.start.contains(s) && !plan.restart.contains(s)
+      })
+      .collect();
+    plan.ensure.sort();
+    plan.ensure.dedup();
+  }
   plan
 }
 
@@ -495,6 +520,7 @@ pub async fn apply(
       "Stop Removed Units",
       "stop",
       &plan.stop_removed,
+      systemd::SYSTEMCTL_TIMEOUT,
     )
     .await;
     // Stopping a unit that is already gone is not fatal.
@@ -509,9 +535,13 @@ pub async fn apply(
   }
 
   if !plan.restart.is_empty() {
-    let log =
-      systemd::systemctl("Restart Units", "restart", &plan.restart)
-        .await;
+    let log = systemd::systemctl(
+      "Restart Units",
+      "restart",
+      &plan.restart,
+      plan.timeout,
+    )
+    .await;
     let ok = log.success;
     logs.push(log);
     if !ok {
@@ -519,13 +549,37 @@ pub async fn apply(
       return Ok(false);
     }
   }
-  if !plan.start.is_empty() {
-    let log =
-      systemd::systemctl("Start Units", "start", &plan.start).await;
+  let mut start = plan.start.clone();
+  let mut wait = plan.wait.clone();
+  let mut down = Vec::new();
+  for service in &plan.ensure {
+    if systemd::needs_start(service).await {
+      down.push(service.clone());
+    }
+  }
+  if !down.is_empty() {
+    logs.push(Log::simple(
+      "Units Not Running",
+      format!(
+        "Failed or never started, starting: {}",
+        down.join(", ")
+      ),
+    ));
+    start.extend(down.iter().cloned());
+    wait.extend(down);
+  }
+  if !start.is_empty() {
+    let log = systemd::systemctl(
+      "Start Units",
+      "start",
+      &start,
+      plan.timeout,
+    )
+    .await;
     let ok = log.success;
     logs.push(log);
     if !ok {
-      push_journals(&plan.start, logs).await;
+      push_journals(&start, logs).await;
       return Ok(false);
     }
   }
@@ -533,7 +587,7 @@ pub async fn apply(
   let touched = plan
     .restart
     .iter()
-    .chain(plan.start.iter())
+    .chain(start.iter())
     .cloned()
     .collect::<Vec<_>>();
   if touched.is_empty() {
@@ -543,17 +597,19 @@ pub async fn apply(
     ));
     return Ok(true);
   }
+  wait.sort();
+  wait.dedup();
   let failed =
-    systemd::wait_active(&plan.wait, Duration::from_secs(20)).await;
+    systemd::wait_active(&wait, Duration::from_secs(20)).await;
   if failed.is_empty() {
     logs.push(Log::simple(
       "Units",
       format!(
         "Active: {}",
-        if plan.wait.is_empty() {
+        if wait.is_empty() {
           String::from("-")
         } else {
-          plan.wait.join(", ")
+          wait.join(", ")
         }
       ),
     ));
@@ -696,6 +752,53 @@ mod tests {
         && plan.restart.is_empty()
         && plan.stop_removed.is_empty()
     );
+    // Nothing to restart, but every runnable unit is checked, so one
+    // that failed or never started is started again.
+    assert_eq!(
+      plan.ensure,
+      vec![
+        "app-pod.service",
+        "db.service",
+        "solo.service",
+        "web.service"
+      ]
+    );
+    assert_eq!(plan.timeout, systemd::SYSTEMCTL_TIMEOUT);
+  }
+
+  #[test]
+  fn ensure_skips_restarted_and_requested_runs() {
+    let p = base();
+    let s = state(&p);
+    let mut p2 = base();
+    p2.write
+      .insert("solo.container".into(), format!("{SOLO}# v2\n"));
+    p2.units = p2
+      .write
+      .iter()
+      .filter_map(|(path, c)| parse_unit(path, c))
+      .collect();
+    let plan = plan(&p2, Some(&s), &[]);
+    assert_eq!(plan.restart, vec!["solo.service"]);
+    assert!(!plan.ensure.contains(&"solo.service".to_string()));
+    // A run limited to some services leaves the others alone.
+    let plan = super::plan(&p, Some(&s), &["web".to_string()]);
+    assert!(plan.ensure.is_empty());
+  }
+
+  #[test]
+  fn timeout_follows_the_longest_timeout_start_sec() {
+    let p = prepared(
+      &[
+        ("solo.container", SOLO),
+        (
+          "slow.container",
+          "[Container]\nImage=big\n[Service]\nTimeoutStartSec=15min\n",
+        ),
+      ],
+      &[],
+    );
+    assert_eq!(plan(&p, None, &[]).timeout, Duration::from_secs(960));
   }
 
   #[test]

@@ -13,9 +13,6 @@ use mogh_cache::TimeoutCache;
 
 use crate::{check_installed, get_commit_hash_log};
 
-/// Wait this long after a pull to allow another pull through
-const PULL_TIMEOUT: i64 = 5_000;
-
 fn pull_cache()
 -> &'static TimeoutCache<PathBuf, RepoExecutionResponse> {
   static PULL_CACHE: OnceLock<
@@ -47,6 +44,12 @@ where
     commit_message: None,
   };
 
+  // When this caller asked. A cached pull is only good enough if it
+  // started after this: one that started earlier may predate the commit
+  // the caller is pulling for (a push webhook arriving while another
+  // pull of the same repo is running, or just after one finished).
+  let requested = komodo_timestamp();
+
   // Acquire the path lock
   let lock = pull_cache().get_lock(res.path.clone()).await;
 
@@ -55,10 +58,12 @@ where
   // and checking cached results.
   let mut locked = lock.lock().await;
 
-  // Early return from cache if lasted pulled with PULL_TIMEOUT
-  if locked.last_ts + PULL_TIMEOUT > komodo_timestamp() {
+  // Callers that queued behind a pull which started after they asked
+  // share its result instead of pulling again.
+  if locked.last_ts > requested {
     return locked.clone_res();
   }
+  let started = komodo_timestamp();
 
   let res = async {
     // Check for '.git' path to see if the folder is initialized as a git repo
@@ -164,9 +169,9 @@ where
   }
   .await;
 
-  // Set the cache with results. Any other calls waiting on the lock will
-  // then immediately also use this same result.
-  locked.set(&res, komodo_timestamp());
+  // Set the cache with results, stamped with when this pull started.
+  // Calls that were waiting on the lock and asked before then use it.
+  locked.set(&res, started);
 
   res
 }

@@ -3,7 +3,10 @@
 //! Quadlet files are systemd-style INI: `[Section]` headers and `Key=Value`
 //! lines, `#` / `;` comments, keys may repeat.
 
-use std::collections::BTreeMap;
+use std::{
+  collections::{BTreeMap, BTreeSet},
+  time::Duration,
+};
 
 use komodo_client::entities::stack::{QuadletKind, QuadletUnit};
 
@@ -24,6 +27,9 @@ pub struct ParsedUnit {
   pub mounts: Vec<String>,
   /// For a `.build`: the inputs inside the stack directory.
   pub build: Option<BuildInputs>,
+  /// `[Service]` `TimeoutStartSec=`, if set. `Duration::MAX` for
+  /// `infinity` or `0`, which systemd reads as no timeout.
+  pub start_timeout: Option<Duration>,
 }
 
 impl ParsedUnit {
@@ -305,7 +311,89 @@ pub fn parse_unit(path: &str, contents: &str) -> Option<ParsedUnit> {
     secrets,
     mounts,
     build,
+    start_timeout: get_value(contents, "Service", "TimeoutStartSec")
+      .and_then(parse_timespan),
   })
+}
+
+/// A systemd time span (`90`, `15min`, `1h 30s`, `2min30s`) as a
+/// duration. `infinity` and `0` are `Duration::MAX`, as systemd reads
+/// them as no timeout. None when it does not parse.
+pub fn parse_timespan(value: &str) -> Option<Duration> {
+  let value = value.trim();
+  if value == "infinity" {
+    return Some(Duration::MAX);
+  }
+  let mut total = 0f64;
+  let mut rest = value;
+  let mut any = false;
+  while !rest.is_empty() {
+    rest = rest.trim_start();
+    let num_len = rest
+      .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+      .unwrap_or(rest.len());
+    if num_len == 0 {
+      return None;
+    }
+    let number = rest[..num_len].parse::<f64>().ok()?;
+    rest = rest[num_len..].trim_start();
+    let unit_len = rest
+      .find(|c: char| !c.is_ascii_alphabetic())
+      .unwrap_or(rest.len());
+    let seconds = match &rest[..unit_len] {
+      "" | "s" | "sec" | "second" | "seconds" => 1.0,
+      "us" | "usec" => 1e-6,
+      "ms" | "msec" => 1e-3,
+      "m" | "min" | "minute" | "minutes" => 60.0,
+      "h" | "hr" | "hour" | "hours" => 3600.0,
+      "d" | "day" | "days" => 86400.0,
+      "w" | "week" | "weeks" => 604800.0,
+      _ => return None,
+    };
+    total += number * seconds;
+    rest = &rest[unit_len..];
+    any = true;
+  }
+  if !any {
+    return None;
+  }
+  if total == 0.0 {
+    return Some(Duration::MAX);
+  }
+  Some(Duration::from_secs_f64(total))
+}
+
+/// How long to wait on `systemctl start` / `restart` for `units`: the
+/// longest `TimeoutStartSec=` among them plus a minute, so systemd's own
+/// timeout fires first and its error reaches the log, and at least
+/// `floor`. A first start that pulls an image, or re-owns its layers for
+/// a new user namespace, can take many minutes; a unit that allows it
+/// should not be cut short by the agent.
+pub fn start_timeout<'a>(
+  units: impl IntoIterator<Item = &'a ParsedUnit>,
+  floor: Duration,
+) -> Duration {
+  units
+    .into_iter()
+    .filter_map(|u| u.start_timeout)
+    .map(|t| t.saturating_add(Duration::from_secs(60)))
+    .fold(floor, Duration::max)
+}
+
+/// Unit files the stack's units reference (`Network=x.network`,
+/// `Pod=`, `Volume=x.volume`, `Image=x.image` / `.build`) that the stack
+/// does not have itself: another stack on the host must provide them.
+pub fn external_deps(units: &[ParsedUnit]) -> BTreeSet<String> {
+  let own = units
+    .iter()
+    .map(|u| base_name(&u.unit.file).to_string())
+    .collect::<BTreeSet<_>>();
+  units
+    .iter()
+    .flat_map(|u| u.deps.iter())
+    .map(|d| base_name(d).to_string())
+    .filter(|d| !own.contains(d))
+    .collect()
 }
 
 /// A `Volume=` source that lives inside the stack directory:
@@ -626,5 +714,60 @@ mod tests {
       ]
     );
     assert!(name_collisions(&units, [("x", "web.pod")]).is_empty());
+  }
+
+  #[test]
+  fn timespans() {
+    for (v, secs) in [
+      ("90", Some(90.0)),
+      ("900s", Some(900.0)),
+      ("15min", Some(900.0)),
+      ("1h 30s", Some(3630.0)),
+      ("2min30s", Some(150.0)),
+      ("500ms", Some(0.5)),
+    ] {
+      assert_eq!(
+        parse_timespan(v).map(|d| d.as_secs_f64()),
+        secs,
+        "{v}"
+      );
+    }
+    assert_eq!(parse_timespan("infinity"), Some(Duration::MAX));
+    assert_eq!(parse_timespan("0"), Some(Duration::MAX));
+    assert_eq!(parse_timespan("soon"), None);
+    assert_eq!(parse_timespan(""), None);
+  }
+
+  #[test]
+  fn start_timeouts_and_external_deps() {
+    let units = [
+      parse_unit(
+        "web.container",
+        "[Container]\nImage=x\nNetwork=app.network\nNetwork=other.network\n[Service]\nTimeoutStartSec=900\n",
+      )
+      .unwrap(),
+      parse_unit("app.network", "[Network]\n").unwrap(),
+      parse_unit(
+        "job.container",
+        "[Container]\nImage=x\nPod=shared.pod\nVolume=data.volume:/d\n",
+      )
+      .unwrap(),
+    ];
+    let floor = Duration::from_secs(600);
+    assert_eq!(
+      start_timeout(&units, floor),
+      Duration::from_secs(960)
+    );
+    assert_eq!(start_timeout(&units[1..], floor), floor);
+    let forever = parse_unit(
+      "x.container",
+      "[Container]\nImage=x\n[Service]\nTimeoutStartSec=infinity\n",
+    )
+    .unwrap();
+    assert_eq!(start_timeout([&forever], floor), Duration::MAX);
+    assert_eq!(
+      external_deps(&units).into_iter().collect::<Vec<_>>(),
+      vec!["data.volume", "other.network", "shared.pod"]
+    );
   }
 }
