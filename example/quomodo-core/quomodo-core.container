@@ -8,6 +8,11 @@ Image=ghcr.io/loganrupe/quomodo:latest
 Pod=quomodo.pod
 ContainerName=quomodo-core
 UserNS=
+# Run an init as PID 1. Each git fetch leaves a detached git maintenance
+# process behind, which reparents to PID 1 when it exits. Core does not reap
+# processes it did not start, so without an init they pile up as zombies
+# until the pids limit is full and every git command fails.
+RunInit=true
 AutoUpdate=registry
 Volume=quomodo-repo-cache.volume:/repo-cache
 Volume=quomodo-sync.volume:/syncs
