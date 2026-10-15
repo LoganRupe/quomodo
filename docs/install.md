@@ -76,6 +76,14 @@ range as an agent host ([Agent](#agent), step 2).
 new `:latest` and restart Core. Pin a tag instead if you want upgrades to be
 a deliberate edit.
 
+Keep `RunInit=true` in `quomodo-core.container`. Every git fetch leaves a
+detached `git maintenance` behind, and without an init as PID 1 nothing
+reaps it when it exits. The zombies fill the container's pids limit (2048)
+in about a day on a busy install, and then every sync fails with
+`cannot fork()` or `'git' is not installed or available on $PATH`. An
+install made from an older example: add the line, then
+`sudo systemctl daemon-reload && sudo systemctl restart quomodo-core.service`.
+
 ### TLS
 
 Agents verify Core's certificate against the system roots, or against the
