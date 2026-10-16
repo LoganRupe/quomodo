@@ -243,14 +243,23 @@ const at = await glide(stacks, shield, 34);
 await stacks.getByText("Root agent", { exact: true }).waitFor();
 mark("stacks", "s5-hover");
 await stacks.waitForTimeout(900);
-// Scale <body> about the pointer, so the shield stays under it and the card stays open.
-await stacks.evaluate(({ x, y }) => {
-  const b = document.body;
-  b.style.transformOrigin = `${x}px ${y + window.scrollY}px`;
-  b.style.transition = "transform 1.3s cubic-bezier(.4,0,.2,1)";
-  b.style.transform = "scale(2.1)";
-}, at);
-await stacks.waitForTimeout(1300);
+// Zoom <body> so the region from (left, top) fills the frame: the hermes-monitor
+// row above, the shield and its card. The pointer moves with the shield each
+// step, so the card never sees the mouse leave.
+const ZOOM = 2;
+const card = await stacks.getByText("Root agent", { exact: true }).boundingBox();
+const left = Math.min(at.x - 260, SIZE.width - SIZE.width / ZOOM);
+const top = Math.min(at.y - 110, card.y + 150 - SIZE.height / ZOOM);
+const origin = { x: (ZOOM * left) / (ZOOM - 1), y: (ZOOM * top) / (ZOOM - 1) };
+await stacks.evaluate((o) => (document.body.style.transformOrigin = `${o.x}px ${o.y}px`), origin);
+const STEPS = 36;
+for (let i = 1; i <= STEPS; i++) {
+  const k = i / STEPS;
+  const s = 1 + (ZOOM - 1) * (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
+  await stacks.evaluate((s) => (document.body.style.transform = `scale(${s})`), s);
+  await stacks.mouse.move(origin.x + s * (at.x - origin.x), origin.y + s * (at.y - origin.y));
+  await sleep(30);
+}
 mark("stacks", "s5-zoomed");
 await stacks.waitForTimeout(3600);
 mark("stacks", "s5-end");
