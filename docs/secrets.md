@@ -59,8 +59,16 @@ sudo podman secret create quomodo-vaultwarden-master-password ./master_password.
 ```
 
 Core logs in once and reuses the session for 50 minutes. It syncs the vault
-on every deploy, so an edited item takes effect on the next deploy, and
-`DeployStackIfChanged` sees the change.
+when a deploy needs a secret and reuses that sync for 30 seconds, so a pass
+over many stacks downloads the vault once, and deploys that start together
+share one sync. An edited item takes effect on any deploy that starts 30
+seconds after the edit, and `DeployStackIfChanged` sees the change. A failed
+sync is not reused: the next deploy tries again.
+
+Core identifies itself with `Bitwarden-Client-Version: 2024.12.0` and
+`Device-Type: 21` (SDK) on every request. Vaultwarden logs an error for a sync
+without a client version, and leaves SSH key items out of the sync for clients
+older than 2024.12.0.
 
 ### Bitwarden cloud
 
