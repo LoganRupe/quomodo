@@ -24,10 +24,11 @@ format may still change between releases.
 
 | Servers | A Stack | A deploy |
 | --- | --- | --- |
-| [![Four servers, all Ok](docs/images/servers.png)](docs/images/servers.png) | [![The gitea Stack and its units](docs/images/stack.png)](docs/images/stack.png) | [![A webhook deploy that restarted only gitea.service](docs/images/deploy-result.png)](docs/images/deploy-result.png) |
+| [![Servers grouped by host, one host expanded to its root and rootless agents](docs/images/servers.png)](docs/images/servers.png) | [![The gitea Stack and its units](docs/images/stack.png)](docs/images/stack.png) | [![A webhook deploy that restarted only gitea.service](docs/images/deploy-result.png)](docs/images/deploy-result.png) |
 
-The pictures come from `scripts/demo.sh`, a throwaway lab of four podman
-hosts in docker.
+The Stack and deploy pictures come from `scripts/demo.sh`, a throwaway lab
+of four podman hosts in docker. The Servers picture is a home lab of 14 hosts
+and 42 agents, with its host names changed.
 
 ## What it is
 

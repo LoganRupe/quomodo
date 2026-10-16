@@ -244,6 +244,8 @@ the stacks each one runs. Host cards shows the same as a card per machine.
 Agents shows one row per agent. A disconnected agent stays under the host it
 last reported.
 
+![Host cards: a card per machine with its stats and a chip per agent](images/servers-cards.png)
+
 Give each stack, or each group of stacks that trust each other, its own
 service user rather than a person's account: a compromised container then
 reaches that user's files and stacks only. Make it a regular user with a real
