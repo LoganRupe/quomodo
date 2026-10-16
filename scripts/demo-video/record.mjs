@@ -246,9 +246,9 @@ await stacks.waitForTimeout(900);
 // Zoom <body> so the region from (left, top) fills the frame: the hermes-monitor
 // row above, the shield and its card. The pointer moves with the shield each
 // step, so the card never sees the mouse leave.
-const ZOOM = 2;
+const ZOOM = 2.3;
 const card = await stacks.getByText("Root agent", { exact: true }).boundingBox();
-const left = Math.min(at.x - 150, SIZE.width - SIZE.width / ZOOM);
+const left = Math.min(at.x - 110, SIZE.width - SIZE.width / ZOOM);
 const top = Math.min(at.y - 110, card.y + 150 - SIZE.height / ZOOM);
 const origin = { x: (ZOOM * left) / (ZOOM - 1), y: (ZOOM * top) / (ZOOM - 1) };
 await stacks.evaluate((o) => (document.body.style.transformOrigin = `${o.x}px ${o.y}px`), origin);
