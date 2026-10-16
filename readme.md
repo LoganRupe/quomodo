@@ -12,7 +12,7 @@ GPL-3.0-or-later, same as upstream. Quomodo is an independent project, not
 affiliated with or endorsed by Komodo or moghtech.
 
 <p align="center">
-  <a href="https://github.com/user-attachments/assets/b931a219-2a44-47d1-b46d-21f50d0ab74f">
+  <a href="https://github.com/user-attachments/assets/11658005-bf0f-4c6b-ad21-538389bc701d">
     <img src="docs/images/demo.gif" alt="A one-line image bump in gitea.container is pushed; the push webhook runs DeployStackIfChanged and only gitea.service restarts while the other containers keep their uptime. Then the Servers page groups each host's root and rootless agents, and the Stacks page opens the hover card on the shield that marks a root agent" width="960">
   </a>
   <br>
