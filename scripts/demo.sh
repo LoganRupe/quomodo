@@ -9,7 +9,7 @@
 #   - four "podman hosts" (the e2e agent-host image: Fedora, systemd, podman),
 #     atlas, hermes, pi-garage and minerva, each running the agent
 #   - a rootless agent beside the root one on hermes (user monitor) and on
-#     minerva (user sync), each a lingering user with its own subordinate ids
+#     minerva (user files), each a lingering user with its own subordinate ids
 #   - six stacks of real images: gitea and miniflux on atlas, vaultwarden on
 #     hermes, uptime-kuma rootless on hermes, caddy on pi-garage, syncthing
 #     rootless on minerva
@@ -40,14 +40,14 @@ SERVERS=(atlas hermes pi-garage minerva)
 declare -A REGION=([atlas]=rack [hermes]=rack [pi-garage]=garage [minerva]=office)
 # Rootless agents, server:host:user. Their Servers report the host's name, so
 # the Servers page lists them under it.
-ROOTLESS=(hermes-monitor:hermes:monitor minerva-sync:minerva:sync)
+ROOTLESS=(hermes-monitor:hermes:monitor minerva-files:minerva:files)
 declare -A ABOUT=(
   [atlas]="Ryzen box in the rack: git and feeds"
   [hermes]="NUC in the rack: passwords and monitoring"
   [pi-garage]="Raspberry Pi 5 in the garage: the reverse proxy"
   [minerva]="Old desktop in the office: file sync"
   [hermes-monitor]="Rootless agent for the monitoring user"
-  [minerva-sync]="Rootless agent for the file sync user"
+  [minerva-files]="Rootless agent for the file sync user"
   [gitea]="Git hosting, Postgres on its own network"
   [miniflux]="Feed reader, app and Postgres in one pod"
   [vaultwarden]="Password vault"
@@ -68,7 +68,7 @@ STACKS=(
   "vaultwarden:hermes:docker.io/vaultwarden/server:1.32.7"
   "uptime-kuma:hermes-monitor:docker.io/louislam/uptime-kuma:1"
   "caddy:pi-garage:docker.io/library/caddy:2-alpine"
-  "syncthing:minerva-sync:docker.io/syncthing/syncthing:1.29"
+  "syncthing:minerva-files:docker.io/syncthing/syncthing:1.29"
 )
 
 log() { printf '\n\033[1;34m== %s\033[0m\n' "$*"; }
