@@ -32,7 +32,7 @@ fc = (";".join(parts) + ";" + "".join(f"[s{i}]" for i in range(n)) + f"concat=n=
       f"[main][sl]xfade=transition=fade:duration={FADE}:offset={main - FADE:.3f}[out]")
 subprocess.run([FF, "-loglevel", "error", "-y", *inputs, "-filter_complex", fc, "-map", "[out]",
                 "-c:v", "libx264", "-crf", "20", "-preset", "slow", "-movflags", "+faststart", f"{OUT}/demo.mp4"], check=True)
-GIF_W, GIF_FPS = int(os.environ.get("GIF_W", 1280)), int(os.environ.get("GIF_FPS", 10))
+GIF_W, GIF_FPS = int(os.environ.get("GIF_W", 960)), int(os.environ.get("GIF_FPS", 10))
 subprocess.run([FF, "-loglevel", "error", "-y", "-i", f"{OUT}/demo.mp4", "-filter_complex",
     f"fps={GIF_FPS},scale={GIF_W}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=256:stats_mode=full[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
     f"{OUT}/demo.gif"], check=True)
