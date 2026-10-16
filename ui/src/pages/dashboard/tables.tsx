@@ -23,6 +23,7 @@ import DashboardNoResources from "./no-resources";
 import { ShowHideButton } from "mogh_ui";
 import { SearchInput } from "mogh_ui";
 import TemplateQuerySelector from "@/components/template-query-selector";
+import { useUnpaginatedServerList } from "@/resources/server/hosts";
 
 export default function DashboardTables() {
   const { search, setSearch, terms } = useDebouncedTermSearch();
@@ -83,12 +84,15 @@ function TableSection({
     setPage(0);
   }, [terms, tags, templates, sort.sort_by, sort.sort_desc]);
 
+  const unpaginated = useUnpaginatedServerList(type);
+
   const resources =
     useRead(
       `List${type}s`,
       {
         query: { terms, tags, templates },
-        page,
+        page: unpaginated ? 0 : page,
+        limit: unpaginated ? 0 : undefined,
         sort_by: sort.sort_by as any,
         sort_desc: sort.sort_desc,
       },
@@ -131,11 +135,13 @@ function TableSection({
           <ShowHideButton show={show} setShow={setShow} />
           <RC.New />
           <RC.BatchExecutions />
-          <ListPagination
-            page={page}
-            setPage={setPage}
-            count={resources.length}
-          />
+          {!unpaginated && (
+            <ListPagination
+              page={page}
+              setPage={setPage}
+              count={resources.length}
+            />
+          )}
         </Group>
       }
     >

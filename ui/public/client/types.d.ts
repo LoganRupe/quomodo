@@ -1533,6 +1533,13 @@ export interface ServerInfo {
      * private key of the periphery agent.
      */
     public_key?: string;
+    /** The hostname the agent last reported. */
+    host_name?: string;
+    /**
+     * The user the agent last reported running as, if rootless.
+     * Empty for a root agent.
+     */
+    rootless_user?: string;
 }
 export type Server = Resource<ServerConfig, ServerInfo>;
 export type GetServerResponse = Server;
@@ -2319,9 +2326,16 @@ export interface ServerListItemInfo {
     public_key?: string;
     /**
      * The user a rootless agent runs as. None for an agent running as
-     * root, or one not connected.
+     * root, or one that never connected. Kept from the last connection
+     * while the agent is disconnected.
      */
     rootless_user?: string;
+    /**
+     * The hostname of the machine the agent runs on. Agents on one
+     * machine share it, so the UI groups them by it. Kept from the
+     * last connection while the agent is disconnected.
+     */
+    host_name?: string;
     /**
      * If a Periphery fails to authenticate to Core with invalid Periphery public key,
      * it will be stored here to accept the connection later on.

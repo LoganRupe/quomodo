@@ -139,7 +139,7 @@ export default function StatsServerTable({
   );
 }
 
-function CpuCell({ server }: { server: Types.ServerListItem }) {
+export function CpuCell({ server }: { server: Types.ServerListItem }) {
   const stats = server.info.stats;
   const cpu = stats?.cpu_perc ?? 0;
   const { cpuWarning: warning, cpuCritical: critical } = useServerThresholds(
@@ -150,7 +150,7 @@ function CpuCell({ server }: { server: Types.ServerListItem }) {
   return <StatCell value={stats ? cpu : undefined} intent={intent} />;
 }
 
-function MemCell({ server }: { server: Types.ServerListItem }) {
+export function MemCell({ server }: { server: Types.ServerListItem }) {
   const stats = server.info.stats;
   const used = stats?.mem_used_gb ?? 0;
   const total = stats?.mem_total_gb ?? 0;
@@ -163,7 +163,7 @@ function MemCell({ server }: { server: Types.ServerListItem }) {
   return <StatCell value={stats ? perc : undefined} intent={intent} />;
 }
 
-function DiskCell({ server }: { server: Types.ServerListItem }) {
+export function DiskCell({ server }: { server: Types.ServerListItem }) {
   const stats = server.info.stats;
   const used = stats?.disk_used_gb ?? 0;
   const total = stats?.disk_total_gb ?? 0;

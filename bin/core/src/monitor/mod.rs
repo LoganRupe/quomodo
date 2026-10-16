@@ -22,6 +22,7 @@ use crate::{
   config::monitoring_interval,
   helpers::periphery_client,
   monitor::{alert::check_alerts, record::record_server_stats},
+  resource::update_server_host_info,
   state::{
     CachedRepoStatus, db_client, periphery_connections,
     repo_status_cache,
@@ -196,6 +197,25 @@ pub fn refresh_server_cache(
       containers.as_deref().unwrap_or(&[]),
     )
     .await;
+
+    let host_name =
+      system_info.host_name.as_deref().unwrap_or_default();
+    let rootless_user = if periphery_info.rootless {
+      periphery_info.user.as_str()
+    } else {
+      ""
+    };
+    if (host_name != server.info.host_name
+      || rootless_user != server.info.rootless_user)
+      && let Err(e) =
+        update_server_host_info(&server.id, host_name, rootless_user)
+          .await
+    {
+      warn!(
+        "Failed to record host info for Server {} | {e:#}",
+        server.name
+      );
+    }
 
     insert_server_status(
       server,

@@ -72,8 +72,13 @@ pub struct ServerListItemInfo {
   /// The public key of Periphery
   pub public_key: Option<String>,
   /// The user a rootless agent runs as. None for an agent running as
-  /// root, or one not connected.
+  /// root, or one that never connected. Kept from the last connection
+  /// while the agent is disconnected.
   pub rootless_user: Option<String>,
+  /// The hostname of the machine the agent runs on. Agents on one
+  /// machine share it, so the UI groups them by it. Kept from the
+  /// last connection while the agent is disconnected.
+  pub host_name: Option<String>,
   /// If a Periphery fails to authenticate to Core with invalid Periphery public key,
   /// it will be stored here to accept the connection later on.
   pub attempted_public_key: Option<String>,
@@ -92,6 +97,13 @@ pub struct ServerInfo {
   /// private key of the periphery agent.
   #[serde(default)]
   pub public_key: String,
+  /// The hostname the agent last reported.
+  #[serde(default)]
+  pub host_name: String,
+  /// The user the agent last reported running as, if rootless.
+  /// Empty for a root agent.
+  #[serde(default)]
+  pub rootless_user: String,
 }
 
 #[typeshare(serialized_as = "Partial<ServerConfig>")]

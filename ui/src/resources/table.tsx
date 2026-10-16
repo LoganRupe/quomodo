@@ -18,6 +18,7 @@ import {
   useUser,
 } from "@/lib/hooks";
 import { Types } from "komodo_client";
+import { useUnpaginatedServerList } from "@/resources/server/hosts";
 
 export interface ResourceTableProps extends StackProps {
   type: UsableResource;
@@ -84,12 +85,15 @@ export default function ResourceTable({
     specific,
   ]);
 
+  const unpaginated = useUnpaginatedServerList(type);
+
   const resources =
     useRead(
       `List${type}s`,
       {
         query,
-        page,
+        page: unpaginated ? 0 : page,
+        limit: unpaginated ? 0 : undefined,
         sort_by: sort.sort_by as any,
         sort_desc: sort.sort_desc,
       },
@@ -108,13 +112,7 @@ export default function ResourceTable({
   // the last page and come back empty.
   useEffect(() => {
     setPage(0);
-  }, [
-    type,
-    tags,
-    templates,
-    sort.sort_by,
-    sort.sort_desc,
-  ]);
+  }, [type, tags, templates, sort.sort_by, sort.sort_desc]);
 
   const RC = ResourceComponents[type];
 
@@ -138,11 +136,13 @@ export default function ResourceTable({
         <Group w={{ base: "100%", xs: "fit-content" }}>
           {(isAdmin || !disableNonAdminCreate) && <RC.New {...newProps} />}
           <RC.BatchExecutions />
-          <ListPagination
-            page={page}
-            setPage={setPage}
-            count={resources.length}
-          />
+          {!unpaginated && (
+            <ListPagination
+              page={page}
+              setPage={setPage}
+              count={resources.length}
+            />
+          )}
         </Group>
 
         <Group w={{ base: "100%", xs: "fit-content" }}>

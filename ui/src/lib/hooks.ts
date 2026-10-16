@@ -711,16 +711,22 @@ export function useContainerPortsMap(ports: Types.Port[]) {
   }, [ports]);
 }
 
+/** How the Servers list is laid out. */
+export type ServerView = "hosts" | "cards" | "agents";
+
 interface DashboardPreferences {
   showServerStats: boolean;
   showTables: boolean;
+  /** Missing in preferences saved before it was added. */
+  serverView?: ServerView;
 }
 
-const dashboardPreferencesAtom = atomWithStorage(
+const dashboardPreferencesAtom = atomWithStorage<DashboardPreferences>(
   "komodo-dashboard-preferences-v2",
   {
     showServerStats: false,
     showTables: false,
+    serverView: "hosts",
   },
 );
 
@@ -736,7 +742,7 @@ export function useDashboardPreferences() {
     setPreferences({ ...preferences, [key]: value });
   };
 
-  const togglePreference = <K extends keyof DashboardPreferences>(key: K) => {
+  const togglePreference = (key: "showServerStats" | "showTables") => {
     updatePreference(key, !preferences[key]);
   };
 
@@ -745,6 +751,14 @@ export function useDashboardPreferences() {
     updatePreference,
     togglePreference,
   };
+}
+
+export function useServerView(): [ServerView, (view: ServerView) => void] {
+  const { preferences, updatePreference } = useDashboardPreferences();
+  return [
+    preferences.serverView ?? "hosts",
+    (view) => updatePreference("serverView", view),
+  ];
 }
 
 /**
