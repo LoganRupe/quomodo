@@ -3,7 +3,7 @@
 //        runs DeployStackIfChanged, only gitea restarts. Every command shown
 //        runs for real.
 //   4.   the Servers page groups agents by host: root and rootless side by side.
-//   5.   the Stacks page, zooming onto the shield that marks a root agent.
+//   5.   the Stacks page, with the hover card on the shield that marks a root agent.
 // Writes one video per page and marks.json to $OUT; assemble.py cuts them.
 //
 // Usage: PLAYWRIGHT=/path/to/node_modules/playwright/index.mjs node record.mjs
@@ -63,7 +63,6 @@ async function newPage(name) {
   return p;
 }
 
-// Captions hang off <html>, not <body>, so scene 5's zoom of <body> leaves them be.
 const CAPTION_CSS = `position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:99999;
   background:#1f6feb;color:#fff;font:600 20px system-ui,sans-serif;padding:10px 18px;border-radius:8px;
   box-shadow:0 6px 24px #0009;white-space:nowrap`;
@@ -226,8 +225,8 @@ await glide(servers, servers.getByText("monitor", { exact: true }).first());
 await servers.waitForTimeout(2600);
 mark("servers", "s4-end");
 
-// Scene 5: Stacks. Root agents carry a shield; zoom onto the one beside
-// hermes, whose rootless twin hermes-monitor runs uptime-kuma.
+// Scene 5: Stacks. Root agents carry a shield; hover the one beside hermes,
+// whose rootless twin hermes-monitor runs uptime-kuma.
 const stacks = await newPage("stacks");
 await stacks.goto(`${UI}/stacks`);
 const row = stacks.locator("tr", { hasText: "vaultwarden" }).first();
@@ -239,29 +238,10 @@ await caption(stacks, "5. Rootless by default. Root agents carry a shield", LEFT
 mark("stacks", "s5-start");
 await stacks.waitForTimeout(1600);
 const shield = row.locator("svg.lucide-shield-alert").first();
-const at = await glide(stacks, shield, 34);
+await glide(stacks, shield, 34);
 await stacks.getByText("Root agent", { exact: true }).waitFor();
 mark("stacks", "s5-hover");
-await stacks.waitForTimeout(900);
-// Zoom <body> so the region from (left, top) fills the frame: the hermes-monitor
-// row above, the shield and its card. The pointer moves with the shield each
-// step, so the card never sees the mouse leave.
-const ZOOM = 2.3;
-const card = await stacks.getByText("Root agent", { exact: true }).boundingBox();
-const left = Math.min(at.x - 110, SIZE.width - SIZE.width / ZOOM);
-const top = Math.min(at.y - 110, card.y + 150 - SIZE.height / ZOOM);
-const origin = { x: (ZOOM * left) / (ZOOM - 1), y: (ZOOM * top) / (ZOOM - 1) };
-await stacks.evaluate((o) => (document.body.style.transformOrigin = `${o.x}px ${o.y}px`), origin);
-const STEPS = 36;
-for (let i = 1; i <= STEPS; i++) {
-  const k = i / STEPS;
-  const s = 1 + (ZOOM - 1) * (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
-  await stacks.evaluate((s) => (document.body.style.transform = `scale(${s})`), s);
-  await stacks.mouse.move(origin.x + s * (at.x - origin.x), origin.y + s * (at.y - origin.y));
-  await sleep(30);
-}
-mark("stacks", "s5-zoomed");
-await stacks.waitForTimeout(3600);
+await stacks.waitForTimeout(4500);
 mark("stacks", "s5-end");
 
 const videos = {};
