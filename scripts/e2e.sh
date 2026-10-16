@@ -30,8 +30,9 @@
 #   8. a changed binary file in the build context does the same
 #   9. a changed file the build's .containerignore excludes does not rebuild
 #  10. DestroyStack removes units and the directory
-#  11. a second agent running as the lingering user alice deploys a stack
-#      rootless: units under ~/.config/containers/systemd, `systemctl --user`,
+#  11. a second agent running as the lingering user alice reports the same
+#      host as the root agent, keeps that host and its user on Core while
+#      disconnected, and deploys a stack rootless: units under ~/.config/containers/systemd, `systemctl --user`,
 #      slices counted up from alice's own subordinate ids (her default range
 #      first, then the one added after it), a carve-out onto alice herself,
 #      units wanted by multi-user.target installed for default.target and
@@ -256,6 +257,9 @@ if cmd == "create-server":
 elif cmd == "rootless-user":
     s = [s for s in api("read", "ListServers", {}) if s["name"] == SERVER][0]
     print(s["info"].get("rootless_user") or "root")
+elif cmd == "host-name":
+    s = [s for s in api("read", "ListServers", {}) if s["name"] == SERVER][0]
+    print(s["info"].get("host_name") or "")
 elif cmd == "server-state":
     print(api("read", "GetServerState", {"server": SERVER}).get("status"))
 elif cmd == "create-stack":
@@ -563,6 +567,17 @@ aexec journalctl --user -u quomodo-agent --no-pager | grep -q "Running as alice 
 for i in $(seq 1 15); do [ "$($RL rootless-user)" = "alice" ] && break; sleep 1; done
 [ "$($RL rootless-user)" = "alice" ] || fail "Core shows the agent as $($RL rootless-user), expected alice"
 echo "rootless agent Ok, Core shows rootless (alice)"
+ROOT_HOST=$($API host-name)
+[ -n "$ROOT_HOST" ] && [ "$($RL host-name)" = "$ROOT_HOST" ] || fail "the agents report hosts '$ROOT_HOST' and '$($RL host-name)', expected one"
+aexec systemctl --user stop quomodo-agent
+for i in $(seq 1 90); do [ "$($RL server-state)" = "NotOk" ] && break; sleep 1; done
+[ "$($RL server-state)" = "NotOk" ] || fail "rootless server still $($RL server-state) with its agent stopped"
+[ "$($RL host-name)" = "$ROOT_HOST" ] && [ "$($RL rootless-user)" = "alice" ] \
+  || fail "a disconnected agent shows host '$($RL host-name)' and user '$($RL rootless-user)', expected $ROOT_HOST and alice"
+aexec systemctl --user start quomodo-agent
+for i in $(seq 1 30); do [ "$($RL server-state)" = "Ok" ] && break; sleep 1; done
+[ "$($RL server-state)" = "Ok" ] || fail "rootless server not Ok after its agent came back"
+echo "both agents on host $ROOT_HOST; a disconnected agent keeps its host and user"
 
 JOIN="env E2E_SERVER=$RL_SERVER E2E_STACK=e2e-rootless-joiner E2E_RUN_DIR=rootless-joiner $API"
 $RL create-stack; echo

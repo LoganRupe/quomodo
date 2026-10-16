@@ -1,8 +1,10 @@
 import { BoxProps } from "@mantine/core";
 import { Types } from "komodo_client";
-import { useDashboardPreferences } from "@/lib/hooks";
+import { useDashboardPreferences, useServerView } from "@/lib/hooks";
 import StandardServerTable from "./standard";
 import StatsServerTable from "./stats";
+import HostServerTable from "./hosts";
+import HostServerCards from "./cards";
 
 export default function ServerTable({
   resources,
@@ -15,6 +17,14 @@ export default function ServerTable({
   onServerSort?: (sort: { sort_by?: string; sort_desc?: boolean }) => void;
 } & BoxProps) {
   const { preferences } = useDashboardPreferences();
+  const [view] = useServerView();
+  // The host views group and sort on the client.
+  if (view === "hosts") {
+    return <HostServerTable resources={resources} {...boxProps} />;
+  }
+  if (view === "cards") {
+    return <HostServerCards resources={resources} {...boxProps} />;
+  }
   if (preferences.showServerStats) {
     return (
       <StatsServerTable

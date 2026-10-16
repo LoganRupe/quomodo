@@ -7,6 +7,7 @@ import { Group } from "@mantine/core";
 import ResourceNotFound from "@/resources/not-found";
 import ExportToml from "@/components/export-toml";
 import ServerShowStats from "@/resources/server/show-stats";
+import ServerViewSelect from "@/resources/server/view-select";
 import ResourceTable from "@/resources/table";
 
 export default function Resources({ _type }: { _type?: UsableResource }) {
@@ -33,6 +34,7 @@ export default function Resources({ _type }: { _type?: UsableResource }) {
       description={<RC.Description />}
       oppositeTitle={
         <Group w={{ base: "100%", xs: "fit-content" }}>
+          {type === "Server" && <ServerViewSelect />}
           {type === "Server" && <ServerShowStats />}
           <ExportToml listQuery={{ type, query }} tags={tags} />
         </Group>

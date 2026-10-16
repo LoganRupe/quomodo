@@ -238,6 +238,12 @@ reaches that user and not the host. Each such agent is its own Server on
 Core, shown as `rootless (<user>)`. A host can run a root agent and any
 number of user agents side by side, each with its own `connect_as`.
 
+The Servers page groups agents by the hostname they report. Host table shows
+one row per machine, with its stats once; click a host to list its agents and
+the stacks each one runs. Host cards shows the same as a card per machine.
+Agents shows one row per agent. A disconnected agent stays under the host it
+last reported.
+
 Give each stack, or each group of stacks that trust each other, its own
 service user rather than a person's account: a compromised container then
 reaches that user's files and stacks only. Make it a regular user with a real

@@ -116,7 +116,13 @@ impl super::KomodoResource for Server {
           .send_version_mismatch_alerts,
         version,
         public_key,
-        rootless_user,
+        rootless_user: match periphery_info {
+          Some(_) => rootless_user,
+          None => optional_string(server.info.rootless_user),
+        },
+        host_name: system_info
+          .and_then(|i| i.host_name.clone())
+          .or_else(|| optional_string(server.info.host_name)),
         attempted_public_key: optional_string(
           server.info.attempted_public_key,
         ),
@@ -273,6 +279,28 @@ pub async fn update_server_public_key(
     )
     .await
     .context("Failed to update Server public key on database")?;
+  Ok(())
+}
+
+/// Records where an agent last reported running: its hostname and
+/// rootless user. A disconnected agent then still shows under its host
+/// in the UI.
+pub async fn update_server_host_info(
+  server_id: &str,
+  host_name: &str,
+  rootless_user: &str,
+) -> anyhow::Result<()> {
+  db_client()
+    .servers
+    .update_one(
+      doc! { "_id": ObjectId::from_str(server_id)? },
+      doc! { "$set": {
+        "info.host_name": host_name,
+        "info.rootless_user": rootless_user,
+      } },
+    )
+    .await
+    .context("Failed to update Server host info on database")?;
   Ok(())
 }
 
