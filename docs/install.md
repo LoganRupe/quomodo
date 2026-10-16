@@ -235,8 +235,9 @@ units go to `~/.config/containers/systemd/<stack>/`, systemd is driven with
 `systemctl --user`, and podman containers, images and secrets are the
 user's own. No root process holds the Core connection, so a compromised Core
 reaches that user and not the host. Each such agent is its own Server on
-Core, shown as `rootless (<user>)`. A host can run a root agent and any
-number of user agents side by side, each with its own `connect_as`.
+Core, shown as `rootless (<user>)`. In links to a root agent's Server, an
+amber shield follows the name. A host can run a root agent and any number of
+user agents side by side, each with its own `connect_as`.
 
 Give each stack, or each group of stacks that trust each other, its own
 service user rather than a person's account: a compromised container then

@@ -3,6 +3,7 @@ import { ResourceComponents, UsableResource } from ".";
 import { Group, GroupProps, Text, TextProps } from "@mantine/core";
 import { Link } from "react-router-dom";
 import { TemplateMarker } from "@/components/template-marker";
+import { ServerRootMarker } from "@/resources/server/root-marker";
 
 export interface ResourceLinkProps extends TextProps {
   type: UsableResource;
@@ -55,6 +56,9 @@ export default function ResourceLink({
         {resource?.name ?? "Unknown"}
       </Text>
       {resource?.template && <TemplateMarker type={type} />}
+      {type === "Server" && (
+        <ServerRootMarker id={useName ? resource?.id : id} size={iconSize} />
+      )}
     </Group>
   );
 }
