@@ -13,10 +13,10 @@ affiliated with or endorsed by Komodo or moghtech.
 
 <p align="center">
   <a href="https://github.com/user-attachments/assets/b931a219-2a44-47d1-b46d-21f50d0ab74f">
-    <img src="docs/images/demo.gif" alt="A one-line image bump in gitea.container is pushed; the push webhook runs DeployStackIfChanged and only gitea.service restarts while the other containers keep their uptime" width="960">
+    <img src="docs/images/demo.gif" alt="A one-line image bump in gitea.container is pushed; the push webhook runs DeployStackIfChanged and only gitea.service restarts while the other containers keep their uptime. Then the Servers page groups each host's root and rootless agents, and the Stacks page zooms onto the shield and hover card that mark a root agent" width="960">
   </a>
   <br>
-  <sub>One line of <code>gitea.container</code> changes and gets pushed. The webhook deploys and only <code>gitea.service</code> restarts. Click for the video (0:22).</sub>
+  <sub>One line of <code>gitea.container</code> changes and gets pushed. The webhook deploys and only <code>gitea.service</code> restarts. Then each host's root and rootless agents, and the shield on root ones. Click for the video (0:39).</sub>
 </p>
 
 It runs one home lab today. It is young (0.x) and the config
