@@ -1,0 +1,17 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="xterm.css">
+<style>
+html,body{margin:0;height:100%;background:#0b0d10;font-family:system-ui,sans-serif}
+.win{position:absolute;inset:28px 40px 40px 40px;background:#15181d;border-radius:10px;box-shadow:0 10px 40px #0008;overflow:hidden;border:1px solid #2a2f37}
+.bar{height:34px;display:flex;align-items:center;padding:0 14px;gap:8px;background:#1d2128;color:#9aa4b2;font-size:13px}
+.dot{width:12px;height:12px;border-radius:50%;background:#3a3f48}
+.title{margin-left:10px}
+#t{position:absolute;top:46px;left:16px;right:16px;bottom:12px}
+</style></head><body>
+<div class="win"><div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="title" id="title"></span></div><div id="t"></div></div>
+<script src="xterm.js"></script>
+<script>
+const term = new Terminal({fontSize:19,fontFamily:'"DejaVu Sans Mono", monospace',theme:{background:'#15181d',foreground:'#d6dde6',green:'#7ee787',red:'#ff7b72',cyan:'#79c0ff',yellow:'#e3b341',brightBlack:'#6e7681'},cursorBlink:true,convertEol:true,cols:96,rows:22});
+term.open(document.getElementById('t'));
+window.term = term;
+window.setTitle = t => document.getElementById('title').textContent = t;
+</script></body></html>

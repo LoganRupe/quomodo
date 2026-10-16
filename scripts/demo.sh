@@ -8,8 +8,11 @@
 #   - a git server (caddy, dumb http) as git.home.arpa holding homelab/stacks
 #   - four "podman hosts" (the e2e agent-host image: Fedora, systemd, podman),
 #     atlas, hermes, pi-garage and minerva, each running the agent
-#   - six stacks of real images: gitea and miniflux on atlas, vaultwarden and
-#     uptime-kuma on hermes, caddy on pi-garage, syncthing on minerva
+#   - a rootless agent beside the root one on hermes (user monitor) and on
+#     minerva (user sync), each a lingering user with its own subordinate ids
+#   - six stacks of real images: gitea and miniflux on atlas, vaultwarden on
+#     hermes, uptime-kuma rootless on hermes, caddy on pi-garage, syncthing
+#     rootless on minerva
 #     (atlas also holds gitea 1.22.6, so the image bump in the readme demo
 #     pulls no layers)
 #   - a post-receive hook on the stack repo that sends every push to each
@@ -35,11 +38,16 @@ NET=quomodo-demo
 P=quomodo-demo
 SERVERS=(atlas hermes pi-garage minerva)
 declare -A REGION=([atlas]=rack [hermes]=rack [pi-garage]=garage [minerva]=office)
+# Rootless agents, server:host:user. Their Servers report the host's name, so
+# the Servers page lists them under it.
+ROOTLESS=(hermes-monitor:hermes:monitor minerva-sync:minerva:sync)
 declare -A ABOUT=(
   [atlas]="Ryzen box in the rack: git and feeds"
   [hermes]="NUC in the rack: passwords and monitoring"
   [pi-garage]="Raspberry Pi 5 in the garage: the reverse proxy"
   [minerva]="Old desktop in the office: file sync"
+  [hermes-monitor]="Rootless agent for the monitoring user"
+  [minerva-sync]="Rootless agent for the file sync user"
   [gitea]="Git hosting, Postgres on its own network"
   [miniflux]="Feed reader, app and Postgres in one pod"
   [vaultwarden]="Password vault"
@@ -58,9 +66,9 @@ STACKS=(
   "gitea:atlas:docker.io/gitea/gitea:1.22.4 docker.io/gitea/gitea:1.22.6 docker.io/library/postgres:16-alpine"
   "miniflux:atlas:docker.io/miniflux/miniflux:2.2.6 docker.io/library/postgres:16-alpine"
   "vaultwarden:hermes:docker.io/vaultwarden/server:1.32.7"
-  "uptime-kuma:hermes:docker.io/louislam/uptime-kuma:1"
+  "uptime-kuma:hermes-monitor:docker.io/louislam/uptime-kuma:1"
   "caddy:pi-garage:docker.io/library/caddy:2-alpine"
-  "syncthing:minerva:docker.io/syncthing/syncthing:1.29"
+  "syncthing:minerva-sync:docker.io/syncthing/syncthing:1.29"
 )
 
 log() { printf '\n\033[1;34m== %s\033[0m\n' "$*"; }
@@ -442,13 +450,60 @@ for s in "${SERVERS[@]}"; do
   echo "$s Ok"
 done
 
+log "rootless agents: ${ROOTLESS[*]}"
+# Runs a command on a Server's host as the user its agent runs as.
+declare -A RL_HOST=() RL_USER=()
+on() {
+  local server=$1; shift
+  if [ -z "${RL_USER[$server]:-}" ]; then docker exec -i "$P-$server" "$@"; return; fi
+  local u=${RL_USER[$server]}
+  docker exec -i "$P-${RL_HOST[$server]}" runuser -u "$u" -- \
+    env HOME="/home/$u" XDG_RUNTIME_DIR="/run/user/$(docker exec "$P-${RL_HOST[$server]}" id -u "$u")" "$@"
+}
+for entry in "${ROOTLESS[@]}"; do
+  IFS=: read -r server host u <<<"$entry"
+  RL_HOST[$server]=$host; RL_USER[$server]=$u
+  c="$P-$host"
+  docker exec "$c" sh -c "useradd -m $u && usermod --add-subuids 6000000-10194303 --add-subgids 6000000-10194303 $u && loginctl enable-linger $u"
+  uid=$(docker exec "$c" id -u "$u")
+  for _ in $(seq 1 30); do docker exec "$c" systemctl is-active --quiet "user@$uid.service" && break; sleep 1; done
+  docker exec "$c" systemctl is-active --quiet "user@$uid.service" || fail "lingering did not start $u's systemd on $host"
+  docker exec "$c" sh -c "mkdir -p /home/$u/.config/quomodo /home/$u/.config/systemd/user
+cp /etc/quomodo/ca.pem /home/$u/.config/quomodo/ca.pem
+cat > /home/$u/.config/quomodo/config.toml <<CFG
+core_addresses = [\"wss://quomodo.home.arpa\"]
+core_tls_ca_file = \"/home/$u/.config/quomodo/ca.pem\"
+connect_as = \"$server\"
+CFG
+cat > /home/$u/.config/systemd/user/quomodo-agent.service <<'UNIT'
+[Unit]
+Description=Quomodo agent (rootless)
+[Service]
+ExecStart=/usr/local/bin/quomodo-agent --config-path %h/.config/quomodo/config.toml
+Restart=always
+RestartSec=2
+[Install]
+WantedBy=default.target
+UNIT
+chown -R $u:$u /home/$u/.config"
+  on "$server" systemctl --user daemon-reload
+  on "$server" systemctl --user enable --now quomodo-agent
+  $API create-server "$server" "$(on "$server" /usr/local/bin/quomodo-agent --config-path "/home/$u/.config/quomodo/config.toml" public-key)" "${REGION[$host]}" "${ABOUT[$server]}"
+done
+for entry in "${ROOTLESS[@]}"; do
+  server=${entry%%:*}
+  for _ in $(seq 1 30); do [ "$($API server-state "$server")" = "Ok" ] && break; sleep 1; done
+  [ "$($API server-state "$server")" = "Ok" ] || { on "$server" journalctl --user -u quomodo-agent --no-pager | tail -20; fail "$server never reached Ok"; }
+  echo "$server Ok (rootless)"
+done
+
 log "images and podman secrets on the hosts"
 declare -A LOADED=()
 for entry in "${STACKS[@]}"; do
   server=$(echo "$entry" | cut -d: -f2)
   for img in ${entry#*:*:}; do
     [ -n "${LOADED[$server/$img]:-}" ] && continue
-    docker exec -i "$P-$server" podman load -q < "$(image_tar "$img")" >/dev/null
+    on "$server" podman load -q < "$(image_tar "$img")" >/dev/null
     LOADED[$server/$img]=1
   done
   echo "$server: loaded images for ${entry%%:*}"
