@@ -1,7 +1,4 @@
-use std::{
-  collections::HashMap,
-  path::{Path, PathBuf},
-};
+use std::{collections::HashMap, path::Path};
 
 use anyhow::{Context, anyhow};
 use database::mungos::{
@@ -45,8 +42,8 @@ use crate::{
   resource,
   state::db_client,
   sync::{
-    deploy::SyncDeployParams, remote::RemoteResources,
-    view::push_updates_for_view,
+    deploy::SyncDeployParams, file::sync_relative_path,
+    remote::RemoteResources, view::push_updates_for_view,
   },
 };
 
@@ -241,11 +238,8 @@ async fn write_sync_file_contents_on_host(
   let root = core_config()
     .sync_directory
     .join(to_path_compatible_name(&sync.name));
-  let file_path =
-    file_path.parse::<PathBuf>().context("Invalid file path")?;
-  let resource_path = resource_path
-    .parse::<PathBuf>()
-    .context("Invalid resource path")?;
+  let file_path = sync_relative_path(&file_path)?;
+  let resource_path = sync_relative_path(&resource_path)?;
   let full_path = root.join(&resource_path).join(&file_path);
 
   if let Err(e) = mogh_secret_file::write_async(&full_path, &contents)
@@ -320,19 +314,9 @@ async fn write_sync_file_contents_git(
     None
   };
 
-  let file_path =
-    file_path.parse::<PathBuf>().with_context(|| {
-      format!("File path is not a valid path: {file_path}")
-    })?;
-  let resource_path =
-    resource_path.parse::<PathBuf>().with_context(|| {
-      format!("Resource path is not a valid path: {resource_path}")
-    })?;
-  let full_path = root
-    .join(&resource_path)
-    .join(&file_path)
-    .components()
-    .collect::<PathBuf>();
+  let file_path = sync_relative_path(&file_path)?;
+  let resource_path = sync_relative_path(&resource_path)?;
+  let full_path = root.join(&resource_path).join(&file_path);
 
   if let Some(parent) = full_path.parent() {
     tokio::fs::create_dir_all(parent).await.with_context(|| {
@@ -489,13 +473,12 @@ impl Resolve<WriteArgs> for CommitSync {
       || !sync.config.repo.is_empty()
       || repo.is_some()
     {
-      let resource_path = sync
-        .config
-        .resource_path
-        .first()
-        .context("Sync does not have resource path configured.")?
-        .parse::<PathBuf>()
-        .context("Invalid resource path")?;
+      let resource_path =
+        sync_relative_path(
+          sync.config.resource_path.first().context(
+            "Sync does not have resource path configured.",
+          )?,
+        )?;
 
       if resource_path
         .extension()

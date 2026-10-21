@@ -1,6 +1,6 @@
 use std::{
   fs,
-  path::{Path, PathBuf},
+  path::{Component, Path, PathBuf},
 };
 
 use anyhow::{Context, anyhow};
@@ -10,6 +10,25 @@ use komodo_client::entities::{
   toml::{ResourceToml, ResourcesToml},
   update::Log,
 };
+
+/// Parses a sync resource or file path into one that stays under
+/// the sync root. A leading `/` means the sync root, so `/` reads the
+/// whole sync and `/stacks` reads `stacks`. `..` is rejected.
+pub fn sync_relative_path(path: &str) -> anyhow::Result<PathBuf> {
+  let mut res = PathBuf::new();
+  for component in Path::new(path).components() {
+    match component {
+      Component::Normal(part) => res.push(part),
+      Component::RootDir | Component::CurDir => {}
+      Component::ParentDir | Component::Prefix(_) => {
+        return Err(anyhow!(
+          "Path {path:?} must stay inside the sync directory"
+        ));
+      }
+    }
+  }
+  Ok(res)
+}
 
 pub fn read_resources(
   root_path: &Path,
@@ -22,13 +41,8 @@ pub fn read_resources(
   let mut resources = ResourcesToml::default();
 
   for resource_path in resource_path {
-    let resource_path = resource_path
-      .parse::<PathBuf>()
-      .context("Invalid resource path")?;
-    let full_path = root_path
-      .join(&resource_path)
-      .components()
-      .collect::<PathBuf>();
+    let resource_path = sync_relative_path(resource_path)?;
+    let full_path = root_path.join(&resource_path);
 
     let mut log = format!(
       "{}: reading resources from {full_path:?}",
@@ -311,6 +325,31 @@ name = "resource_sync"
 [[user_group]]
 name = "user_group"
 "#;
+
+  #[test]
+  fn sync_relative_path_stays_in_root() {
+    use std::path::PathBuf;
+    for (input, expected) in [
+      ("", ""),
+      (".", ""),
+      ("/", ""),
+      ("//", ""),
+      ("/stacks", "stacks"),
+      ("/./stacks", "stacks"),
+      ("stacks/all.toml", "stacks/all.toml"),
+      ("/resources.toml", "resources.toml"),
+    ] {
+      assert_eq!(
+        super::sync_relative_path(input).unwrap(),
+        PathBuf::from(expected),
+        "{input}"
+      );
+    }
+    for input in ["..", "../etc/passwd", "/stacks/../../etc", "a/.."]
+    {
+      assert!(super::sync_relative_path(input).is_err(), "{input}");
+    }
+  }
 
   #[test]
   fn extend_resources_keeps_every_resource_type() {
