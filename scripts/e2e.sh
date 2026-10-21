@@ -311,6 +311,7 @@ elif cmd == "sync-paths":
     with open(outside + "/target.toml", "w") as f: f.write("# untouched\n")
     os.symlink(outside + "/target.toml", root + "/link.toml")
     os.symlink(outside, root + "/linkdir")
+    os.symlink(".", root + "/loop")
     r = api("write", "CreateResourceSync", {"name": "e2e-host-sync", "config": {"files_on_host": True, "resource_path": ["."]}})
     if "error" in r: raise SystemExit("CreateResourceSync failed: %s" % r["error"])
     def write(rp, fp): return api("write", "WriteSyncFileContents", {"sync": "e2e-host-sync", "resource_path": rp, "file_path": fp, "contents": "# e2e\n"})
@@ -328,7 +329,9 @@ elif cmd == "sync-paths":
     if open(root + "/ok.toml").read() != "# e2e\n": raise SystemExit("ok.toml was not written")
     info = api("read", "GetResourceSync", {"sync": "e2e-host-sync"})["info"]
     if any("untouched" in f["contents"] for f in info["remote_contents"]): raise SystemExit("Core read a file outside the sync directory")
-    print("3 escapes refused, ok.toml written")
+    reads = [f["path"] for f in info["remote_contents"]].count("ok.toml")
+    if reads != 1: raise SystemExit("the loop symlink made Core read ok.toml %d times" % reads)
+    print("3 escapes refused, ok.toml written and read once")
 elif cmd == "test-alerter":
     u = api("execute", "TestAlerter", {"alerter": "e2e-hook"})
     if "error" in u: raise SystemExit("TestAlerter refused: %s" % u["error"])

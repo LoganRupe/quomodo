@@ -1,4 +1,5 @@
 use std::{
+  collections::HashSet,
   fs,
   path::{Component, Path, PathBuf},
 };
@@ -118,6 +119,7 @@ pub fn read_resources(
         &mut log,
         files,
         file_errors,
+        &mut HashSet::new(),
       )
       .with_context(|| {
         format!("Failed to read resources from {full_path:?}")
@@ -228,9 +230,21 @@ fn read_resources_directory(
   log: &mut String,
   files: &mut Vec<SyncFileContents>,
   file_errors: &mut Vec<SyncFileContents>,
+  // Canonical paths of the directories already read.
+  visited: &mut HashSet<PathBuf>,
 ) -> anyhow::Result<()> {
   let full_resource_path = root_path.join(resource_path);
   let full_path = full_resource_path.join(curr_path);
+  // A symlink back to a directory already read would loop.
+  if !visited.insert(full_path.canonicalize()?) {
+    log.push('\n');
+    log.push_str(&format!(
+      "{}: skipping {}, already read",
+      colored("WARN", Color::Red),
+      colored(full_path.display(), Color::Blue)
+    ));
+    return Ok(());
+  }
   let directory = fs::read_dir(&full_path).with_context(|| {
     format!("Failed to read directory contents at {full_path:?}")
   })?;
@@ -238,26 +252,16 @@ fn read_resources_directory(
     let path = entry.path();
     let curr_path =
       path.strip_prefix(&full_resource_path).unwrap_or(&path);
-    // A symlinked file is read if it stays inside the sync root.
-    // Symlinked directories are not followed, which rules out loops.
-    if entry.file_type().is_ok_and(|t| t.is_symlink()) {
-      if let Err(e) = ensure_inside_root(root_path, &path) {
-        file_errors.push(SyncFileContents {
-          resource_path: resource_path.display().to_string(),
-          path: curr_path.display().to_string(),
-          contents: format_serror(&e.into()),
-        });
-        continue;
-      }
-      if path.is_dir() {
-        log.push('\n');
-        log.push_str(&format!(
-          "{}: skipping symlinked directory {}",
-          colored("WARN", Color::Red),
-          colored(path.display(), Color::Blue)
-        ));
-        continue;
-      }
+    // A symlink is followed if it stays inside the sync root.
+    if entry.file_type().is_ok_and(|t| t.is_symlink())
+      && let Err(e) = ensure_inside_root(root_path, &path)
+    {
+      file_errors.push(SyncFileContents {
+        resource_path: resource_path.display().to_string(),
+        path: curr_path.display().to_string(),
+        contents: format_serror(&e.into()),
+      });
+      continue;
     }
     if path.is_file() {
       if let Err(e) = read_resource_file(
@@ -288,6 +292,7 @@ fn read_resources_directory(
         log,
         files,
         file_errors,
+        visited,
       )
       .with_context(|| {
         format!("failed to read resources from {path:?}")
@@ -467,8 +472,12 @@ name = "user_group"
       root.join("stacks/secret.toml"),
     )
     .unwrap();
-    // Would recurse forever if directory symlinks were followed.
-    symlink("..", root.join("stacks/loop")).unwrap();
+    std::fs::create_dir_all(root.join("lib")).unwrap();
+    std::fs::write(root.join("lib/viadir.toml"), procedure("viadir"))
+      .unwrap();
+    symlink("../lib", root.join("stacks/common")).unwrap();
+    // Loops back to stacks, which is read once.
+    symlink(".", root.join("stacks/loop")).unwrap();
     symlink(dir.join("outside"), root.join("escape")).unwrap();
 
     let (mut logs, mut files, mut file_errors) =
@@ -488,7 +497,7 @@ name = "user_group"
       .map(|p| p.name.as_str())
       .collect::<Vec<_>>();
     names.sort();
-    assert_eq!(names, ["linked", "real"]);
+    assert_eq!(names, ["linked", "real", "viadir"]);
     assert!(files.iter().all(|f| !f.contents.contains("secret")));
     let errors = file_errors
       .iter()
