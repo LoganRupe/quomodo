@@ -30,6 +30,33 @@ pub fn sync_relative_path(path: &str) -> anyhow::Result<PathBuf> {
   Ok(res)
 }
 
+/// Errors if `path`, a path under `root`, leaves `root` once symlinks
+/// are followed. Checks the deepest part of `path` that exists, so it
+/// also covers a file that is about to be created. A dangling symlink
+/// fails, since writing through it would create its target.
+pub fn ensure_inside_root(
+  root: &Path,
+  path: &Path,
+) -> anyhow::Result<()> {
+  // Nothing under a root that doesn't exist yet can be a symlink.
+  let Ok(root) = root.canonicalize() else {
+    return Ok(());
+  };
+  let Some(existing) =
+    path.ancestors().find(|p| p.symlink_metadata().is_ok())
+  else {
+    return Ok(());
+  };
+  let resolved = existing
+    .canonicalize()
+    .with_context(|| format!("Failed to resolve {existing:?}"))?;
+  if resolved.starts_with(&root) {
+    Ok(())
+  } else {
+    Err(anyhow!("{path:?} points outside the sync directory"))
+  }
+}
+
 pub fn read_resources(
   root_path: &Path,
   resource_path: &[String],
@@ -48,6 +75,16 @@ pub fn read_resources(
       "{}: reading resources from {full_path:?}",
       muted("INFO")
     );
+
+    if let Err(e) = ensure_inside_root(root_path, &full_path) {
+      file_errors.push(SyncFileContents {
+        resource_path: String::new(),
+        path: resource_path.display().to_string(),
+        contents: format_serror(&e.into()),
+      });
+      logs.push(Log::error("Read remote resources", log));
+      continue;
+    }
 
     if full_path.is_file() {
       if let Err(e) = read_resource_file(
@@ -201,6 +238,27 @@ fn read_resources_directory(
     let path = entry.path();
     let curr_path =
       path.strip_prefix(&full_resource_path).unwrap_or(&path);
+    // A symlinked file is read if it stays inside the sync root.
+    // Symlinked directories are not followed, which rules out loops.
+    if entry.file_type().is_ok_and(|t| t.is_symlink()) {
+      if let Err(e) = ensure_inside_root(root_path, &path) {
+        file_errors.push(SyncFileContents {
+          resource_path: resource_path.display().to_string(),
+          path: curr_path.display().to_string(),
+          contents: format_serror(&e.into()),
+        });
+        continue;
+      }
+      if path.is_dir() {
+        log.push('\n');
+        log.push_str(&format!(
+          "{}: skipping symlinked directory {}",
+          colored("WARN", Color::Red),
+          colored(path.display(), Color::Blue)
+        ));
+        continue;
+      }
+    }
     if path.is_file() {
       if let Err(e) = read_resource_file(
         root_path,
@@ -325,6 +383,121 @@ name = "resource_sync"
 [[user_group]]
 name = "user_group"
 "#;
+
+  /// A fresh directory holding `root/` and `outside/`.
+  fn scratch(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir()
+      .join(format!("quomodo-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("root/stacks")).unwrap();
+    std::fs::create_dir_all(dir.join("root/shared")).unwrap();
+    std::fs::create_dir_all(dir.join("outside")).unwrap();
+    dir
+  }
+
+  #[test]
+  fn ensure_inside_root_follows_symlinks() {
+    use std::os::unix::fs::symlink;
+    let dir = scratch("inside-root");
+    let root = dir.join("root");
+    std::fs::write(root.join("shared/a.toml"), "").unwrap();
+    std::fs::write(dir.join("outside/b.toml"), "").unwrap();
+    symlink("../shared/a.toml", root.join("stacks/in.toml")).unwrap();
+    symlink(dir.join("outside/b.toml"), root.join("stacks/out.toml"))
+      .unwrap();
+    symlink(
+      dir.join("outside/none.toml"),
+      root.join("dangling.toml"),
+    )
+    .unwrap();
+    symlink(dir.join("outside"), root.join("outdir")).unwrap();
+
+    let check =
+      |path: &str| super::ensure_inside_root(&root, &root.join(path));
+    for ok in [
+      "shared/a.toml",
+      "stacks/in.toml",
+      "stacks/new.toml",
+      "new/dir/x.toml",
+    ] {
+      assert!(check(ok).is_ok(), "{ok}");
+    }
+    for bad in [
+      "stacks/out.toml",
+      "dangling.toml",
+      "outdir/new.toml",
+      "outdir",
+    ] {
+      assert!(check(bad).is_err(), "{bad}");
+    }
+    // A root that doesn't exist yet holds no symlinks.
+    assert!(
+      super::ensure_inside_root(
+        &dir.join("none"),
+        &dir.join("none/x.toml")
+      )
+      .is_ok()
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+  }
+
+  #[test]
+  fn read_resources_skips_symlinks_out_of_root() {
+    use std::os::unix::fs::symlink;
+    let dir = scratch("read-symlinks");
+    let root = dir.join("root");
+    let procedure =
+      |name: &str| format!("[[procedure]]\nname = \"{name}\"\n");
+    std::fs::write(root.join("stacks/real.toml"), procedure("real"))
+      .unwrap();
+    std::fs::write(
+      root.join("shared/linked.toml"),
+      procedure("linked"),
+    )
+    .unwrap();
+    std::fs::write(
+      dir.join("outside/secret.toml"),
+      procedure("secret"),
+    )
+    .unwrap();
+    symlink("../shared/linked.toml", root.join("stacks/linked.toml"))
+      .unwrap();
+    symlink(
+      dir.join("outside/secret.toml"),
+      root.join("stacks/secret.toml"),
+    )
+    .unwrap();
+    // Would recurse forever if directory symlinks were followed.
+    symlink("..", root.join("stacks/loop")).unwrap();
+    symlink(dir.join("outside"), root.join("escape")).unwrap();
+
+    let (mut logs, mut files, mut file_errors) =
+      (Vec::new(), Vec::new(), Vec::new());
+    let resources = super::read_resources(
+      &root,
+      &["stacks".to_string(), "escape".to_string()],
+      &[],
+      &mut logs,
+      &mut files,
+      &mut file_errors,
+    )
+    .unwrap();
+    let mut names = resources
+      .procedures
+      .iter()
+      .map(|p| p.name.as_str())
+      .collect::<Vec<_>>();
+    names.sort();
+    assert_eq!(names, ["linked", "real"]);
+    assert!(files.iter().all(|f| !f.contents.contains("secret")));
+    let errors = file_errors
+      .iter()
+      .map(|e| e.path.as_str())
+      .collect::<Vec<_>>();
+    assert!(errors.contains(&"secret.toml"), "{errors:?}");
+    assert!(errors.contains(&"escape"), "{errors:?}");
+    std::fs::remove_dir_all(&dir).unwrap();
+  }
 
   #[test]
   fn sync_relative_path_stays_in_root() {
