@@ -307,6 +307,9 @@ fn cron_parser() -> &'static CronParser {
     CronParser::builder()
       .seconds(croner::parser::Seconds::Required)
       .dom_and_dow(true)
+      // english-to-cron writes steps as `0/N`, which croner 4
+      // rejects unless ranges are sloppy.
+      .sloppy_ranges(true)
       .build()
   })
 }
@@ -398,5 +401,25 @@ impl HasSchedule for &Action {
   }
   fn timezone(&self) -> &str {
     &self.config.schedule_timezone
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  #[test]
+  fn english_step_schedules_parse() {
+    for english in
+      ["every 15 seconds", "every 5 minutes", "every 8 hours"]
+    {
+      let cron = english_to_cron::str_cron_syntax(english)
+        .unwrap()
+        .split(' ')
+        .take(6)
+        .collect::<Vec<_>>()
+        .join(" ");
+      super::cron_parser()
+        .parse(&cron)
+        .unwrap_or_else(|e| panic!("{english} -> {cron}: {e}"));
+    }
   }
 }
