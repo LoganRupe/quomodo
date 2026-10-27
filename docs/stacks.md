@@ -51,8 +51,18 @@ File modes are copied too, so a script in a build context stays executable.
 ## What a deploy restarts
 
 `DeployStackIfChanged` does nothing unless the repo commit, a file, or a
-resolved secret value changed, or the stack is not running. When it does
-deploy, and for a plain `DeployStack`:
+resolved secret value changed, or the stack is not running. It also skips a
+stack that another action, such as a deploy, is still running on. Files that
+changed after that action started deploy on the next run.
+
+It decides before the call returns. With nothing to deploy, the call returns a
+finished Update with no id and a log stage of `Diff stack files` (unchanged)
+or `Deploy skipped` (busy). That Update is not stored, so it doesn't show in
+the updates list. Otherwise it returns the stored `DeployStack` Update, which
+you can follow by its id. `BatchDeployStackIfChanged` returns one of these per
+stack.
+
+When it does deploy, and for a plain `DeployStack`:
 
 - A changed `.container` or `.kube` restarts only that unit.
 - A changed `.pod` restarts the pod; its members follow it.
