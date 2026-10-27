@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 
 use crate::resource::KomodoResource;
 
+mod coalesce;
 mod integrations;
 mod resources;
 mod router;
