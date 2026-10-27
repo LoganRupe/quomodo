@@ -1,6 +1,9 @@
 use ::quadlet as quadlet_lib;
 use anyhow::{Context, anyhow};
-use database::mungos::mongodb::bson::{doc, to_document};
+use database::mungos::{
+  by_id::find_one_by_id,
+  mongodb::bson::{doc, to_document},
+};
 use formatting::format_serror;
 use komodo_client::{
   api::execute::*,
@@ -9,6 +12,7 @@ use komodo_client::{
     repo::Repo,
     stack::{Stack, StackInfo, StackState},
     update::{Log, Update},
+    user::User,
   },
 };
 use mogh_resolver::Resolve;
@@ -341,75 +345,135 @@ impl Resolve<ExecuteArgs> for DeployStackIfChanged {
       task_id,
     }: &ExecuteArgs,
   ) -> mogh_error::Result<Update> {
-    let stack = get_check_permissions::<Stack>(
-      &self.stack,
-      user,
-      PermissionLevel::Execute.into(),
-    )
-    .await?;
-
-    let contents = refresh_stack_cache(&stack).await?;
-    let stack = resource::get::<Stack>(&stack.id).await?;
-
-    let mut update = update.clone();
-
-    let state = stack_status_cache()
-      .get(&stack.id)
-      .await
-      .map(|s| s.curr.state)
-      .unwrap_or_default();
-
-    // Hash the latest files together with the resolved secret values,
-    // so a rotated secret also counts as a change.
-    let latest_hash =
-      if contents.errors.is_empty() && !contents.files.is_empty() {
-        let resolved = if stack.config.skip_secret_interp {
-          Default::default()
-        } else {
-          resolve_stack_secrets(
-            &stack,
-            &contents.files,
-            &contents.blobs,
-          )
-          .await?
-        };
-        Some(quadlet_lib::contents_hash(
-          &contents.files,
-          &contents.blobs,
-          &resolved.hashes,
-        ))
-      } else {
-        None
+    let (deploy, update) =
+      match decide_if_changed(&self, user, update).await? {
+        IfChanged::Skip(update) => return Ok(update),
+        IfChanged::Deploy(deploy, update) => (deploy, update),
       };
+    let update_id = update.id.clone();
+    let res = deploy
+      .resolve(&ExecuteArgs {
+        user: user.clone(),
+        update,
+        task_id: *task_id,
+      })
+      .await;
+    let Err(e) = res else {
+      return res;
+    };
+    // The caller only holds the Update from before the decision, which
+    // has no id, so it can't record the error. Record it here, or the
+    // stored Update stays in progress forever.
+    let mut update = find_one_by_id(&db_client().updates, &update_id)
+      .await
+      .context("Failed to query to db")?
+      .context("No Update exists with given id")?;
+    update.push_error_log(
+      "Execution error",
+      format_serror(&e.error.into()),
+    );
+    update.finalize();
+    update_update(update.clone()).await?;
+    Ok(update)
+  }
+}
 
-    let unchanged = latest_hash.is_some()
-      && latest_hash == stack.info.deployed_contents_hash
-      && state == StackState::Running;
+/// What `DeployStackIfChanged` decided, before anything deploys.
+pub enum IfChanged {
+  /// Nothing to deploy: the contents are unchanged, or another action on
+  /// the stack is still running. The Update is finalized and not stored.
+  Skip(Update),
+  /// The stack changed. The Update is stored; run the DeployStack with it.
+  Deploy(DeployStack, Update),
+}
 
-    if unchanged {
-      update.push_simple_log(
-        "Diff stack files",
-        String::from("Deploy cancelled after no changes detected."),
-      );
-      update.finalize();
-      return Ok(update);
-    }
+/// Runs in the request path, so the caller gets either the finished answer
+/// or the id of the DeployStack Update to follow.
+pub async fn decide_if_changed(
+  req: &DeployStackIfChanged,
+  user: &User,
+  update: &Update,
+) -> anyhow::Result<IfChanged> {
+  let stack = get_check_permissions::<Stack>(
+    &req.stack,
+    user,
+    PermissionLevel::Execute.into(),
+  )
+  .await?;
 
-    // Don't actually send it here, let the handler send it after it can set action state.
-    // This is usually done in crate::helpers::update::init_execution_update.
-    update.id = add_update_without_send(&update).await?;
+  let mut update = update.clone();
 
+  // A running deploy is not a change. Treating it as one only queued a
+  // DeployStack that failed on the busy stack.
+  if action_states()
+    .stack
+    .get_or_insert_default(&stack.id)
+    .await
+    .busy()?
+  {
+    update.push_simple_log(
+      "Deploy skipped",
+      String::from(
+        "Another action on this stack is still running. Files that changed after it started deploy on the next run.",
+      ),
+    );
+    update.finalize();
+    return Ok(IfChanged::Skip(update));
+  }
+
+  let contents = refresh_stack_cache(&stack).await?;
+  let stack = resource::get::<Stack>(&stack.id).await?;
+
+  let state = stack_status_cache()
+    .get(&stack.id)
+    .await
+    .map(|s| s.curr.state)
+    .unwrap_or_default();
+
+  // Hash the latest files together with the resolved secret values,
+  // so a rotated secret also counts as a change.
+  let latest_hash = if contents.errors.is_empty()
+    && !contents.files.is_empty()
+  {
+    let resolved = if stack.config.skip_secret_interp {
+      Default::default()
+    } else {
+      resolve_stack_secrets(&stack, &contents.files, &contents.blobs)
+        .await?
+    };
+    Some(quadlet_lib::contents_hash(
+      &contents.files,
+      &contents.blobs,
+      &resolved.hashes,
+    ))
+  } else {
+    None
+  };
+
+  let unchanged = latest_hash.is_some()
+    && latest_hash == stack.info.deployed_contents_hash
+    && state == StackState::Running;
+
+  if unchanged {
+    update.push_simple_log(
+      "Diff stack files",
+      String::from("Deploy cancelled after no changes detected."),
+    );
+    update.finalize();
+    return Ok(IfChanged::Skip(update));
+  }
+
+  // Don't actually send it here, let the handler send it after it can set action state.
+  // This is usually done in crate::helpers::update::init_execution_update.
+  update.id = add_update_without_send(&update).await?;
+
+  Ok(IfChanged::Deploy(
     DeployStack {
       stack: stack.name,
       services: Vec::new(),
-    }
-    .resolve(&ExecuteArgs {
-      user: user.clone(),
-      update,
-      task_id: *task_id,
-    })
-    .await
-  }
+    },
+    update,
+  ))
 }
 
 impl super::BatchExecute for BatchPullStack {

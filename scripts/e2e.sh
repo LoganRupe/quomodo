@@ -19,7 +19,8 @@
 #   2. DeployStack installs the quadlet units, systemd starts them, podman runs
 #      them; every pod and standalone container gets its own fixed user
 #      namespace slice, a pod member shares the pod's
-#   3. DeployStackIfChanged is a no-op with nothing changed
+#   3. DeployStackIfChanged is a no-op with nothing changed, and skips a
+#      stack that is mid deploy
 #   4. a changed unit file redeploys only that unit, on the same slice
 #   5. a changed bind-mounted config file restarts the unit that mounts it
 #   6. a .build unit builds from its context; binary and >1 MiB files are
@@ -235,22 +236,17 @@ def wait_update(uid):
         if u.get("status") == "Complete": return u
         time.sleep(1)
     raise SystemExit("update %s did not complete" % uid)
+def update_id(u): return u.get("id") or (u.get("_id") or {}).get("\$oid")
 def execute(typ, params):
     # /execute returns the initial Update at once and runs the task in the background.
-    # DeployStackIfChanged creates no Update at all when nothing changed, so an empty
-    # id means: watch the stack's update list for a DeployStack to appear.
-    t0 = int(time.time() * 1000)
+    # DeployStackIfChanged decides before it returns: with nothing to deploy it hands
+    # back a finished Update that was never stored, so it has no id.
     u = api("execute", typ, params)
     if "error" in u: raise SystemExit("%s refused: %s" % (typ, u["error"]))
-    uid = u.get("id") or (u.get("_id") or {}).get("\$oid")
+    uid = update_id(u)
     if uid: return wait_update(uid)
-    stack_id = api("read", "GetStack", {"stack": STACK})["_id"]["\$oid"]
-    for _ in range(10):
-        time.sleep(1)
-        for it in api("read", "ListUpdates", {"query": {"target.id": stack_id}})["updates"]:
-            if it["start_ts"] >= t0 and it["operation"] == "DeployStack":
-                return wait_update(it["id"])
-    return {"noop": True, "success": True, "logs": []}
+    if u.get("status") != "Complete": raise SystemExit("%s returned an unfinished Update with no id: %r" % (typ, u))
+    return {**u, "noop": True}
 cmd = sys.argv[1]
 if cmd == "create-server":
     print(json.dumps(api("write", "CreateServer", {"name": SERVER, "config": {"enabled": True}, "public_key": sys.argv[2]})))
@@ -278,6 +274,18 @@ elif cmd in ("DeployStack", "DeployStackIfChanged", "DestroyStack", "RestartStac
         for l in u["logs"]:
             if not l["success"]: print("--", l["stage"], "\n", l["stdout"][-1500:], "\n", l["stderr"][-1500:])
         raise SystemExit(cmd + " failed")
+elif cmd == "busy-skip":
+    # DeployStackIfChanged on a stack that is mid deploy reports it skipped
+    # instead of queueing a second DeployStack.
+    uid = update_id(api("execute", "DeployStack", {"stack": STACK, "services": []}))
+    while not api("read", "GetStackActionState", {"stack": STACK}).get("deploying"):
+        if api("read", "GetUpdate", {"id": uid}).get("status") == "Complete": raise SystemExit("deploy finished before it was seen running")
+        time.sleep(0.05)
+    u = api("execute", "DeployStackIfChanged", {"stack": STACK})
+    stages = [l["stage"] for l in u.get("logs", [])]
+    if update_id(u) or u.get("status") != "Complete" or stages != ["Deploy skipped"]: raise SystemExit("expected a finished skip, got %r" % u)
+    if not wait_update(uid)["success"]: raise SystemExit("the running deploy failed")
+    print(json.dumps({"skipped": True}))
 elif cmd == "refresh":
     print(api("write", "RefreshStackCache", {"stack": STACK}))
 elif cmd == "create-alerter":
@@ -426,6 +434,7 @@ WEB_ID_BEFORE=$(hexec podman inspect -f '{{.Id}}' e2e-web)
 $API DeployStackIfChanged | grep -q '"noop": true' || fail "expected no DeployStack update when nothing changed"
 [ "$(hexec podman inspect -f '{{.Id}}' e2e-web)" = "$WEB_ID_BEFORE" ] || fail "web was recreated with no change"
 echo "short-circuited, containers untouched"
+$API busy-skip || fail "DeployStackIfChanged during a deploy did not report it skipped"
 
 log "4. a changed unit redeploys only that unit"
 WEB_ID_BEFORE=$(hexec podman inspect -f '{{.Id}}' e2e-web); WORKER_ID_BEFORE=$(hexec podman inspect -f '{{.Id}}' e2e-worker)

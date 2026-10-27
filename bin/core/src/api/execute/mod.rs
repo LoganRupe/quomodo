@@ -190,6 +190,23 @@ pub fn inner_handler(
       ));
     }
 
+    // Decide DeployStackIfChanged before returning, so the caller gets
+    // the finished answer or the stored DeployStack Update, never a
+    // placeholder it can't tell apart from either.
+    let (request, update) = match request {
+      ExecuteRequest::DeployStackIfChanged(req) => {
+        match stack::decide_if_changed(&req, &user, &update).await? {
+          stack::IfChanged::Skip(update) => {
+            return Ok(ExecutionResult::Single(update.into()));
+          }
+          stack::IfChanged::Deploy(req, update) => {
+            (ExecuteRequest::DeployStack(req), update)
+          }
+        }
+      }
+      request => (request, update),
+    };
+
     // Spawn a task for the execution which continues
     // running after this method returns.
     let handle =
