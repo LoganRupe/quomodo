@@ -17,7 +17,8 @@ domain or a port is just written where it is used. `[[NAME]]` in a text file
 is always a secret. Core reads it at deploy time from the Stack's
 `secrets_collection` in the secret store ([secrets.md](secrets.md)).
 `[[NAME]]` reads the item's password; `[[NAME.field]]` reads one of its
-custom fields.
+custom fields. The item's Username field is never read: a username is not a
+secret, so write it in the unit file.
 
 Secrets follow two rules, so a value never lands in a file under `/etc`:
 
