@@ -25,7 +25,21 @@ use crate::{
   resource,
 };
 
-use super::{ANY_BRANCH, ListenerLockCache};
+use super::{ANY_BRANCH, ListenerLockCache, coalesce::Coalescer};
+
+/// Coalesces webhook runs per resource and execution, so a burst of
+/// pushes gives at most one run in progress and one pending rather
+/// than one queued run per push. Not used for Actions: each Action
+/// run receives its own webhook body.
+fn webhook_runs() -> &'static Coalescer {
+  static WEBHOOK_RUNS: OnceLock<Coalescer> = OnceLock::new();
+  WEBHOOK_RUNS.get_or_init(Default::default)
+}
+
+/// Key for [webhook_runs]: the resource id and the execution.
+fn run_key<E>(id: &str) -> String {
+  format!("{id}/{}", std::any::type_name::<E>())
+}
 
 // ======
 //  REPO
@@ -127,17 +141,19 @@ async fn handle_repo_webhook_inner<
     return Ok(());
   }
 
-  // Acquire and hold lock to make a task queue for
-  // subsequent listener calls on same resource.
-  // It would fail if we let it go through from action state busy.
-  let lock = repo_locks().get_or_insert_default(&repo.id).await;
-  let _lock = lock.lock().await;
-
   if !B::branch_matches(&body, &repo.config.branch)? {
     return Ok(());
   }
 
-  E::resolve(repo).await
+  webhook_runs()
+    .run(run_key::<E>(&repo.id), || async {
+      // Serialize with the other execution on the same repo.
+      // It would fail if we let it go through from action state busy.
+      let lock = repo_locks().get_or_insert_default(&repo.id).await;
+      let _lock = lock.lock().await;
+      E::resolve(repo.clone()).await
+    })
+    .await
 }
 
 // =======
@@ -247,12 +263,6 @@ pub async fn handle_stack_webhook_inner<
     return Ok(());
   }
 
-  // Acquire and hold lock to make a task queue for
-  // subsequent listener calls on same resource.
-  // It would fail if we let it go through, from "action state busy".
-  let lock = stack_locks().get_or_insert_default(&stack.id).await;
-  let _lock = lock.lock().await;
-
   // Use the correct target branch when using linked repo.
   let branch = if stack.config.linked_repo.is_empty() {
     stack.config.branch.clone()
@@ -268,7 +278,15 @@ pub async fn handle_stack_webhook_inner<
     return Ok(());
   }
 
-  E::resolve(stack).await.map_err(|e| e.error)
+  webhook_runs()
+    .run(run_key::<E>(&stack.id), || async {
+      // Serialize with the other execution on the same stack.
+      // It would fail if we let it go through, from "action state busy".
+      let lock = stack_locks().get_or_insert_default(&stack.id).await;
+      let _lock = lock.lock().await;
+      E::resolve(stack.clone()).await.map_err(|e| e.error)
+    })
+    .await
 }
 
 // ======
@@ -362,12 +380,6 @@ async fn handle_sync_webhook_inner<
     return Ok(());
   }
 
-  // Acquire and hold lock to make a task queue for
-  // subsequent listener calls on same resource.
-  // It would fail if we let it go through from action state busy.
-  let lock = sync_locks().get_or_insert_default(&sync.id).await;
-  let _lock = lock.lock().await;
-
   // Use the correct target branch when using linked repo.
   let branch = if sync.config.linked_repo.is_empty() {
     sync.config.branch.clone()
@@ -383,7 +395,15 @@ async fn handle_sync_webhook_inner<
     return Ok(());
   }
 
-  E::resolve(sync).await
+  webhook_runs()
+    .run(run_key::<E>(&sync.id), || async {
+      // Serialize with the other execution on the same sync.
+      // It would fail if we let it go through from action state busy.
+      let lock = sync_locks().get_or_insert_default(&sync.id).await;
+      let _lock = lock.lock().await;
+      E::resolve(sync.clone()).await
+    })
+    .await
 }
 
 // ===========
@@ -396,12 +416,6 @@ impl super::CustomSecret for Procedure {
   }
 }
 
-fn procedure_locks() -> &'static ListenerLockCache {
-  static PROCEDURE_LOCKS: OnceLock<ListenerLockCache> =
-    OnceLock::new();
-  PROCEDURE_LOCKS.get_or_init(Default::default)
-}
-
 pub async fn handle_procedure_webhook<B: super::ExtractBranch>(
   procedure: Procedure,
   target_branch: &str,
@@ -411,36 +425,35 @@ pub async fn handle_procedure_webhook<B: super::ExtractBranch>(
     return Ok(());
   }
 
-  // Acquire and hold lock to make a task queue for
-  // subsequent listener calls on same resource.
-  // It would fail if we let it go through from action state busy.
-  let lock =
-    procedure_locks().get_or_insert_default(&procedure.id).await;
-  let _lock = lock.lock().await;
-
   if target_branch != ANY_BRANCH
     && !B::branch_matches(&body, target_branch)?
   {
     return Ok(());
   }
 
-  let user = git_webhook_user().to_owned();
-  let req = ExecuteRequest::RunProcedure(RunProcedure {
-    procedure: procedure.id,
-  });
-  let update = init_execution_update(&req, &user).await?;
-  let ExecuteRequest::RunProcedure(req) = req else {
-    unreachable!()
-  };
-  req
-    .resolve(&ExecuteArgs {
-      user,
-      update,
-      task_id: Uuid::new_v4(),
+  // The coalescer runs one procedure run at a time per procedure,
+  // so it would not fail from action state busy.
+  webhook_runs()
+    .run(run_key::<RunProcedure>(&procedure.id), || async {
+      let user = git_webhook_user().to_owned();
+      let req = ExecuteRequest::RunProcedure(RunProcedure {
+        procedure: procedure.id.clone(),
+      });
+      let update = init_execution_update(&req, &user).await?;
+      let ExecuteRequest::RunProcedure(req) = req else {
+        unreachable!()
+      };
+      req
+        .resolve(&ExecuteArgs {
+          user,
+          update,
+          task_id: Uuid::new_v4(),
+        })
+        .await
+        .map_err(|e| e.error)?;
+      Ok(())
     })
     .await
-    .map_err(|e| e.error)?;
-  Ok(())
 }
 
 // ========
