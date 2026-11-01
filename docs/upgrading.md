@@ -1,8 +1,8 @@
 # Upgrading
 
-## 0.4.x to 1.0.0
+## 0.4.x to 0.5.0
 
-1.0.0 moves Core onto the current major versions of Komodo's `mogh_*`
+0.5.0 moves Core onto the current major versions of Komodo's `mogh_*`
 libraries (auth server 8, auth client 8, mogh_ui 4). Nothing has to be
 migrated: users, password hashes, API keys, TOTP and passkey 2FA, OIDC links
 and Core's and the agents' keys are read as 0.4.x stored them. Upgrade Core,

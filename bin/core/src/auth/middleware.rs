@@ -55,7 +55,7 @@ pub async fn auth_api_key_check_enabled(
   .await
 }
 
-/// The user id of a session token, issued now or before 1.0.
+/// The user id of a session token, issued now or before 0.5.
 pub fn jwt_user_id(jwt: &str) -> mogh_error::Result<String> {
   JWT_PROVIDER
     .decode_sub(jwt)
@@ -63,7 +63,7 @@ pub fn jwt_user_id(jwt: &str) -> mogh_error::Result<String> {
     .status_code(StatusCode::UNAUTHORIZED)
 }
 
-/// The claims of a session token issued before 1.0, by
+/// The claims of a session token issued before 0.5, by
 /// mogh_auth_server 1.x. The times are unix milliseconds.
 #[derive(Deserialize)]
 struct LegacyJwtClaims {
@@ -73,7 +73,7 @@ struct LegacyJwtClaims {
   aud: Option<serde_json::Value>,
 }
 
-/// Session tokens from before 1.0 carry only `sub`, `iat` and `exp`
+/// Session tokens from before 0.5 carry only `sub`, `iat` and `exp`
 /// (in milliseconds), signed with the same `jwt_secret`. They are
 /// accepted until they expire, so upgrading Core doesn't log
 /// everyone out. Tokens issued since always carry `iss` and `aud`,
@@ -99,7 +99,7 @@ fn legacy_jwt_user_id(jwt: &str) -> anyhow::Result<String> {
   let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
   if claims.iss.is_some()
     || claims.aud.is_some()
-    // An exp in seconds is not from a pre 1.0 token.
+    // An exp in seconds is not from a pre 0.5 token.
     || claims.exp < 1_000_000_000_000
     || claims.exp <= now.saturating_sub(10_000)
   {
