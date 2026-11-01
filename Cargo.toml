@@ -83,7 +83,7 @@ ipnetwork = { version = "0.21.1", features = ["serde"] }
 indexmap = { version = "2.14.0", features = ["serde"] }
 serde = { version = "1.0.229", features = ["derive"] }
 strum = { version = "0.28.0", features = ["derive"] }
-bson = { version = "2.15.0" } # must keep in sync with mongodb version
+bson = { version = "3.1.0" } # must keep in sync with mongodb version
 toml = "1.1.4"
 serde_yaml_ng = "0.10.0"
 serde_json = "1.0.151"
