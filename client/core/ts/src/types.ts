@@ -1997,6 +1997,11 @@ export interface ApiKey {
 	created_at: I64;
 	/** Expiry of key, or 0 if never expires */
 	expires: I64;
+	/**
+	 * The addresses (ip or cidr) the key may be used from.
+	 * Any address if empty.
+	 */
+	cidr_whitelist?: string[];
 }
 
 export type ListApiKeysForServiceUserResponse = ApiKey[];

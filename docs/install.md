@@ -74,7 +74,8 @@ range as an agent host ([Agent](#agent), step 2).
 
 `AutoUpdate=registry` lets `podman auto-update` (or its systemd timer) pull a
 new `:latest` and restart Core. Pin a tag instead if you want upgrades to be
-a deliberate edit.
+a deliberate edit. Read [Upgrading](upgrading.md) before moving to a new
+major version.
 
 Keep `RunInit=true` in `quomodo-core.container`. Every git fetch leaves a
 detached `git maintenance` behind, and without an init as PID 1 nothing
@@ -98,7 +99,10 @@ Pick one:
   for `/ws/` and forward the `Host` header unchanged. The agent binds its
   handshake to the host name it dialled, so a rewritten `Host` fails the
   login with `401 Unauthorized`. Bind Core's `PublishPort=` to an address
-  only the proxy reaches, so nothing talks to it in the clear.
+  only the proxy reaches, so nothing talks to it in the clear. Core takes the
+  client address from the proxy's `X-Forwarded-For` only when the proxy
+  connects from a loopback or private address. Otherwise list the proxy in
+  `trusted_proxies` (`KOMODO_TRUSTED_PROXIES`).
 - **Core serves TLS itself.** Set `KOMODO_SSL_ENABLED=true` and point
   `KOMODO_SSL_CERT_FILE` / `KOMODO_SSL_KEY_FILE` at a full chain and its key.
   The example container has this block commented out: it mounts a host

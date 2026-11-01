@@ -20,7 +20,7 @@ import {
 import { Types } from "komodo_client";
 import { ChevronDown } from "lucide-react";
 import { FC, useState } from "react";
-import { sendCopyNotification } from "mogh_ui";
+import { clipboardAvailable, copyToClipboard } from "mogh_ui";
 
 type Request = Types.ExecuteRequest["type"] | Types.WriteRequest["type"];
 
@@ -184,16 +184,11 @@ function BatchExecutionsModal({
         {!execution.startsWith("Refresh") && !execution.startsWith("Check") && (
           <>
             <Text
-              onClick={() => {
-                navigator.clipboard.writeText(formatted);
-                sendCopyNotification();
-              }}
+              onClick={() => copyToClipboard(formatted)}
               style={{ cursor: "pointer" }}
             >
               Please enter <b>{formatted}</b> below to confirm this action.
-              {(location.origin.startsWith("https") ||
-                // For dev
-                location.origin.startsWith("http://localhost:")) && (
+              {clipboardAvailable() && (
                 <Text fz="sm" c="dimmed">
                   You may click the text in bold to copy it
                 </Text>

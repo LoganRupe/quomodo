@@ -117,8 +117,9 @@ export default function Profile() {
           </Section>
 
           <LinkedLogins
-            refetchUser={refetchUser}
+            refetchUser={() => refetchUser()}
             passwordSet={
+              user.config.type === "Local" ||
               !!(
                 user.linked_logins?.Local as Extract<
                   Types.UserConfig,
@@ -126,15 +127,7 @@ export default function Profile() {
                 >
               )?.data?.password
             }
-            oidcLinkedId={
-              (
-                user.linked_logins?.Oidc as Extract<
-                  Types.UserConfig,
-                  { type: "Oidc" }
-                >
-              )?.data?.user_id
-            }
-            extraProviderFilter={(provider) => user.config.type !== provider}
+            linkedLogins={oidcLogins(user)}
           />
 
           <Section
@@ -172,4 +165,17 @@ export default function Profile() {
       )}
     </PageGuard>
   );
+}
+
+/** The user's OIDC login, primary or linked, for the providers table. */
+function oidcLogins(user: Types.User) {
+  const oidc =
+    user.config.type === "Oidc"
+      ? user.config
+      : (user.linked_logins?.Oidc as
+          | Extract<Types.UserConfig, { type: "Oidc" }>
+          | undefined);
+  return oidc?.data?.user_id
+    ? [{ provider_id: "oidc", external_id: oidc.data.user_id }]
+    : [];
 }

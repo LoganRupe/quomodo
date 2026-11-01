@@ -329,6 +329,14 @@ cors_allow_credentials = false
 ## Default: false
 session_allow_cross_site = false
 
+## The reverse proxies whose X-Forwarded-For / X-Real-IP headers
+## are believed for the client ip, which rate limits and api key
+## ip whitelists use. Ips or cidrs, or ["none"] when nothing is in
+## front of Core. If empty, trusts loopback and private addresses.
+## Env: KOMODO_TRUSTED_PROXIES
+## Default: empty
+trusted_proxies = []
+
 ## `X-Content-Type-Options` header value.
 ## Set as empty string to omit the header.
 ## Env: KOMODO_X_CONTENT_TYPE_OPTIONS

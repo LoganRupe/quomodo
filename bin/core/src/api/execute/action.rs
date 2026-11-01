@@ -155,6 +155,7 @@ impl Resolve<ExecuteArgs> for RunAction {
       CreateApiKey {
         name: update.id.clone(),
         expires: 0,
+        cidr_whitelist: Vec::new(),
       },
     )
     .await?;

@@ -46,7 +46,10 @@ export declare function KomodoClient(url: string, options: InitOptions): {
         manage: <T extends import("mogh_auth_client/dist/types.js").ManageRequest["type"], Req extends Extract<import("mogh_auth_client/dist/types.js").ManageRequest, {
             type: T;
         }>>(type: T, params: Req["params"]) => Promise<import("mogh_auth_client").ManageResponses[Req["type"]]>;
-        externalLogin: (provider: import("mogh_auth_client/dist/types.js").ExternalLoginProvider) => void;
+        tokenExchange: (subjectToken: string, subjectTokenType?: "urn:ietf:params:oauth:token-type:id_token" | "urn:ietf:params:oauth:token-type:jwt") => Promise<import("mogh_auth_client/dist/types.js").TokenExchangeResponse>;
+        externalLogin: (providerSlug: string) => void;
+        externalLinkUrl: (providerSlug: string) => string;
+        externalLink: (providerSlug: string) => Promise<void>;
     };
     /**
      * Get the current (calling) user.

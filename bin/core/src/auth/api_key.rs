@@ -7,7 +7,11 @@ use crate::state::db_client;
 
 pub async fn create_api_key(
   user_id: String,
-  CreateApiKey { name, expires }: CreateApiKey,
+  CreateApiKey {
+    name,
+    expires,
+    cidr_whitelist,
+  }: CreateApiKey,
   key: String,
   hashed_secret: String,
 ) -> anyhow::Result<()> {
@@ -18,6 +22,7 @@ pub async fn create_api_key(
     user_id,
     created_at: komodo_timestamp(),
     expires: expires as i64,
+    cidr_whitelist,
   };
 
   db_client()

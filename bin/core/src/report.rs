@@ -2,13 +2,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, anyhow};
 use async_timing_util::{Timelength, wait_until_timelength};
+use data_encoding::BASE64;
 use komodo_client::entities::{
   ResourceTargetVariant, report::KomodoReport,
 };
-use mogh_pki::{
-  PkiKind, RotatableKeyPair, SpkiPublicKey,
-  one_way::OneWayNoiseHandshake,
-};
+use mogh_pki::{PkiKind, RotatableKeyPair, SpkiPublicKey};
 
 use crate::{config::core_config, state::db_client};
 
@@ -19,8 +17,9 @@ pub fn spawn_reporting_loop() {
     return;
   }
 
+  // An X25519 key, the same algorithm as the Core / agent keys.
   let keys = match RotatableKeyPair::from_private_key_spec(
-    PkiKind::OneWay,
+    PkiKind::Mutual,
     &config.reporting_private_key,
   ) {
     Ok(keys) => keys,
@@ -53,7 +52,7 @@ async fn report(
   let keys = keys.load();
   let private_key_bytes = keys
     .private
-    .as_raw_bytes()
+    .as_raw_bytes(PkiKind::Mutual)
     .context("Invalid reporting private key.")?;
 
   let endpoint_public_key = client
@@ -67,9 +66,11 @@ async fn report(
     .await
     .context("Failed to get reporting endpoint public key for signature")?;
 
-  let endpoint_public_key =
-    SpkiPublicKey::maybe_pem_to_raw_bytes(&endpoint_public_key)
-      .context("Invalid reporting endpoint public key.")?;
+  let endpoint_public_key = SpkiPublicKey::maybe_pem_to_raw_bytes(
+    PkiKind::Mutual,
+    &endpoint_public_key,
+  )
+  .context("Invalid reporting endpoint public key.")?;
 
   let users = db
     .users
@@ -110,15 +111,12 @@ async fn report(
   let prologue =
     format!("POST|/report/komodo|{serialized}|{timestamp}");
 
-  let mut handshake = OneWayNoiseHandshake::new_initiator(
+  let signature = one_way_signature(
     &private_key_bytes,
     &endpoint_public_key,
     prologue.as_bytes(),
-  )?;
-
-  let signature = handshake
-    .generate_signature()
-    .context("Failed to generate report signature")?;
+  )
+  .context("Failed to generate report signature")?;
 
   let res = client
     .post("https://mogh.tech/report/komodo")
@@ -142,4 +140,27 @@ async fn report(
     .context("Failed report, and failed to get response body")?;
 
   Err(anyhow!("{status}: {text}"))
+}
+
+/// The first message of a Noise IK handshake with the endpoint, which
+/// the endpoint reads to verify the report. mogh_pki dropped this
+/// handshake in 3.0, so it is made here.
+fn one_way_signature(
+  private_key: &[u8],
+  remote_public_key: &[u8],
+  prologue: &[u8],
+) -> anyhow::Result<String> {
+  let mut handshake =
+    snow::Builder::new("Noise_IK_25519_ChaChaPoly_BLAKE2s".parse()?)
+      .local_private_key(private_key)
+      .context("Invalid private key")?
+      .remote_public_key(remote_public_key)
+      .context("Invalid remote public key")?
+      .prologue(prologue)
+      .context("Invalid prologue")?
+      .build_initiator()
+      .context("Failed to build initiator")?;
+  let mut buf = [0u8; 1024];
+  let written = handshake.write_message(&[], &mut buf)?;
+  Ok(BASE64.encode(&buf[..written]))
 }

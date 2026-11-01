@@ -184,6 +184,8 @@ pub struct Env {
   pub komodo_cors_allow_credentials: Option<bool>,
   /// Override `session_allow_cross_site`
   pub komodo_session_allow_cross_site: Option<bool>,
+  /// Override `trusted_proxies`
+  pub komodo_trusted_proxies: Option<Vec<String>>,
 
   /// Override `x_content_type_options`
   pub komodo_x_content_type_options: Option<String>,
@@ -574,6 +576,14 @@ pub struct CoreConfig {
   #[serde(default)]
   pub session_allow_cross_site: bool,
 
+  /// The reverse proxies whose `X-Forwarded-For` / `X-Real-IP`
+  /// headers are believed for the client ip, which rate limits and
+  /// api key ip whitelists use. Ips or cidrs, or `["none"]` when
+  /// nothing is in front of Core.
+  /// If empty, trusts loopback and private addresses.
+  #[serde(default)]
+  pub trusted_proxies: Vec<String>,
+
   // ====================
   // = Security Headers =
   // ====================
@@ -931,6 +941,7 @@ impl Default for CoreConfig {
       cors_allowed_origins: Default::default(),
       cors_allow_credentials: Default::default(),
       session_allow_cross_site: Default::default(),
+      trusted_proxies: Default::default(),
       x_content_type_options: default_x_content_type_options(),
       x_frame_options: default_x_frame_options(),
       x_xss_protection: default_x_xss_protection(),
@@ -1035,6 +1046,7 @@ impl CoreConfig {
       cors_allowed_origins: config.cors_allowed_origins,
       cors_allow_credentials: config.cors_allow_credentials,
       session_allow_cross_site: config.session_allow_cross_site,
+      trusted_proxies: config.trusted_proxies,
       x_content_type_options: config.x_content_type_options,
       x_frame_options: config.x_frame_options,
       x_xss_protection: config.x_xss_protection,
@@ -1182,6 +1194,15 @@ impl mogh_server::ServerConfig for &CoreConfig {
   }
   fn content_security_policy(&self) -> &str {
     &self.content_security_policy
+  }
+  fn trusted_proxies(
+    &self,
+  ) -> anyhow::Result<mogh_server::TrustedProxies> {
+    if self.trusted_proxies.is_empty() {
+      Ok(Default::default())
+    } else {
+      mogh_server::TrustedProxies::from_config(&self.trusted_proxies)
+    }
   }
 }
 
