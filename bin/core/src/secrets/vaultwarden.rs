@@ -814,6 +814,19 @@ mod tests {
     );
   }
 
+  #[test]
+  fn argon2_matches_known_vector() {
+    // Bitwarden's default Argon2id params: 3 iterations, 64 MiB,
+    // parallelism 4. Pinned so an argon2 upgrade that changes the
+    // derived key fails here instead of at vault login.
+    let key =
+      derive_master_key("pw", "a@b.c", 1, 3, None, None).unwrap();
+    assert_eq!(
+      hex::encode(key),
+      "17b5109e6146c76418bbcf358d625a992fbe1d553b35518ec277072d67935d35"
+    );
+  }
+
   /// What the mock vault saw.
   #[derive(Default)]
   struct Seen {
