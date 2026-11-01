@@ -53,7 +53,7 @@ svi = "1.2.0"
 
 # SECRETS (Vaultwarden vault protocol)
 aws-lc-rs = "1.16"
-argon2 = "0.5"
+argon2 = "0.6"
 base64 = "0.22"
 
 # BUILD ENV
