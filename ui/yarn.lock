@@ -107,6 +107,16 @@
   dependencies:
     "@monaco-editor/loader" "^1.5.0"
 
+"@noble/ed25519@3.2.0":
+  version "3.2.0"
+  resolved "https://registry.yarnpkg.com/@noble/ed25519/-/ed25519-3.2.0.tgz#b653400ff62ef68b8785639c0d2dd20d68ac19a9"
+  integrity sha512-criDgRlnUA09hchYrTy/JUWPIEap5rZxQe6wDWzRx51oWWpDRcUpuNzlgPxDJaOK6AsW9c0wKcj3rKRv6t+bPQ==
+
+"@noble/hashes@2.4.0":
+  version "2.4.0"
+  resolved "https://registry.yarnpkg.com/@noble/hashes/-/hashes-2.4.0.tgz#e6a3e98edbed3c8659b28bb8f9b18ca02ec8ea4b"
+  integrity sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==
+
 "@oxc-project/types@=0.154.0":
   version "0.154.0"
   resolved "https://registry.yarnpkg.com/@oxc-project/types/-/types-0.154.0.tgz#0a4f2adaeef41d1931861adca8166b7615e5a49a"
@@ -967,17 +977,26 @@ marked@14.0.0:
   resolved "https://registry.yarnpkg.com/marked/-/marked-14.0.0.tgz#79a1477358a59e0660276f8fec76de2c33f35d83"
   integrity sha512-uIj4+faQ+MgHgwUW1l2PsPglZLOLOT1uErt06dAPtx2kjteLAkbsd/0FiYg/MGS+i7ZKLb7w2WClxHkzOOuryQ==
 
-mogh_auth_client@^1.7.1:
-  version "1.7.1"
-  resolved "https://registry.yarnpkg.com/mogh_auth_client/-/mogh_auth_client-1.7.1.tgz#98469ee4cff4c47c991235acd0b96c1b27c5a1e4"
-  integrity sha512-IWT7ET5QmqNGqrGgNy4oyF4LMb1TeLXQhDw6AXzd5S/WfWC9JJx7xjnIdJFqXpl3zoZ+va773RrPB5ufGPkVVQ==
+mogh_auth_client@^8.0.0:
+  version "8.0.0"
+  resolved "https://registry.yarnpkg.com/mogh_auth_client/-/mogh_auth_client-8.0.0.tgz#b668856e27c914576ec925be8b55e71d3e395807"
+  integrity sha512-Oz9eQh5fc/h3Z0eslvWeC6nhm8gPk5QChilTUD43wJa6WBhZimyKte5QvLw0SHmKRCnem7HKM7MysFVbudH4QA==
   dependencies:
     jwt-decode "^4.0.0"
 
-mogh_ui@^1.2.7:
-  version "1.2.7"
-  resolved "https://registry.yarnpkg.com/mogh_ui/-/mogh_ui-1.2.7.tgz#17a3994a928cbfc8baf79031b2bcd7121fd1d29a"
-  integrity sha512-kQZuStgvzx2Qpis/fF0lHIa5ptlHIzrxjL1suajqcjxIcHCeLCeIeRvExeo0/vQECYbx+PEU6UboACOSlIzIow==
+mogh_supporter@^1.1.0:
+  version "1.1.0"
+  resolved "https://registry.yarnpkg.com/mogh_supporter/-/mogh_supporter-1.1.0.tgz#f0dcb82d839201101295909abbfef2198d4c4823"
+  integrity sha512-PQVFvJSG+qzL+sTUedStr/8QViCO/h0r9jozgSiRvSZEfcLO0qjvNNzIbk0dmHXecsFuGpIiUUJGHM68Vf9yVw==
+  dependencies:
+    "@noble/ed25519" "3.2.0"
+    "@noble/hashes" "2.4.0"
+    mogh_auth_client "^8.0.0"
+
+mogh_ui@^4.1.0:
+  version "4.1.0"
+  resolved "https://registry.yarnpkg.com/mogh_ui/-/mogh_ui-4.1.0.tgz#d3477b7f23d5d9bd2d5ec7646b7e974dcd025523"
+  integrity sha512-6bWrnJNWPTO3pXYa6jCQHlj47TAMBxwAG3VyJvULipMxhcQhxIIFL9hbaUya+rv05urf3GXgaVJaJoRPOXmH7A==
 
 monaco-editor@^0.57.0:
   version "0.57.0"
@@ -1121,11 +1140,15 @@ postcss@^8.5.27, postcss@^8.5.29, postcss@^8.5.30:
     picocolors "^1.1.1"
     source-map-js "^1.2.2"
 
-
 prettier@^3.0.0:
   version "3.8.1"
   resolved "https://registry.yarnpkg.com/prettier/-/prettier-3.8.1.tgz#edf48977cf991558f4fcbd8a3ba6015ba2a3a173"
   integrity sha512-UOnG6LftzbdaHZcKoPFtOcCKztrQ57WkHDeRD9t/PTQtmT0NHSeWWepj6pS0z/N7+08BHFDQVUrfmfMRcZwbMg==
+
+prettier@^3.9.10:
+  version "3.9.10"
+  resolved "https://registry.yarnpkg.com/prettier/-/prettier-3.9.10.tgz#ac378e432f1a7381518f2e080816bbaefa38d585"
+  integrity sha512-skGHTH1Yb9QvaTC4hWnRTzEYtCpApF0UMBPz+t/0ZPzP8ihefo/btKd+QA7pUE0fEwA1SbS/NmhyEcstdXOIdA==
 
 prop-types@^15.6.2:
   version "15.8.1"
@@ -1667,3 +1690,4 @@ yaml@^2.0.0:
   version "2.9.1"
   resolved "https://registry.yarnpkg.com/yaml/-/yaml-2.9.1.tgz#c16233fb31944e705cfefaff38795587f57588ce"
   integrity sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw==
+

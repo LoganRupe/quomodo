@@ -70,7 +70,10 @@ impl CorePublicKeys {
       [] => return,
       [path, _rest @ ..] => path,
     };
-    let public_key = match SpkiPublicKey::from_maybe_pem(public_key) {
+    let public_key = match SpkiPublicKey::from_maybe_pem(
+      PkiKind::Mutual,
+      public_key,
+    ) {
       Ok(public_key) => public_key,
       Err(e) => {
         error!("Invalid incoming public key | {e:#}");
@@ -78,7 +81,7 @@ impl CorePublicKeys {
       }
     };
     // Check equality at path again before trying to rewrite.
-    match SpkiPublicKey::from_file(path) {
+    match SpkiPublicKey::from_file(PkiKind::Mutual, path) {
       Ok(existing) if existing == public_key => {
         self.refresh();
         return;
@@ -102,7 +105,7 @@ impl CorePublicKeys {
       .iter()
       .flat_map(|public_key| {
         if let Some(path) = public_key.strip_prefix("file:") {
-          match SpkiPublicKey::from_file(path) {
+          match SpkiPublicKey::from_file(PkiKind::Mutual, path) {
             Ok(public_key) => Some(public_key),
             Err(e) => {
               // It will be written when the Core public key is received.
@@ -112,7 +115,7 @@ impl CorePublicKeys {
             }
           }
         } else {
-          SpkiPublicKey::from_maybe_pem(public_key)
+          SpkiPublicKey::from_maybe_pem(PkiKind::Mutual, public_key)
             .context("Invalid hardcoded public key. If this is supposed to point to file, add 'file:' prefix.")
             .inspect_err(|e| {
               error!("{e:#}");

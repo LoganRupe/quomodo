@@ -282,6 +282,7 @@ async fn ensure_init_user_and_resources() {
     info!("Creating init admin user...");
     if let Err(e) = sign_up_local_user(
       &KomodoAuthImpl,
+      std::net::Ipv4Addr::LOCALHOST.into(),
       username.to_string(),
       &config.init_admin_password,
     )

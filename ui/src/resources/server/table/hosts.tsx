@@ -130,10 +130,8 @@ export default function HostServerTable({
       selectOptions={{
         selectKey: (row) => rowServer(row)?.name ?? `host ${row.host.name}`,
         state: selectionState,
-        // mogh_ui passes a function here straight to tanstack's
-        // `enableRowSelection`, so it returns whether the row is selectable.
         // A multi agent host row is not a Server, its agents are.
-        disableRow: (row) => !!rowServer(row.original),
+        canSelectRow: (row) => !!rowServer(row.original),
       }}
       columns={[
         {

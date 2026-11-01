@@ -168,6 +168,7 @@ impl Resolve<WriteArgs> for CreateApiKeyForServiceUser {
       CreateApiKey {
         name: self.name,
         expires: self.expires as u64,
+        cidr_whitelist: Vec::new(),
       },
     )
     .await

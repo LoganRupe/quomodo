@@ -52,7 +52,7 @@ pub fn periphery_public_keys() -> Option<&'static [SpkiPublicKey]> {
               } else {
                 (None, public_key.clone())
               };
-              match SpkiPublicKey::from_maybe_pem(&maybe_pem) {
+              match SpkiPublicKey::from_maybe_pem(PkiKind::Mutual, &maybe_pem) {
                 Ok(public_key) => Some(public_key),
                 Err(e) => {
                   warn!(
@@ -286,6 +286,9 @@ pub fn core_config() -> &'static CoreConfig {
       session_allow_cross_site: env
         .komodo_session_allow_cross_site
         .unwrap_or(config.session_allow_cross_site),
+      trusted_proxies: env
+        .komodo_trusted_proxies
+        .unwrap_or(config.trusted_proxies),
       x_content_type_options: env
         .komodo_x_content_type_options
         .unwrap_or(config.x_content_type_options),

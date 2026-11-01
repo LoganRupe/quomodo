@@ -1,7 +1,10 @@
 use std::{
   path::{Path, PathBuf},
   sync::OnceLock,
+  time::Duration,
 };
+
+use anyhow::anyhow;
 
 use command::{CommandOptions, run_komodo_standard_command};
 use formatting::format_serror;
@@ -13,12 +16,17 @@ use mogh_cache::TimeoutCache;
 
 use crate::{check_installed, get_commit_hash_log};
 
-fn pull_cache()
--> &'static TimeoutCache<PathBuf, RepoExecutionResponse> {
-  static PULL_CACHE: OnceLock<
-    TimeoutCache<PathBuf, RepoExecutionResponse>,
-  > = OnceLock::new();
-  PULL_CACHE.get_or_init(Default::default)
+/// The last pull of each path: when it started, and its result. The
+/// error is kept as its message, so waiting callers can share it.
+type PullResult = (i64, Result<RepoExecutionResponse, String>);
+
+fn pull_cache() -> &'static TimeoutCache<PathBuf, PullResult> {
+  static PULL_CACHE: OnceLock<TimeoutCache<PathBuf, PullResult>> =
+    OnceLock::new();
+  // Only callers queued behind a pull use its result, so it need not
+  // outlive the longest pull by much.
+  PULL_CACHE
+    .get_or_init(|| TimeoutCache::new(Duration::from_secs(60 * 60)))
 }
 
 /// This will pull in a way that handles edge cases
@@ -60,8 +68,10 @@ where
 
   // Callers that queued behind a pull which started after they asked
   // share its result instead of pulling again.
-  if locked.last_ts > requested {
-    return locked.clone_res();
+  if let Some(Ok((last_started, last_res))) = locked.fresh_res()
+    && last_started > requested
+  {
+    return last_res.map_err(|e| anyhow!(e));
   }
   let started = komodo_timestamp();
 
@@ -171,7 +181,11 @@ where
 
   // Set the cache with results, stamped with when this pull started.
   // Calls that were waiting on the lock and asked before then use it.
-  locked.set(&res, started);
+  let shared = match &res {
+    Ok(res) => Ok(res.clone()),
+    Err(e) => Err(format!("{e:#}")),
+  };
+  locked.set(&Ok((started, shared)));
 
   res
 }

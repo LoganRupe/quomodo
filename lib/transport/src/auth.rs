@@ -6,7 +6,9 @@ use std::time::Duration;
 use anyhow::Context;
 use axum::http::{HeaderMap, HeaderValue};
 use data_encoding::BASE64;
-use mogh_pki::{SpkiPublicKey, mutual::MutualNoiseHandshake};
+use mogh_pki::{
+  PkiKind, SpkiPublicKey, mutual::MutualNoiseHandshake,
+};
 use periphery_client::transport::LoginMessage;
 use rand::Rng as _;
 use sha2::{Digest, Sha256};
@@ -97,10 +99,12 @@ impl LoginFlow for ServerLoginFlow {
         .context("[Server] Failed to read handshake_m3")?;
 
       // Server now has client public key
-      let public_key =
-        SpkiPublicKey::from_raw_bytes(handshake.remote_public_key()?)
-          .context("[Server] Invalid public key")?
-          .into_inner();
+      let public_key = SpkiPublicKey::from_raw_bytes(
+        PkiKind::Mutual,
+        handshake.remote_public_key()?,
+      )
+      .context("[Server] Invalid public key")?
+      .into_inner();
 
       public_key_validator.validate(public_key).await
     }
@@ -180,10 +184,12 @@ impl LoginFlow for ClientLoginFlow {
 
       // Client now has server public key.
       // Perform validation before proceeding.
-      let public_key =
-        SpkiPublicKey::from_raw_bytes(handshake.remote_public_key()?)
-          .context("[Client] Invalid public key")?
-          .into_inner();
+      let public_key = SpkiPublicKey::from_raw_bytes(
+        PkiKind::Mutual,
+        handshake.remote_public_key()?,
+      )
+      .context("[Client] Invalid public key")?
+      .into_inner();
       let validation_result =
         public_key_validator.validate(public_key).await?;
 

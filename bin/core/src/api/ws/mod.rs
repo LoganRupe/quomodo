@@ -63,13 +63,11 @@ async fn user_ws_login(
       .context("Invalid login message")
       .status_code(StatusCode::BAD_REQUEST)?
     {
-      WsLoginMessage::Jwt { jwt } => auth_jwt_check_enabled(&jwt)
-        .await
-        .status_code(StatusCode::UNAUTHORIZED),
+      WsLoginMessage::Jwt { jwt } => {
+        auth_jwt_check_enabled(&jwt).await
+      }
       WsLoginMessage::ApiKeys { key, secret } => {
-        auth_api_key_check_enabled(&key, &secret)
-          .await
-          .status_code(StatusCode::UNAUTHORIZED)
+        auth_api_key_check_enabled(key, secret, ip).await
       }
     }
   }

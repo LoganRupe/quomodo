@@ -31,6 +31,11 @@ pub struct ApiKey {
 
   /// Expiry of key, or 0 if never expires
   pub expires: I64,
+
+  /// The addresses (ip or cidr) the key may be used from.
+  /// Any address if empty.
+  #[serde(default)]
+  pub cidr_whitelist: Vec<String>,
 }
 
 impl ApiKey {

@@ -52,6 +52,7 @@ pub async fn create(
         .auth_manage(komodo_client::api::auth::manage::CreateApiKey {
           name: name.clone().unwrap_or_default(),
           expires: expires as u64,
+          cidr_whitelist: Vec::new(),
         })
         .await?
     };
@@ -85,6 +86,7 @@ pub async fn create(
         secret: hashed_secret.clone(),
         created_at: komodo_timestamp(),
         expires,
+        cidr_whitelist: Vec::new(),
       })
       .await?;
 

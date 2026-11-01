@@ -1,4 +1,8 @@
-use std::sync::{Arc, LazyLock};
+use std::{
+  net::IpAddr,
+  sync::{Arc, LazyLock},
+  time::Duration,
+};
 
 use anyhow::{Context as _, anyhow};
 use async_timing_util::{
@@ -12,24 +16,26 @@ use komodo_client::entities::{
   komodo_timestamp, optional_str,
   user::{NewUserParams, User, UserConfig, UserConfigVariant},
 };
-use mogh_auth_client::{
-  api::login::LoginProvider, config::OidcConfig, passkey::Passkey,
+use mogh_auth_client::config::{
+  ExternalLoginKind, ExternalLoginProvider,
+  ExternalLoginProviderConfig, OidcConfig,
 };
 use mogh_auth_server::{
-  AuthImpl,
+  AuthImpl, RequestAuthentication,
+  api_key::StoredApiKey,
+  passkey::Passkey,
   provider::{
-    jwt::JwtProvider, oidc::SubjectIdentifier,
-    passkey::PasskeyProvider,
+    external::ExternalLoginInfo, jwt::JwtProvider,
+    oidc::SubjectIdentifier, passkey::PasskeyProvider,
   },
   rand::random_string,
   user::{AuthUserImpl, BoxAuthUser},
 };
 use mogh_error::{AddStatusCode, AddStatusCodeError, StatusCode};
-use mogh_pki::RotatableKeyPair;
 use mogh_rate_limit::RateLimiter;
 
 use crate::{
-  config::{core_config, core_keys},
+  config::core_config,
   helpers::{
     query::{find_oidc_user, get_user},
     validations::{
@@ -43,14 +49,25 @@ mod api_key;
 
 pub mod middleware;
 
+/// The id of the OIDC login provider configured with the `oidc_*`
+/// options. It is the reserved id of OIDC providers, which keeps the
+/// login and callback paths at `/auth/oidc/*`.
+pub const OIDC_PROVIDER_ID: &str = "oidc";
+
+/// The secret JWTs are signed with: `jwt_secret`, or a random one
+/// which lasts until Core restarts.
+pub static JWT_SECRET: LazyLock<String> = LazyLock::new(|| {
+  let config = core_config();
+  if config.jwt_secret.is_empty() {
+    random_string(40)
+  } else {
+    config.jwt_secret.clone()
+  }
+});
+
 pub static JWT_PROVIDER: LazyLock<JwtProvider> =
   LazyLock::new(|| {
     let config = core_config();
-    let secret = if config.jwt_secret.is_empty() {
-      random_string(40)
-    } else {
-      config.jwt_secret.clone()
-    };
     let ttl_ms = get_timelength_in_ms(
       config.jwt_ttl.to_string().parse().unwrap_or_else(|e| {
         warn!(
@@ -59,7 +76,7 @@ pub static JWT_PROVIDER: LazyLock<JwtProvider> =
         Timelength::OneDay
       }),
     );
-    JwtProvider::new(secret.as_bytes(), ttl_ms)
+    JwtProvider::new(JWT_SECRET.as_bytes(), ttl_ms)
   });
 
 pub static GENERAL_RATE_LIMITER: LazyLock<Arc<RateLimiter>> =
@@ -68,7 +85,7 @@ pub static GENERAL_RATE_LIMITER: LazyLock<Arc<RateLimiter>> =
     RateLimiter::new(
       config.auth_rate_limit_disabled,
       config.auth_rate_limit_max_attempts as usize,
-      config.auth_rate_limit_window_seconds,
+      Duration::from_secs(config.auth_rate_limit_window_seconds),
     )
   });
 
@@ -78,26 +95,50 @@ static LOCAL_LOGIN_RATE_LIMITER: LazyLock<Arc<RateLimiter>> =
     RateLimiter::new(
       config.auth_rate_limit_disabled,
       config.auth_rate_limit_max_attempts as usize,
-      config.auth_rate_limit_window_seconds,
+      Duration::from_secs(config.auth_rate_limit_window_seconds),
     )
   });
 
-pub struct AuthUser(User);
+pub struct AuthUser {
+  user: User,
+  /// The external logins the user has: the primary one, or a linked one.
+  external_login_provider_ids: Vec<String>,
+}
+
+impl From<User> for AuthUser {
+  fn from(user: User) -> Self {
+    let has_oidc = matches!(user.config, UserConfig::Oidc { .. })
+      || user.linked_logins.get(UserConfigVariant::Oidc).is_some();
+    let external_login_provider_ids = if has_oidc {
+      vec![OIDC_PROVIDER_ID.to_string()]
+    } else {
+      Vec::new()
+    };
+    AuthUser {
+      user,
+      external_login_provider_ids,
+    }
+  }
+}
+
+fn box_user(user: User) -> BoxAuthUser {
+  Box::new(AuthUser::from(user))
+}
 
 impl AuthUserImpl for AuthUser {
   fn id(&self) -> &str {
-    &self.0.id
+    &self.user.id
   }
 
   fn username(&self) -> &str {
-    &self.0.username
+    &self.user.username
   }
 
   fn hashed_password(&self) -> Option<&str> {
-    if let UserConfig::Local { password } = &self.0.config {
+    if let UserConfig::Local { password } = &self.user.config {
       optional_str(password)
     } else if let Some(UserConfig::Local { password }) =
-      self.0.linked_logins.get(UserConfigVariant::Local)
+      self.user.linked_logins.get(UserConfigVariant::Local)
     {
       optional_str(password)
     } else {
@@ -106,8 +147,8 @@ impl AuthUserImpl for AuthUser {
   }
 
   fn passkey(&self) -> Option<Passkey> {
-    let passkey = self.0.passkey.passkey.as_ref()?;
-    serde_json::from_str(&serde_json::to_string(passkey).ok()?)
+    let passkey = self.user.passkey.passkey.as_ref()?;
+    serde_json::from_value(passkey.clone())
       .inspect_err(|e| {
         warn!(
           "User {} ({}) | Invalid passkey on database | {e:?}",
@@ -119,11 +160,27 @@ impl AuthUserImpl for AuthUser {
   }
 
   fn totp_secret(&self) -> Option<&str> {
-    optional_str(&self.0.totp.secret)
+    optional_str(&self.user.totp.secret)
+  }
+
+  fn hashed_totp_recovery_codes(&self) -> &[String] {
+    &self.user.totp.recovery_codes
   }
 
   fn external_skip_2fa(&self) -> bool {
-    self.0.external_skip_2fa
+    self.user.external_skip_2fa
+  }
+
+  fn external_login_provider_ids(&self) -> Option<&[String]> {
+    Some(&self.external_login_provider_ids)
+  }
+
+  fn is_enabled(&self) -> bool {
+    self.user.enabled
+  }
+
+  fn is_admin(&self) -> bool {
+    self.user.admin
   }
 }
 
@@ -154,17 +211,18 @@ impl AuthImpl for KomodoAuthImpl {
   ) -> mogh_auth_server::DynFuture<mogh_error::Result<BoxAuthUser>>
   {
     Box::pin(async move {
-      Ok(Box::new(AuthUser(
+      Ok(box_user(
         get_user(&user_id)
           .await
           .status_code(StatusCode::NOT_FOUND)?,
-      )) as BoxAuthUser)
+      ))
     })
   }
 
   fn handle_request_authentication(
     &self,
-    auth: mogh_auth_server::RequestAuthentication,
+    auth: RequestAuthentication,
+    ip: IpAddr,
     require_user_enabled: bool,
     mut req: axum::extract::Request,
   ) -> mogh_auth_server::DynFuture<
@@ -173,16 +231,32 @@ impl AuthImpl for KomodoAuthImpl {
     Box::pin(async move {
       let mut user = middleware::extract_user_from_auth(
         auth,
+        ip,
         require_user_enabled,
       )
-      .await
-      .status_code(StatusCode::UNAUTHORIZED)?;
+      .await?;
       // Sanitize the user for safety before
       // attaching to the request handlers.
       user.sanitize();
       req.extensions_mut().insert(user);
       Ok(req)
     })
+  }
+
+  fn get_user_id_from_request_authentication(
+    &self,
+    auth: RequestAuthentication,
+    ip: IpAddr,
+  ) -> mogh_auth_server::DynFuture<mogh_error::Result<String>> {
+    match auth {
+      RequestAuthentication::Jwt(jwt) => {
+        let user_id = middleware::jwt_user_id(&jwt);
+        Box::pin(async move { user_id })
+      }
+      auth => {
+        mogh_auth_server::middleware::get_key_user_id(self, auth, ip)
+      }
+    }
   }
 
   fn no_users_exist(
@@ -208,11 +282,15 @@ impl AuthImpl for KomodoAuthImpl {
       .unwrap_or(config.disable_user_registration)
   }
 
-  fn oidc_registration_disabled(&self) -> bool {
+  fn external_registration_disabled(
+    &self,
+    provider: &ExternalLoginProvider,
+  ) -> bool {
     let config = core_config();
-    config
-      .disable_oidc_user_registration
-      .unwrap_or(config.disable_user_registration)
+    provider.registration_disabled
+      || config
+        .disable_oidc_user_registration
+        .unwrap_or(config.disable_user_registration)
   }
 
   fn validate_username(
@@ -299,7 +377,7 @@ impl AuthImpl for KomodoAuthImpl {
         .users
         .find_one(doc! { "username": &username })
         .await?
-        .map(|user| Box::new(AuthUser(user)) as BoxAuthUser);
+        .map(box_user);
       Ok(user)
     })
   }
@@ -341,14 +419,22 @@ impl AuthImpl for KomodoAuthImpl {
     })
   }
 
-  // =============
-  // = OIDC AUTH =
-  // =============
+  // ===================
+  // = EXTERNAL LOGINS =
+  // ===================
 
-  fn oidc_config(&self) -> Option<&OidcConfig> {
-    static OIDC_CONFIG: LazyLock<OidcConfig> = LazyLock::new(|| {
-      let config = core_config();
-      OidcConfig {
+  fn static_external_providers(&self) -> Vec<ExternalLoginProvider> {
+    let config = core_config();
+    if !config.oidc_enabled {
+      return Vec::new();
+    }
+    vec![ExternalLoginProvider {
+      id: OIDC_PROVIDER_ID.to_string(),
+      name: String::from("OIDC"),
+      slug: String::new(),
+      registration_disabled: false,
+      token_exchange: Default::default(),
+      config: ExternalLoginProviderConfig::Oidc(OidcConfig {
         enabled: config.oidc_enabled,
         provider: config.oidc_provider.clone(),
         redirect_host: config.oidc_redirect_host.clone(),
@@ -359,33 +445,39 @@ impl AuthImpl for KomodoAuthImpl {
           .oidc_additional_audiences
           .clone(),
         auto_redirect: config.oidc_auto_redirect,
-      }
-    });
-    Some(&OIDC_CONFIG)
+        ..Default::default()
+      }),
+    }]
   }
 
-  fn find_user_with_oidc_subject(
+  fn find_user_with_external_login(
     &self,
-    subject: SubjectIdentifier,
+    provider_id: String,
+    external_id: String,
   ) -> mogh_auth_server::DynFuture<
     mogh_error::Result<Option<BoxAuthUser>>,
   > {
     Box::pin(async move {
-      let user = find_oidc_user(&subject)
+      if provider_id != OIDC_PROVIDER_ID {
+        return Ok(None);
+      }
+      let user = find_oidc_user(&SubjectIdentifier::new(external_id))
         .await
         .status_code(StatusCode::NOT_FOUND)?
-        .map(|user| Box::new(AuthUser(user)) as BoxAuthUser);
+        .map(box_user);
       Ok(user)
     })
   }
 
-  fn sign_up_oidc_user(
+  fn sign_up_external_user(
     &self,
     username: String,
-    subject: SubjectIdentifier,
+    info: ExternalLoginInfo,
     no_users_exist: bool,
   ) -> mogh_auth_server::DynFuture<mogh_error::Result<String>> {
     Box::pin(async move {
+      check_oidc_login(&info)?;
+
       let user = User::new(NewUserParams {
         username,
         enabled: no_users_exist || core_config().enable_new_users,
@@ -393,7 +485,7 @@ impl AuthImpl for KomodoAuthImpl {
         super_admin: no_users_exist,
         config: UserConfig::Oidc {
           provider: core_config().oidc_provider.clone(),
-          user_id: subject.to_string(),
+          user_id: info.external_id,
         },
         updated_at: komodo_timestamp(),
       });
@@ -412,12 +504,14 @@ impl AuthImpl for KomodoAuthImpl {
     })
   }
 
-  fn link_oidc_login(
+  fn link_external_login(
     &self,
     user_id: String,
-    subject: SubjectIdentifier,
+    info: ExternalLoginInfo,
   ) -> mogh_auth_server::DynFuture<mogh_error::Result<()>> {
     Box::pin(async move {
+      check_oidc_login(&info)?;
+
       let user = get_user(&user_id).await?;
 
       if let UserConfig::Oidc { .. } = &user.config {
@@ -427,13 +521,12 @@ impl AuthImpl for KomodoAuthImpl {
       }
 
       let oidc_provider = &core_config().oidc_provider;
-      let oidc_user_id = subject.as_str();
 
       let update = doc! {
         "$set": {
           "linked_logins.Oidc.type": "Oidc",
           "linked_logins.Oidc.data.provider": oidc_provider,
-          "linked_logins.Oidc.data.user_id": oidc_user_id,
+          "linked_logins.Oidc.data.user_id": &info.external_id,
         }
       };
 
@@ -447,29 +540,32 @@ impl AuthImpl for KomodoAuthImpl {
     })
   }
 
-  // ===============
+  // ==========
   // = UNLINK =
   // ==========
 
-  fn unlink_login(
+  fn unlink_external_login(
     &self,
     user_id: String,
-    provider: LoginProvider,
+    provider_id: String,
   ) -> mogh_auth_server::DynFuture<mogh_error::Result<()>> {
     Box::pin(async move {
-      let field = format!("linked_logins.{provider}");
+      if provider_id != OIDC_PROVIDER_ID {
+        return Err(
+          anyhow!("No login provider with id {provider_id}")
+            .status_code(StatusCode::NOT_FOUND),
+        );
+      }
+      unlink_login(&user_id, UserConfigVariant::Oidc).await
+    })
+  }
 
-      let update = doc! {
-        "$unset": {
-          field: ""
-        }
-      };
-
-      update_one_by_id(&db_client().users, &user_id, update, None)
-        .await
-        .context("Failed to unlink third partly login on database")?;
-
-      Ok(())
+  fn unlink_local_login(
+    &self,
+    user_id: String,
+  ) -> mogh_auth_server::DynFuture<mogh_error::Result<()>> {
+    Box::pin(async move {
+      unlink_login(&user_id, UserConfigVariant::Local).await
     })
   }
 
@@ -563,6 +659,26 @@ impl AuthImpl for KomodoAuthImpl {
     })
   }
 
+  fn remove_totp_recovery_code(
+    &self,
+    user_id: String,
+    hashed_code: String,
+  ) -> mogh_auth_server::DynFuture<mogh_error::Result<()>> {
+    Box::pin(async move {
+      update_one_by_id(
+        &db_client().users,
+        &user_id,
+        doc! { "$pull": { "totp.recovery_codes": hashed_code } },
+        None,
+      )
+      .await
+      .context(
+        "Failed to remove used totp recovery code on database",
+      )?;
+      Ok(())
+    })
+  }
+
   // ============
   // = SKIP 2FA =
   // ============
@@ -599,19 +715,25 @@ impl AuthImpl for KomodoAuthImpl {
       .status_code(StatusCode::BAD_REQUEST)
   }
 
-  fn get_api_key_user_id(
+  fn find_api_key(
     &self,
     key: String,
-  ) -> mogh_auth_server::DynFuture<mogh_error::Result<String>> {
+  ) -> mogh_auth_server::DynFuture<
+    mogh_error::Result<Option<StoredApiKey>>,
+  > {
     Box::pin(async move {
       let key = db_client()
         .api_keys
         .find_one(doc! { "key": key })
         .await
         .context("Failed at database query")?
-        .context("No api key with key found")
-        .status_code(StatusCode::NOT_FOUND)?;
-      Ok(key.user_id)
+        .map(|key| StoredApiKey {
+          user_id: key.user_id,
+          hashed_secret: key.secret,
+          expires: key.expires.max(0) as u64,
+          cidr_whitelist: key.cidr_whitelist,
+        });
+      Ok(key)
     })
   }
 
@@ -637,8 +759,47 @@ impl AuthImpl for KomodoAuthImpl {
       api_key::delete_api_key(&key).await.map_err(Into::into)
     })
   }
+}
 
-  fn server_private_key(&self) -> Option<&RotatableKeyPair> {
-    Some(core_keys())
+/// Only the OIDC provider from the `oidc_*` options logs users in.
+fn check_oidc_login(
+  info: &ExternalLoginInfo,
+) -> mogh_error::Result<()> {
+  if info.provider_id == OIDC_PROVIDER_ID
+    && info.kind == ExternalLoginKind::Oidc
+  {
+    Ok(())
+  } else {
+    Err(
+      anyhow!("No login provider with id {}", info.provider_id)
+        .status_code(StatusCode::NOT_FOUND),
+    )
   }
+}
+
+/// Removes a linked login. A user's primary login can't be removed.
+async fn unlink_login(
+  user_id: &str,
+  variant: UserConfigVariant,
+) -> mogh_error::Result<()> {
+  let user = get_user(user_id).await?;
+  if UserConfigVariant::from(&user.config) == variant {
+    return Err(
+      anyhow!("Cannot remove the user's primary {variant} login")
+        .status_code(StatusCode::BAD_REQUEST),
+    );
+  }
+
+  let field = format!("linked_logins.{variant}");
+
+  update_one_by_id(
+    &db_client().users,
+    user_id,
+    doc! { "$unset": { field: "" } },
+    None,
+  )
+  .await
+  .context("Failed to unlink login on database")?;
+
+  Ok(())
 }
