@@ -15,7 +15,8 @@
 #  1c. an Alerter with a Custom webhook gets TestAlerter, then a real
 #      ServerUnreachable alert when the agent stops, and the resolved alert
 #      when it comes back; an [[alerter]] in a ResourceSync file is created
-#      by RunSync
+#      by RunSync; WriteSyncFileContents can't write outside a files on
+#      host sync's directory through .., an absolute path or a symlink
 #   2. DeployStack installs the quadlet units, systemd starts them, podman runs
 #      them; every pod and standalone container gets its own fixed user
 #      namespace slice, a pod member shares the pod's
@@ -303,6 +304,34 @@ elif cmd == "sync-alerter":
     a = api("read", "GetAlerter", {"alerter": "e2e-synced"})
     if "error" in a: raise SystemExit("the synced Alerter was not created: %s" % a["error"])
     print(a["name"], a["config"]["endpoint"]["type"])
+elif cmd == "sync-paths":
+    # A files on host sync may only write inside its own directory.
+    root, outside = "$WORK/syncs/e2e-host-sync", "$WORK/sync-outside"
+    os.makedirs(root, exist_ok=True); os.makedirs(outside, exist_ok=True)
+    with open(outside + "/target.toml", "w") as f: f.write("# untouched\n")
+    os.symlink(outside + "/target.toml", root + "/link.toml")
+    os.symlink(outside, root + "/linkdir")
+    os.symlink(".", root + "/loop")
+    r = api("write", "CreateResourceSync", {"name": "e2e-host-sync", "config": {"files_on_host": True, "resource_path": ["."]}})
+    if "error" in r: raise SystemExit("CreateResourceSync failed: %s" % r["error"])
+    def write(rp, fp): return api("write", "WriteSyncFileContents", {"sync": "e2e-host-sync", "resource_path": rp, "file_path": fp, "contents": "# e2e\n"})
+    for rp, fp in [(".", "../../sync-outside/dotdot.toml"), (".", "link.toml"), ("linkdir", "new.toml")]:
+        u = write(rp, fp)
+        if "error" not in u and u.get("success"): raise SystemExit("write to %s / %s escaped the sync directory" % (rp, fp))
+    # A leading / means the sync root.
+    u = write(outside, "abs.toml")
+    if "error" in u or not u.get("success"): raise SystemExit("write to an absolute path failed: %s" % u)
+    if not os.path.isfile(root + outside + "/abs.toml"): raise SystemExit("abs.toml is not under the sync root")
+    if sorted(os.listdir(outside)) != ["target.toml"] or open(outside + "/target.toml").read() != "# untouched\n":
+        raise SystemExit("a file outside the sync directory changed: %s" % os.listdir(outside))
+    u = write(".", "ok.toml")
+    if "error" in u or not u.get("success"): raise SystemExit("write inside the sync failed: %s" % u)
+    if open(root + "/ok.toml").read() != "# e2e\n": raise SystemExit("ok.toml was not written")
+    info = api("read", "GetResourceSync", {"sync": "e2e-host-sync"})["info"]
+    if any("untouched" in f["contents"] for f in info["remote_contents"]): raise SystemExit("Core read a file outside the sync directory")
+    reads = [f["path"] for f in info["remote_contents"]].count("ok.toml")
+    if reads != 1: raise SystemExit("the loop symlink made Core read ok.toml %d times" % reads)
+    print("3 escapes refused, ok.toml written and read once")
 elif cmd == "test-alerter":
     u = api("execute", "TestAlerter", {"alerter": "e2e-hook"})
     if "error" in u: raise SystemExit("TestAlerter refused: %s" % u["error"])
@@ -402,6 +431,8 @@ for i in $(seq 1 30); do [ "$($API server-state)" = "Ok" ] && break; sleep 1; do
 [ "$($API server-state)" = "Ok" ] || fail "server not Ok after the agent came back"
 SYNCED=$($API sync-alerter 2>&1) || fail "$SYNCED"
 echo "synced alerter: $SYNCED"
+SYNC_PATHS=$($API sync-paths 2>&1) || fail "$SYNC_PATHS"
+echo "sync paths: $SYNC_PATHS"
 echo "webhook got: $(python3 -c "import json; print(', '.join(json.loads(l)['data']['type']+'/'+json.loads(l)['level'] for l in open('$WORK/hook.jsonl') if l.strip()))")"
 
 log "2. deploy"
