@@ -17,6 +17,8 @@ export interface HashCompareProps extends HoverCardProps {
   /* The latest hash from the repo source */
   latestHash: string | undefined;
   latestMessage: string | undefined;
+  /* The source moved, but no file the resource reads changed */
+  filesUnchanged?: boolean;
 }
 
 export default function HashCompare({
@@ -25,10 +27,11 @@ export default function HashCompare({
   lastLabel = "last",
   latestHash,
   latestMessage,
+  filesUnchanged,
   ...props
 }: HashCompareProps) {
-  const outOfDate =
-    !!lastHash && lastHash.slice(0, 8) !== latestHash?.slice(0, 8);
+  const moved = !!lastHash && lastHash.slice(0, 8) !== latestHash?.slice(0, 8);
+  const outOfDate = moved && !filesUnchanged;
   return (
     <HoverCard position="bottom-start" {...props}>
       <HoverCard.Target>
@@ -59,7 +62,7 @@ export default function HashCompare({
               {lastMessage || latestMessage}
             </Code>
           </Stack>
-          {outOfDate && (
+          {moved && (
             <Stack gap="xs">
               <Group gap="xs">
                 <Badge style={{ borderColor: "var(--mantine-color-yellow-7)" }}>
@@ -70,6 +73,11 @@ export default function HashCompare({
               <Code maw="calc(100vh - 150px)" style={{ overflow: "auto" }}>
                 {latestMessage}
               </Code>
+              {filesUnchanged && (
+                <Text c="dimmed" fz="sm">
+                  No file changed since the {lastLabel} commit.
+                </Text>
+              )}
             </Stack>
           )}
         </Stack>
