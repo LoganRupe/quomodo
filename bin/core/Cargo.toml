@@ -84,3 +84,6 @@ envy.workspace = true
 hmac.workspace = true
 sha2.workspace = true
 hex.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

@@ -182,8 +182,30 @@ impl Resolve<ExecuteArgs> for RunSync {
       .map(|stack| (stack.name.clone(), stack.clone()))
       .collect::<HashMap<_, _>>();
 
+    // Filter the toml Stacks the same way as the existing ones.
+    // Otherwise a restricted run (eg. executing a single pending
+    // change) finds every other toml Stack with `deploy = true`
+    // missing from the map above, and deploys it as
+    // "deploy on creation".
+    let toml_stacks = resources
+      .stacks
+      .iter()
+      .filter(|stack| {
+        Stack::include_resource_partial(
+          &stack.name,
+          &stack.config,
+          match_resource_type,
+          match_resources.as_deref(),
+          &stack.tags,
+          &id_to_tags,
+          &sync.config.match_tags,
+        )
+      })
+      .cloned()
+      .collect::<Vec<_>>();
+
     let deploy_cache = build_deploy_cache(SyncDeployParams {
-      stacks: &resources.stacks,
+      stacks: &toml_stacks,
       stack_map: &stacks_by_name,
     })
     .await?;
