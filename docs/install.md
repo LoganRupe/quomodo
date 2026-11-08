@@ -389,3 +389,9 @@ signature) and a GitLab listener (`/listener/gitlab/...`). Forgejo and Gitea
 send GitHub-format webhooks, so point them at the GitHub URL. Set
 `KOMODO_WEBHOOK_SECRET`, or a per-resource secret, to the same value on the
 git side.
+
+A webhook URL names a branch and only runs on pushes to it. For Procedures
+and Actions, the `__ANY__` branch skips that check, so pull request, status
+and release events, which have no top-level `ref`, run them too. An Action
+gets the payload in `ARGS.WEBHOOK_BODY`, and the pushed branch in
+`ARGS.WEBHOOK_BRANCH` when the payload has a `ref`.

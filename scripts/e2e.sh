@@ -15,7 +15,8 @@
 #  1c. an Alerter with a Custom webhook gets TestAlerter, then a real
 #      ServerUnreachable alert when the agent stops, and the resolved alert
 #      when it comes back; an [[alerter]] in a ResourceSync file is created
-#      by RunSync; WriteSyncFileContents can't write outside a files on
+#      by RunSync, and a RunSync restricted to it deploys no other Stack
+#      in the file; WriteSyncFileContents can't write outside a files on
 #      host sync's directory through .., an absolute path or a symlink
 #   2. DeployStack installs the quadlet units, systemd starts them, podman runs
 #      them; every pod and standalone container gets its own fixed user
@@ -304,6 +305,21 @@ elif cmd == "sync-alerter":
     a = api("read", "GetAlerter", {"alerter": "e2e-synced"})
     if "error" in a: raise SystemExit("the synced Alerter was not created: %s" % a["error"])
     print(a["name"], a["config"]["endpoint"]["type"])
+elif cmd == "sync-restricted":
+    # A RunSync restricted to one resource doesn't deploy a deploy = true
+    # Stack outside the restriction.
+    contents = '[[alerter]]\nname = "e2e-picked"\n[alerter.config]\nendpoint.type = "Custom"\nendpoint.params.url = "http://127.0.0.1:9/never"\n\n[[stack]]\nname = "e2e-unpicked"\ndeploy = true\n[stack.config]\nserver_id = "%s"\n' % SERVER
+    r = api("write", "CreateResourceSync", {"name": "e2e-restricted", "config": {"file_contents": contents}})
+    if "error" in r: raise SystemExit("CreateResourceSync failed: %s" % r["error"])
+    u = api("execute", "RunSync", {"sync": "e2e-restricted", "resource_type": "Alerter", "resources": ["e2e-picked"]})
+    if "error" in u: raise SystemExit("RunSync refused: %s" % u["error"])
+    u = wait_update(u.get("id") or u["_id"]["\$oid"])
+    if not u["success"]: raise SystemExit("RunSync failed: %s" % [l["stderr"][-500:] for l in u["logs"]])
+    if "error" in api("read", "GetAlerter", {"alerter": "e2e-picked"}): raise SystemExit("the picked Alerter was not created")
+    deploys = [l["stdout"] for l in u["logs"] if l["stage"] == "Sync Deploy"]
+    if deploys: raise SystemExit("a restricted RunSync deployed outside its restriction: %s" % deploys)
+    if "error" not in api("read", "GetStack", {"stack": "e2e-unpicked"}): raise SystemExit("the unpicked Stack was created")
+    print("only e2e-picked synced")
 elif cmd == "sync-paths":
     # A files on host sync may only write inside its own directory.
     root, outside = "$WORK/syncs/e2e-host-sync", "$WORK/sync-outside"
@@ -431,6 +447,8 @@ for i in $(seq 1 30); do [ "$($API server-state)" = "Ok" ] && break; sleep 1; do
 [ "$($API server-state)" = "Ok" ] || fail "server not Ok after the agent came back"
 SYNCED=$($API sync-alerter 2>&1) || fail "$SYNCED"
 echo "synced alerter: $SYNCED"
+SYNC_RESTRICTED=$($API sync-restricted 2>&1) || fail "$SYNC_RESTRICTED"
+echo "restricted sync: $SYNC_RESTRICTED"
 SYNC_PATHS=$($API sync-paths 2>&1) || fail "$SYNC_PATHS"
 echo "sync paths: $SYNC_PATHS"
 echo "webhook got: $(python3 -c "import json; print(', '.join(json.loads(l)['data']['type']+'/'+json.loads(l)['level'] for l in open('$WORK/hook.jsonl') if l.strip()))")"
