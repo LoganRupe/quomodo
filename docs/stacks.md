@@ -63,6 +63,12 @@ the updates list. Otherwise it returns the stored `DeployStack` Update, which
 you can follow by its id. `BatchDeployStackIfChanged` returns one of these per
 stack.
 
+To see what changed before deploying, open the Stack's Info tab. Its Changes
+view diffs each file against the copy from the last deploy, as of Core's last
+refresh of the repo, and lists new and removed files. Files shows the latest
+files and Deployed the ones from the last deploy. A ResourceSync's Pending tab
+lists the same changed files under each Stack it will deploy.
+
 When it does deploy, and for a plain `DeployStack`:
 
 - A changed `.container` or `.kube` restarts only that unit.

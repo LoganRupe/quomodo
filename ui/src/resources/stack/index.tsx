@@ -38,6 +38,7 @@ import HashCompare from "@/components/hash-compare";
 import ResourceHeader from "../header";
 import BatchExecutions from "@/resources/batch-executions";
 import NewResourceWithDeployTarget from "../new-with-deploy-target";
+import { stackFileDiffs } from "@/components/stack-file-diffs";
 
 export function useStack(
   id: string | undefined,
@@ -257,6 +258,9 @@ export const StackComponents: RequiredResourceComponents<
             lastLabel="deployed"
             latestHash={fullInfo?.latest_hash}
             latestMessage={fullInfo?.latest_message}
+            filesUnchanged={stackFileDiffs(fullInfo)?.every(
+              (d) => d.status === "same",
+            )}
           />
         </Box>
       );
@@ -276,8 +280,8 @@ export const StackComponents: RequiredResourceComponents<
             </HoverCard.Target>
             <HoverCard.Dropdown>
               <Text>
-                No source configured for stack. Cannot get stack state. Attach
-                a Repo, or configure a git repo containing your quadlet unit
+                No source configured for stack. Cannot get stack state. Attach a
+                Repo, or configure a git repo containing your quadlet unit
                 files.
               </Text>
             </HoverCard.Dropdown>
