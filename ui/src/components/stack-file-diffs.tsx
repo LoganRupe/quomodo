@@ -1,7 +1,12 @@
 import { useState } from "react";
 import { Badge, Button, Group, Stack, Text } from "@mantine/core";
 import { Types } from "komodo_client";
-import { languageFromPath, MonacoDiffEditor, ShowHideButton } from "mogh_ui";
+import {
+  languageFromPath,
+  MonacoDiffEditor,
+  MonacoEditor,
+  ShowHideButton,
+} from "mogh_ui";
 import { useRead } from "@/lib/hooks";
 
 export type StackFileStatus = "changed" | "new" | "removed" | "same";
@@ -91,11 +96,23 @@ export function StackFileDiffCard({
         </Group>
         <ShowHideButton show={show} setShow={() => setShow((s) => !s)} />
       </Group>
-      {show && (
+      {/* A new or removed file has only one side to show. */}
+      {show && diff.status !== "changed" && (
+        <MonacoEditor
+          value={diff.status === "removed" ? diff.deployed : diff.latest}
+          language={languageFromPath(diff.path)}
+          filename={diff.path}
+          readOnly
+        />
+      )}
+      {/* The editor's height counts every line, so folding the unchanged
+          ones would leave a gap. */}
+      {show && diff.status === "changed" && (
         <MonacoDiffEditor
           original={diff.deployed}
           modified={diff.latest}
           language={languageFromPath(diff.path)}
+          hideUnchangedRegions={false}
           readOnly
         />
       )}
