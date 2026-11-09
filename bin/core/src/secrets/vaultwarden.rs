@@ -937,7 +937,7 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(200)).await;
             let fail = seen
               .fail_syncs
-              .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
+              .try_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
                 n.checked_sub(1)
               })
               .is_ok();

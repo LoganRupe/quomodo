@@ -57,7 +57,7 @@ Breaking one of these is a bug, whatever the change was for.
 
 ```sh
 cargo fmt --all -- --check
-cargo clippy --workspace -- -D warnings
+cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 
 cd client/core/ts && yarn && yarn build && yarn link

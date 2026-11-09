@@ -296,12 +296,17 @@ pub fn prepare(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use komodo_client::entities::stack::StackConfig;
 
   fn stack(skip: bool) -> Stack {
-    let mut stack = Stack::default();
-    stack.name = "my stack".to_string();
-    stack.config.skip_secret_interp = skip;
-    stack
+    Stack {
+      name: "my stack".to_string(),
+      config: StackConfig {
+        skip_secret_interp: skip,
+        ..Default::default()
+      },
+      ..Default::default()
+    }
   }
 
   fn files(list: &[(&str, &str)]) -> Vec<FileContents> {
