@@ -732,6 +732,8 @@ impl AuthImpl for KomodoAuthImpl {
           hashed_secret: key.secret,
           expires: key.expires.max(0) as u64,
           cidr_whitelist: key.cidr_whitelist,
+          // Quomodo api keys can't be disabled, only deleted.
+          enabled: true,
         });
       Ok(key)
     })

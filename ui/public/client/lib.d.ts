@@ -1,6 +1,6 @@
 import { ExecuteResponses, ReadResponses, WriteResponses } from "./responses.js";
 import { ExecuteRequest, ReadRequest, Update, UpdateListItem, User, WriteRequest } from "./types.js";
-export * as MoghAuth from "npm:mogh_auth_client";
+export * as MoghAuth from "npm:mogh_auth_client@^11.1.0";
 export * as Types from "./types.js";
 export type { ExecuteResponses, ReadResponses, WriteResponses, };
 export type InitOptions = {

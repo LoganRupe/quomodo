@@ -137,6 +137,27 @@ are unaffected. Once Core serves a valid certificate the agents reconnect
 on their own. Alert on expiry, for example with the blackbox exporter's
 `probe_ssl_earliest_cert_expiry`.
 
+### A private CA for Core's own requests
+
+Core checks every HTTPS server it talks to against the container's system
+roots: the OIDC provider, git providers, alerters and Vaultwarden. If one of
+them has a certificate from your own CA, mount the CA certificate into
+`/usr/local/share/ca-certificates/` under a name ending in `.crt`. The image
+runs `update-ca-certificates` on start, so restart Core after adding or
+changing one:
+
+```ini
+Volume=/etc/quomodo/ca/root.crt:/usr/local/share/ca-certificates/root.crt:ro
+```
+
+Mount the root that signed the server's intermediate, not a copy remade with
+the same name: the check compares names byte for byte, where curl and
+OpenSSL do not. The server must also send its intermediates.
+
+A CA that Core trusts can vouch for your OIDC provider, so whoever holds its
+key can log in to Core as any OIDC user. Mount only CAs you control, ideally
+ones limited to your own domains with name constraints.
+
 ## Agent
 
 Repeat on every host that deploys stacks.
