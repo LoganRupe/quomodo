@@ -1,5 +1,24 @@
 # Upgrading
 
+## 0.6.x to 0.7.0
+
+0.7.0 moves Core onto `mogh_auth` 11 and the UI onto `mogh_ui` 6. Nothing has
+to be migrated, and passkeys enrolled before the upgrade keep working.
+
+What changes:
+
+- **OIDC with a private CA.** Core's OIDC client used to trust only public
+  CAs. It now trusts the container's system roots, so a provider with a
+  certificate from your own CA works once you mount the CA into Core (see
+  [Install](install.md#a-private-ca-for-cores-own-requests)).
+- **Locked users and API keys.** A user listed in
+  `lock_login_credentials_for` can no longer create API keys of their own,
+  as a key would outlive the lock. They can still delete their keys, and
+  admins can still create keys for service users. With `["__ALL__"]` this
+  applies to every user.
+- **API key expiry.** `CreateApiKeyForServiceUser` refuses a negative
+  `expires` with `400 Bad Request`. Use `0` for a key that never expires.
+
 ## 0.4.x to 0.5.0
 
 0.5.0 moves Core onto the current major versions of Komodo's `mogh_*`

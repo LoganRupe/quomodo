@@ -22,7 +22,7 @@ use mogh_auth_client::config::{
 };
 use mogh_auth_server::{
   AuthImpl, RequestAuthentication,
-  api_key::StoredApiKey,
+  api_key::{BoxAuthApiKey, StoredApiKey},
   passkey::Passkey,
   provider::{
     external::ExternalLoginInfo, jwt::JwtProvider,
@@ -739,6 +739,30 @@ impl AuthImpl for KomodoAuthImpl {
     })
   }
 
+  /// The default checks expiry only before the bcrypt, which can
+  /// wait for a permit, so a key expiring meanwhile would get in.
+  fn get_api_key(
+    &self,
+    key: String,
+    secret: String,
+  ) -> mogh_auth_server::DynFuture<mogh_error::Result<BoxAuthApiKey>>
+  {
+    let stored = self.find_api_key(key);
+    Box::pin(async move {
+      let key = mogh_auth_server::middleware::verify_api_key(
+        &KomodoAuthImpl,
+        stored.await?,
+        secret,
+      )
+      .await?;
+      refuse_expired_api_key(
+        key.expires,
+        unix_timestamp_ms() as u64,
+      )?;
+      Ok(key.into())
+    })
+  }
+
   fn create_api_key(
     &self,
     user_id: String,
@@ -804,4 +828,35 @@ async fn unlink_login(
   .context("Failed to unlink login on database")?;
 
   Ok(())
+}
+
+/// Refuses an api key which expired (`expires` in unix ms, `0` for
+/// never) by `now_ms`, like mogh_auth_server's own refusal: a 401 the
+/// rate limiter doesn't count, as the secret was right.
+fn refuse_expired_api_key(
+  expires: u64,
+  now_ms: u64,
+) -> mogh_error::Result<()> {
+  if expires != 0 && expires <= now_ms {
+    Err(
+      anyhow!("Invalid client credentials")
+        .status_code(StatusCode::UNAUTHORIZED)
+        .uncounted(),
+    )
+  } else {
+    Ok(())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::refuse_expired_api_key;
+
+  #[test]
+  fn api_key_expiry_after_verification() {
+    assert!(refuse_expired_api_key(0, 5_000).is_ok());
+    assert!(refuse_expired_api_key(6_000, 5_000).is_ok());
+    assert!(refuse_expired_api_key(5_000, 5_000).is_err());
+    assert!(refuse_expired_api_key(4_000, 5_000).is_err());
+  }
 }

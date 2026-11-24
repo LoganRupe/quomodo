@@ -139,16 +139,22 @@ on their own. Alert on expiry, for example with the blackbox exporter's
 
 ### A private CA for Core's own requests
 
-Core checks every HTTPS server it talks to against the container's system
-roots: the OIDC provider, git providers, alerters and Vaultwarden. If one of
-them has a certificate from your own CA, mount the CA certificate into
-`/usr/local/share/ca-certificates/` under a name ending in `.crt`. The image
-runs `update-ca-certificates` on start, so restart Core after adding or
-changing one:
+Core checks the HTTPS servers it talks to against the container's system
+roots: the OIDC provider, git providers, alerters and Vaultwarden. The Slack
+alerter is the exception: it only trusts public CAs, which Slack's own
+endpoint uses. If one of the others has a certificate from your own CA, mount
+the CA certificate into `/usr/local/share/ca-certificates/` under a name
+ending in `.crt`, by adding a line like this to `quomodo-core.container`:
 
 ```ini
 Volume=/etc/quomodo/ca/root.crt:/usr/local/share/ca-certificates/root.crt:ro
 ```
+
+The file has to be readable by the container's root, which in the example pod
+is host uid 2147483647: a CA certificate is public, so `chmod 644` it. The
+image runs `update-ca-certificates` on start. After adding the line, or
+changing the CA, run
+`sudo systemctl daemon-reload && sudo systemctl restart quomodo-core.service`.
 
 Mount the root that signed the server's intermediate, not a copy remade with
 the same name: the check compares names byte for byte, where curl and
