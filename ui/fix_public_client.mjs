@@ -11,7 +11,7 @@ function fix_mogh_auth_import(path) {
   const contents = readFileSync(file_path);
   const fixed = contents
     .toString()
-    .replaceAll('from "mogh_auth_client"', 'from \"npm:mogh_auth_client\"');
+    .replaceAll('from "mogh_auth_client"', 'from "npm:mogh_auth_client@^11.1.0"');
   writeFileSync(file_path, fixed);
 }
 

@@ -34,8 +34,8 @@ slack = { version = "2.0.0", package = "slack_client_rs", default-features = fal
 mogh_error = { version = "2.0.0", default-features = false }
 derive_default_builder = "0.1.8"
 async_timing_util = "1.1.0"
-mogh_auth_client = "8.0.0"
-mogh_auth_server = "8.1.0"
+mogh_auth_client = "11.1.1"
+mogh_auth_server = "11.1.1"
 mogh_secret_file = "2.0.0"
 mogh_validations = "2.0.0"
 mogh_rate_limit = "3.0.0"
@@ -112,7 +112,7 @@ data-encoding = "2.11.1"
 snow = "0.10.0"
 urlencoding = "2.1.3"
 bcrypt = "0.19.3"
-jsonwebtoken = { version = "11.1.0", features = ["aws_lc_rs"] }
+jsonwebtoken = { version = "12.0.0", features = ["aws_lc_rs"] }
 hmac = "0.13.0"
 sha1 = "0.11.0"
 sha2 = "0.11.0"

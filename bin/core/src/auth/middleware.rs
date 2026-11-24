@@ -87,8 +87,10 @@ fn legacy_jwt_user_id(jwt: &str) -> anyhow::Result<String> {
     validation.required_spec_claims = HashSet::new();
     validation
   });
-  static DECODING_KEY: LazyLock<DecodingKey> =
-    LazyLock::new(|| DecodingKey::from_secret(JWT_SECRET.as_bytes()));
+  static DECODING_KEY: LazyLock<DecodingKey> = LazyLock::new(|| {
+    DecodingKey::from_secret(JWT_SECRET.as_bytes())
+      .expect("JWT_SECRET is never empty")
+  });
 
   let claims =
     decode::<LegacyJwtClaims>(jwt, &DECODING_KEY, &VALIDATION)
@@ -135,7 +137,7 @@ mod tests {
     encode(
       &Header::default(),
       &claims,
-      &EncodingKey::from_secret(JWT_SECRET.as_bytes()),
+      &EncodingKey::from_secret(JWT_SECRET.as_bytes()).unwrap(),
     )
     .unwrap()
   }
@@ -184,7 +186,7 @@ mod tests {
     let jwt = encode(
       &Header::default(),
       &json!({ "sub": "u", "iat": now, "exp": now + 60_000 }),
-      &EncodingKey::from_secret(b"some other secret"),
+      &EncodingKey::from_secret(b"some other secret").unwrap(),
     )
     .unwrap();
     assert!(legacy_jwt_user_id(&jwt).is_err());

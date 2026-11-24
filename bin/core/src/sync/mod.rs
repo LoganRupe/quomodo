@@ -139,10 +139,7 @@ pub fn include_resource_by_resource_type_and_name<
       resources.contains(name)
     }
     (Some(resource_type), None) => {
-      if T::resource_type() != resource_type {
-        return false;
-      }
-      true
+      T::resource_type() == resource_type
     }
     (None, Some(resources)) => resources.contains(name),
     (None, None) => true,

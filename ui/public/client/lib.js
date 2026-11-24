@@ -1,6 +1,6 @@
-import { MoghAuthClient } from "npm:mogh_auth_client";
+import { MoghAuthClient } from "npm:mogh_auth_client@^11.1.0";
 import { UpdateStatus, } from "./types.js";
-export * as MoghAuth from "npm:mogh_auth_client";
+export * as MoghAuth from "npm:mogh_auth_client@^11.1.0";
 export * as Types from "./types.js";
 export class CancelToken {
     cancelled;
