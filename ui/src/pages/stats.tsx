@@ -423,12 +423,24 @@ function HistoricalStats({
   // host lines from each host's primary agent. Agents and stacks are
   // ranked by their live memory, so the top ones get a line.
   const plan = useMemo(() => {
-    const okHosts = hosts.filter(
-      (host) => host.primary.info.state === Types.ServerState.Ok,
-    );
+    // Offline agents stay charted: their history is still stored, and
+    // an outage is when it matters. Only disabled ones are left out.
+    const charts = (server: Types.ServerListItem) =>
+      server.info.state !== Types.ServerState.Disabled;
+    const offline = (server: Types.ServerListItem) =>
+      server.info.state !== Types.ServerState.Ok;
+    // Live memory first, then unreachable (no live reading, but history),
+    // then the rest with no reading.
+    const rank = (server: Types.ServerListItem, mem: number | undefined) =>
+      mem !== undefined ? mem : offline(server) ? -1 : -2;
+    const label = (name: string, server: Types.ServerListItem) =>
+      offline(server) ? `${name} (unreachable)` : name;
+    const okHosts = hosts
+      .filter((host) => charts(host.primary))
+      .sort((a, b) => Number(offline(a.primary)) - Number(offline(b.primary)));
     const okAgents = hosts
       .flatMap((host) => host.servers.map((server) => ({ server, host })))
-      .filter(({ server }) => server.info.state === Types.ServerState.Ok);
+      .filter(({ server }) => charts(server));
     if (view === "hosts") {
       return {
         usage: [] as UsageLine[],
@@ -446,25 +458,30 @@ function HistoricalStats({
       lines = [...okAgents]
         .sort(
           (a, b) =>
-            (b.server.info.usage?.mem_bytes ?? -1) -
-            (a.server.info.usage?.mem_bytes ?? -1),
+            rank(b.server, b.server.info.usage?.mem_bytes) -
+            rank(a.server, a.server.info.usage?.mem_bytes),
         )
         .map(({ server, host }) => ({
-          name: server.name,
+          name: label(server.name, server),
           server: server.id,
           host,
         }));
     } else {
       noun = "stacks";
+      const agents = new Map(okAgents.map((a) => [a.server.id, a]));
       const agentHost = new Map(okAgents.map((a) => [a.server.id, a.host]));
       lines = stacks
         .filter((stack) => agentHost.has(stack.info.server_id))
         .sort(
           (a, b) =>
-            (b.info.usage?.mem_bytes ?? -1) - (a.info.usage?.mem_bytes ?? -1),
+            rank(
+              agents.get(b.info.server_id)!.server,
+              b.info.usage?.mem_bytes,
+            ) -
+            rank(agents.get(a.info.server_id)!.server, a.info.usage?.mem_bytes),
         )
         .map((stack) => ({
-          name: stack.name,
+          name: label(stack.name, agents.get(stack.info.server_id)!.server),
           server: stack.info.server_id,
           host: agentHost.get(stack.info.server_id)!,
           usage: (record: Types.SystemStatsRecord) =>
@@ -474,7 +491,7 @@ function HistoricalStats({
     const charted = lines.slice(0, MAX_SERIES);
     // Load and disk stay host wide: one line for each host charted above.
     const chartedHosts = [...new Set(charted.map((line) => line.host))].filter(
-      (host) => host.primary.info.state === Types.ServerState.Ok,
+      (host) => charts(host.primary),
     );
     const where =
       hosts.length === 1

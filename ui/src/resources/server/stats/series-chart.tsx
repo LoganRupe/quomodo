@@ -224,21 +224,25 @@ export function SeriesChart({
               itemSorter={(item) => -Number(item.value)}
               formatter={(value, name) => [fmtValue(Number(value), true), name]}
             />
-            {series.map(({ name, color, dashed }, i) => (
-              <Line
-                key={seriesKey(i)}
-                type="monotone"
-                dataKey={seriesKey(i)}
-                name={name}
-                stroke={color}
-                strokeWidth={2}
-                strokeDasharray={dashed ? "5 4" : undefined}
-                dot={false}
-                activeDot={{ r: 3 }}
-                connectNulls
-                isAnimationActive={false}
-              />
-            ))}
+            {series.map(({ name, color, dashed }, i) =>
+              // A series with nothing in this window (an agent offline
+              // for longer) gets no line and no legend entry.
+              !chartData.some((entry) => seriesKey(i) in entry) ? null : (
+                <Line
+                  key={seriesKey(i)}
+                  type="monotone"
+                  dataKey={seriesKey(i)}
+                  name={name}
+                  stroke={color}
+                  strokeWidth={2}
+                  strokeDasharray={dashed ? "5 4" : undefined}
+                  dot={false}
+                  activeDot={{ r: 3 }}
+                  connectNulls
+                  isAnimationActive={false}
+                />
+              ),
+            )}
           </LineChart>
         </ResponsiveContainer>
       )}
