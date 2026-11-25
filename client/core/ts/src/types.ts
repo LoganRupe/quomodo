@@ -1434,7 +1434,8 @@ export interface ServerConfig {
 	 */
 	ignore_mounts?: string[];
 	/**
-	 * Whether to trigger 'docker image prune -a -f' every 24 hours.
+	 * Whether to run `podman image prune -a -f` once a day. Each server
+	 * prunes at its own fixed time between 00:00 and 01:00 UTC.
 	 * default: true
 	 */
 	auto_prune: boolean;

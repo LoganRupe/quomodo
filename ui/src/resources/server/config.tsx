@@ -167,7 +167,7 @@ export default function ServerConfig({
               auto_prune: {
                 label: "Auto Prune Images",
                 description:
-                  "Whether to prune unused images every day at UTC 00:00",
+                  "Prune unused images once a day, at a fixed time for this server between 00:00 and 01:00 UTC",
               },
             },
           },
