@@ -32,10 +32,7 @@ use crate::{
   state::{action_states, db_client, stack_status_cache},
 };
 
-use super::{
-  ReadArgs, list_limit,
-  server::{STATS_PER_PAGE, history_timestamps},
-};
+use super::{ReadArgs, list_limit, server::history_timestamps};
 
 impl Resolve<ReadArgs> for GetStack {
   async fn resolve(
@@ -446,10 +443,13 @@ impl Resolve<ReadArgs> for GetHistoricalStackStats {
     // A stack's samples sit in the record of whichever agent it was
     // on at the time, so read across every agent. The ts index
     // bounds this to one page of timestamps, whatever the retention.
+    let timestamps = history_timestamps(granularity, page);
+    let oldest_in_window =
+      timestamps.last().copied().unwrap_or_default();
     let rows = find_collect(
       &db_client().stats.clone_with_type::<StackUsageRow>(),
       doc! {
-        "ts": { "$in": history_timestamps(granularity, page) },
+        "ts": { "$in": timestamps },
         "stacks.id": { "$in": readable.iter().collect::<Vec<_>>() },
       },
       FindOptions::builder()
@@ -479,11 +479,18 @@ impl Resolve<ReadArgs> for GetHistoricalStackStats {
       .filter(|(_, stacks)| !stacks.is_empty())
       .map(|(ts, stacks)| StackStatsRecord { ts, stacks })
       .collect::<Vec<_>>();
-    let next_page = if stats.len() == STATS_PER_PAGE as usize {
-      Some(page + 1)
-    } else {
-      None
-    };
+    // A stack has gaps (stopped, unreachable), so a short page doesn't
+    // mean the end. There is more while older records are stored.
+    let oldest_stored = db_client()
+      .stats
+      .find_one(doc! {})
+      .sort(doc! { "ts": 1 })
+      .await
+      .context("failed to read the oldest stats record")?
+      .map(|record| record.ts);
+    let next_page = oldest_stored
+      .filter(|oldest| *oldest < oldest_in_window)
+      .map(|_| page.saturating_add(1));
     Ok(GetHistoricalStackStatsResponse { stats, next_page })
   }
 }

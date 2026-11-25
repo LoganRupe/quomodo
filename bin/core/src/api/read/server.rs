@@ -405,13 +405,17 @@ pub(super) fn history_timestamps(
     get_timelength_in_ms(granularity.to_string().parse().unwrap())
       as i64;
   let curr_ts = unix_timestamp_ms() as i64;
-  let mut curr_ts = curr_ts
-    - curr_ts % granularity
-    - granularity * (page as i64).saturating_mul(STATS_PER_PAGE);
+  // Saturating: a huge page reaches before the epoch and finds nothing,
+  // rather than overflowing.
+  let mut curr_ts =
+    (curr_ts - curr_ts % granularity)
+      .saturating_sub(granularity.saturating_mul(
+        (page as i64).saturating_mul(STATS_PER_PAGE),
+      ));
   let mut ts_vec = Vec::with_capacity(STATS_PER_PAGE as usize);
   for _ in 0..STATS_PER_PAGE {
     ts_vec.push(curr_ts);
-    curr_ts -= granularity;
+    curr_ts = curr_ts.saturating_sub(granularity);
   }
   ts_vec
 }
@@ -476,5 +480,18 @@ impl Resolve<ReadArgs> for GetHistoricalServerStats {
     };
     let res = GetHistoricalServerStatsResponse { stats, next_page };
     Ok(res)
+  }
+}
+
+#[cfg(test)]
+mod history_tests {
+  use super::*;
+  use komodo_client::entities::Timelength;
+
+  #[test]
+  fn a_huge_page_reaches_before_the_epoch_without_overflow() {
+    let ts = history_timestamps(Timelength::OneDay, u32::MAX);
+    assert_eq!(ts.len(), STATS_PER_PAGE as usize);
+    assert!(ts.iter().all(|ts| *ts < 0));
   }
 }
