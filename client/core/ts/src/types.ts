@@ -958,6 +958,21 @@ export type AlertData =
 	/** The core version */
 	core_version: string;
 }}
+	/**
+	 * A server's agent has failed to list its podman containers for
+	 * several minutes. Stack states on the server are stale until it
+	 * lists them again.
+	 */
+	| { type: "ServerPodmanUnresponsive", data: {
+	/** The id of the server */
+	id: string;
+	/** The name of the server */
+	name: string;
+	/** The region of the server */
+	region?: string;
+	/** When the current run of failed listings started (unix ms) */
+	since: I64;
+}}
 	/** A stack's state has changed unexpectedly. */
 	| { type: "StackStateChange", data: {
 	/** The id of the stack */

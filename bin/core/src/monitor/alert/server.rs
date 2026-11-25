@@ -249,6 +249,47 @@ pub async fn alert_servers(
       }
     }
 
+    // ======================
+    // SERVER PODMAN LISTING
+    // ======================
+    let podman_alert = server_alerts.as_ref().and_then(|alerts| {
+      alerts.get(&AlertDataVariant::ServerPodmanUnresponsive)
+    });
+    // Uses the unreachable switch: both mean Core can't see what is
+    // running on the server.
+    let send = server.config.send_unreachable_alerts;
+    match podman_alert_action(
+      server_status.state,
+      server_status.containers_failed_since,
+      podman_alert.is_some(),
+      send,
+      ts,
+    ) {
+      PodmanAlertAction::Open(since) if !in_maintenance => {
+        let alert = Alert {
+          id: Default::default(),
+          ts,
+          resolved: false,
+          resolved_ts: None,
+          level: SeverityLevel::Warning,
+          target: ResourceTarget::Server(server_status.id.clone()),
+          data: AlertData::ServerPodmanUnresponsive {
+            id: server_status.id.clone(),
+            name: server.name.clone(),
+            region: optional_string(&server.config.region),
+            since,
+          },
+        };
+        alerts_to_open.push((alert, send));
+      }
+      PodmanAlertAction::Close => {
+        if let Some(alert) = podman_alert {
+          alerts_to_close.push((alert.clone(), send));
+        }
+      }
+      PodmanAlertAction::Open(_) | PodmanAlertAction::Nothing => {}
+    }
+
     let Some(health) = &server_status.health else {
       continue;
     };
@@ -615,6 +656,51 @@ pub async fn alert_servers(
   );
 }
 
+/// How long the agent must fail to list containers before the
+/// ServerPodmanUnresponsive alert opens. An image prune holds
+/// podman's storage lock while it deletes: removing a 1.4 GB image
+/// held it for 63 s, and a prune that removes several large images
+/// takes longer. Five minutes is several times that, and still pages
+/// on a podman that is really stuck. It is a duration, not a poll
+/// count, so forced refreshes and `monitoring_interval` don't move it.
+const PODMAN_UNRESPONSIVE_AFTER_MS: i64 = 5 * 60 * 1000;
+
+#[derive(Debug, PartialEq)]
+enum PodmanAlertAction {
+  /// Open the alert. Carries when the failed listings started.
+  Open(i64),
+  Close,
+  Nothing,
+}
+
+fn podman_alert_action(
+  state: ServerState,
+  failed_since: Option<i64>,
+  open: bool,
+  send: bool,
+  ts: i64,
+) -> PodmanAlertAction {
+  if open && !send {
+    return PodmanAlertAction::Close;
+  }
+  match (state, failed_since, open) {
+    // An unreachable agent says nothing about podman, and its own
+    // alert covers it.
+    (ServerState::NotOk, _, _) => PodmanAlertAction::Nothing,
+    // A listing succeeded (even an empty one), or the server was
+    // disabled.
+    (ServerState::Ok | ServerState::Disabled, None, true) => {
+      PodmanAlertAction::Close
+    }
+    (ServerState::Ok, Some(since), false)
+      if send && ts - since >= PODMAN_UNRESPONSIVE_AFTER_MS =>
+    {
+      PodmanAlertAction::Open(since)
+    }
+    _ => PodmanAlertAction::Nothing,
+  }
+}
+
 async fn open_new_alerts(alerts: &[(Alert, SendAlerts)]) {
   if alerts.is_empty() {
     return;
@@ -792,4 +878,107 @@ async fn get_open_alerts()
   }
 
   Ok((map, disk_map))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::monitor::helpers::containers_failed_since;
+
+  const POLL_MS: i64 = 15_000;
+
+  /// Feed polls through the streak tracker and the alert decision,
+  /// the way the monitor loop does. Each poll is (state, listed).
+  /// Returns the action after each poll, opening and closing the
+  /// alert as the loop would.
+  fn run(polls: &[(ServerState, bool)]) -> Vec<PodmanAlertAction> {
+    let mut since = None;
+    let mut open = false;
+    polls
+      .iter()
+      .enumerate()
+      .map(|(i, &(state, listed))| {
+        let now = i as i64 * POLL_MS;
+        since = containers_failed_since(state, listed, since, now);
+        let action =
+          podman_alert_action(state, since, open, true, now);
+        match action {
+          PodmanAlertAction::Open(_) => open = true,
+          PodmanAlertAction::Close => open = false,
+          PodmanAlertAction::Nothing => {}
+        }
+        action
+      })
+      .collect()
+  }
+
+  fn failing(n: usize) -> Vec<(ServerState, bool)> {
+    vec![(ServerState::Ok, false); n]
+  }
+
+  #[test]
+  fn prune_length_failure_does_not_alert() {
+    // The 63 s prune on 2026-11-25 failed a few polls in a row.
+    let mut polls = failing(6);
+    polls.push((ServerState::Ok, true));
+    assert!(
+      run(&polls).iter().all(|a| *a == PodmanAlertAction::Nothing)
+    );
+  }
+
+  #[test]
+  fn opens_after_five_minutes_then_resolves_on_listing() {
+    // 21 polls 15 s apart span 300 s.
+    let mut polls = failing(21);
+    polls.push((ServerState::Ok, false));
+    polls.push((ServerState::Ok, true));
+    let actions = run(&polls);
+    assert!(
+      actions[..20]
+        .iter()
+        .all(|a| *a == PodmanAlertAction::Nothing)
+    );
+    assert_eq!(actions[20], PodmanAlertAction::Open(0));
+    assert_eq!(actions[21], PodmanAlertAction::Nothing);
+    assert_eq!(actions[22], PodmanAlertAction::Close);
+  }
+
+  #[test]
+  fn unreachable_poll_keeps_the_run() {
+    let mut polls = failing(10);
+    polls.push((ServerState::NotOk, false));
+    polls.extend(failing(10));
+    let actions = run(&polls);
+    assert_eq!(actions[20], PodmanAlertAction::Open(0));
+  }
+
+  #[test]
+  fn alert_stays_open_while_unreachable() {
+    assert_eq!(
+      podman_alert_action(ServerState::NotOk, Some(0), true, true, 0),
+      PodmanAlertAction::Nothing
+    );
+  }
+
+  #[test]
+  fn disabled_server_or_alerts_close_it() {
+    assert_eq!(
+      podman_alert_action(ServerState::Disabled, None, true, true, 0),
+      PodmanAlertAction::Close
+    );
+    assert_eq!(
+      podman_alert_action(ServerState::Ok, Some(0), true, false, 0),
+      PodmanAlertAction::Close
+    );
+    assert_eq!(
+      podman_alert_action(
+        ServerState::Ok,
+        Some(0),
+        false,
+        false,
+        PODMAN_UNRESPONSIVE_AFTER_MS
+      ),
+      PodmanAlertAction::Nothing
+    );
+  }
 }

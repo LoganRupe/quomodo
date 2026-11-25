@@ -11,6 +11,7 @@ const ALERT_TYPES: Types.AlertData["type"][] = [
   "ServerCpu",
   "ServerMem",
   "ServerDisk",
+  "ServerPodmanUnresponsive",
   // Stack
   "StackStateChange",
   // Misc

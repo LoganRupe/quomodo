@@ -1,6 +1,7 @@
 use komodo_client::entities::{
   alert::SeverityLevel,
   docker::container::ContainerListItem,
+  komodo_timestamp,
   repo::Repo,
   server::{
     PeripheryInformation, Server, ServerConfig, ServerHealth,
@@ -34,7 +35,21 @@ pub async fn insert_server_status(
 ) {
   let health =
     system_stats.as_ref().map(|s| get_server_health(server, s));
-  server_status_cache()
+  let cache = server_status_cache();
+  // Refreshes of one server are serialized by
+  // `refresh_server_cache_controller`, so this read-then-insert
+  // can't race another refresh of the same server.
+  let prev_failed_since = cache
+    .get(&server.id)
+    .await
+    .and_then(|prev| prev.containers_failed_since);
+  let containers_failed_since = containers_failed_since(
+    state,
+    containers.is_some(),
+    prev_failed_since,
+    komodo_timestamp(),
+  );
+  cache
     .insert(
       server.id.clone(),
       CachedServerStatus {
@@ -45,11 +60,29 @@ pub async fn insert_server_status(
         system_stats,
         health,
         containers,
+        containers_failed_since,
         err: err.into(),
       }
       .into(),
     )
     .await;
+}
+
+/// Track how long the agent has failed to list containers. Every
+/// poll asks for containers, so an Ok poll without them is a failed
+/// `podman ps`. An unreachable agent says nothing about podman, so the
+/// run carries over it; a disabled server ends it.
+pub fn containers_failed_since(
+  state: ServerState,
+  listed: bool,
+  prev: Option<i64>,
+  now: i64,
+) -> Option<i64> {
+  match (state, listed) {
+    (ServerState::Ok, true) | (ServerState::Disabled, _) => None,
+    (ServerState::Ok, false) => prev.or(Some(now)),
+    (ServerState::NotOk, _) => prev,
+  }
 }
 
 pub async fn insert_stacks_status_unknown(stacks: Vec<Stack>) {

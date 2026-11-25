@@ -220,6 +220,11 @@ async fn send_custom_alert(
   Ok(())
 }
 
+/// Whole minutes between the first failed listing and the alert.
+fn podman_minutes(alert_ts: i64, since: i64) -> i64 {
+  (alert_ts - since) / 60_000
+}
+
 fn fmt_region(region: &Option<String>) -> String {
   match region {
     Some(region) => format!(" ({region})"),
@@ -311,6 +316,24 @@ fn standard_alert_content(alert: &Alert) -> String {
             "{level} | {name}{region} | Version mismatch detected ⚠️\nPeriphery: {server_version} | Core: {core_version}\n{link}"
           )
         }
+      }
+    }
+    AlertData::ServerPodmanUnresponsive {
+      id,
+      name,
+      region,
+      since,
+    } => {
+      let region = fmt_region(region);
+      let link = resource_link(ResourceTargetVariant::Server, id);
+      match alert.level {
+        SeverityLevel::Ok => format!(
+          "{level} | {name}{region} | Agent lists podman containers again\n{link}"
+        ),
+        _ => format!(
+          "{level} | {name}{region} | Agent has not listed podman containers for {} min, stack states are stale\n{link}",
+          podman_minutes(alert.ts, *since)
+        ),
       }
     }
     AlertData::ServerCpu {

@@ -1,9 +1,10 @@
 # Alerters
 
 Core records an alert when something goes wrong: a Server stops answering or
-runs out of disk, a Stack changes state on its own, a Procedure or Action
-fails, a ResourceSync has pending changes. An Alerter sends those alerts
-somewhere you will see them. Alerters live under Settings, Alerters.
+runs out of disk, a Server's agent can't list its containers, a Stack changes
+state on its own, a Procedure or Action fails, a ResourceSync has pending
+changes. An Alerter sends those alerts somewhere you will see them. Alerters
+live under Settings, Alerters.
 
 ## Endpoints
 
@@ -51,6 +52,24 @@ Servers also choose which of their alerts exist at all: `send_unreachable_alerts
 `send_cpu_alerts`, `send_mem_alerts`, `send_disk_alerts`,
 `send_version_mismatch_alerts`. Stacks have `send_alerts`, ResourceSyncs have
 `pending_alert`.
+
+## When the agent can't list containers
+
+The agent runs `podman ps` on every poll. When that fails (it times out after
+20 seconds, or podman prints something the agent can't parse), Core keeps each
+Stack's last known state rather than marking it down, so the Stack page goes
+stale without anything changing colour.
+
+If the listing keeps failing for 5 minutes, Core opens a
+`ServerPodmanUnresponsive` warning on the Server. The first listing that
+succeeds resolves it, even one with no containers. Five minutes is well past an
+image prune: podman holds its storage lock while it deletes images, and
+removing a 1.4 GB image has held it for over a minute. The time is fixed. The
+alert follows the Server's `send_unreachable_alerts` switch and its maintenance
+windows.
+
+While the alert is open, check `podman ps` on the host as the agent's user,
+and the agent's log for the error.
 
 ## Testing
 
