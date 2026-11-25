@@ -194,15 +194,19 @@ pub fn refresh_server_cache(
 
     // `None` means `podman ps` failed on the agent (it times out while
     // an image prune holds the storage lock), not that nothing is
-    // running. Keep each stack's last known state so the blip is not
-    // read as every stack going down and back up. A stack that really
-    // changes meanwhile still alerts on the next successful listing.
-    if let Some(containers) = &containers {
-      resources::update_server_stack_cache(
-        resources.stacks,
-        containers,
-      )
-      .await;
+    // running. Reading it as an empty list paged every stack down and
+    // back up.
+    match &containers {
+      Some(containers) => {
+        resources::update_server_stack_cache(
+          resources.stacks,
+          containers,
+        )
+        .await
+      }
+      None => {
+        resources::keep_server_stack_cache(resources.stacks).await
+      }
     }
 
     let host_name =
