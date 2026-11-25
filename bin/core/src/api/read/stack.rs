@@ -483,16 +483,18 @@ impl Resolve<ReadArgs> for GetHistoricalStackStats {
     // stacks. Looking one window ahead costs what this page did and
     // tells nothing about stacks or servers the caller can't read; a
     // gap longer than a whole window ends the paging.
-    let next_page = db_client()
+    // A count decodes no record: a projected find into the typed
+    // collection fails on the fields it leaves out.
+    let older = db_client()
       .stats
-      .find_one(doc! {
+      .count_documents(doc! {
         "ts": { "$in": history_timestamps(granularity, page.saturating_add(1)) },
         "stacks.id": { "$in": &readable_ids },
       })
-      .projection(doc! { "_id": 0, "ts": 1 })
+      .limit(1)
       .await
-      .context("failed to look for older stack samples")?
-      .map(|_| page.saturating_add(1));
+      .context("failed to look for older stack samples")?;
+    let next_page = (older > 0).then(|| page.saturating_add(1));
     Ok(GetHistoricalStackStatsResponse { stats, next_page })
   }
 }
