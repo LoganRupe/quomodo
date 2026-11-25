@@ -161,6 +161,20 @@ pub enum AlertData {
     core_version: String,
   },
 
+  /// A server's agent has failed to list its podman containers for
+  /// several minutes. Stack states on the server are stale until it
+  /// lists them again.
+  ServerPodmanUnresponsive {
+    /// The id of the server
+    id: String,
+    /// The name of the server
+    name: String,
+    /// The region of the server
+    region: Option<String>,
+    /// When the current run of failed listings started (unix ms)
+    since: I64,
+  },
+
   /// A stack's state has changed unexpectedly.
   StackStateChange {
     /// The id of the stack

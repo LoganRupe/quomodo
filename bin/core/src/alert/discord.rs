@@ -64,6 +64,24 @@ pub async fn send_alert(
         }
       }
     }
+    AlertData::ServerPodmanUnresponsive {
+      id,
+      name,
+      region,
+      since,
+    } => {
+      let region = fmt_region(region);
+      let link = resource_link(ResourceTargetVariant::Server, id);
+      match alert.level {
+        SeverityLevel::Ok => format!(
+          "{level} | **{name}**{region} | Agent lists podman containers again ✅\n{link}"
+        ),
+        _ => format!(
+          "{level} | **{name}**{region} | Agent has not listed podman containers for **{} min**, stack states are stale ⚠️\n{link}",
+          podman_minutes(alert.ts, *since)
+        ),
+      }
+    }
     AlertData::ServerCpu {
       id,
       name,

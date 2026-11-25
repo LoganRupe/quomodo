@@ -82,6 +82,9 @@ pub struct CachedServerStatus {
   pub system_info: Option<SystemInformation>,
   pub system_stats: Option<SystemStats>,
   pub containers: Option<Vec<ContainerListItem>>,
+  /// When the agent's current run of failed container listings
+  /// started (unix ms). `None` once a listing succeeds.
+  pub containers_failed_since: Option<i64>,
   /// Store the error in reaching periphery
   pub err: Option<mogh_error::Serror>,
 }

@@ -2555,6 +2555,11 @@
           "const": "ServerVersionMismatch"
         },
         {
+          "description": "A server's agent has failed to list its podman containers for\nseveral minutes. Stack states on the server are stale until it\nlists them again.",
+          "type": "string",
+          "const": "ServerPodmanUnresponsive"
+        },
+        {
           "description": "A stack's state has changed unexpectedly.",
           "type": "string",
           "const": "StackStateChange"

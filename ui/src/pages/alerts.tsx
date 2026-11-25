@@ -25,6 +25,7 @@ const ALERT_TYPES_BY_RESOURCE: { [key: string]: Types.AlertData["type"][] } = {
     "ServerMem",
     "ServerDisk",
     "ServerVersionMismatch",
+    "ServerPodmanUnresponsive",
   ],
   Stack: ["StackStateChange"],
   Procedure: ["ProcedureFailed"],
