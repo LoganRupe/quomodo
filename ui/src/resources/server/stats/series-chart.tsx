@@ -47,6 +47,8 @@ export type ChartKind =
   | "Cpu Cores"
   | "Memory Bytes";
 
+const seriesKey = (i: number) => `series-${i}`;
+
 export interface ChartSeries {
   name: string;
   color: string;
@@ -103,15 +105,17 @@ export function SeriesChart({
   // so records merge across servers by exact ts.
   const chartData = useMemo(() => {
     const byTs = new Map<number, Record<string, number>>();
-    for (const s of series) {
+    series.forEach((s, i) => {
       for (const record of s.stats) {
         const entry = byTs.get(record.ts) ?? { date: record.ts };
         const value = getValue(record, kind, s);
-        // A missing reading leaves a gap, never a 0.
-        if (value !== undefined) entry[s.name] = value;
+        // A missing reading leaves a gap, never a 0. Keyed by position,
+        // not name: a series named "date" (or two with one name) would
+        // overwrite another key.
+        if (value !== undefined) entry[seriesKey(i)] = value;
         byTs.set(record.ts, entry);
       }
-    }
+    });
     return [...byTs.values()].sort((a, b) => a.date - b.date);
   }, [series, kind]);
 
@@ -220,11 +224,12 @@ export function SeriesChart({
               itemSorter={(item) => -Number(item.value)}
               formatter={(value, name) => [fmtValue(Number(value), true), name]}
             />
-            {series.map(({ name, color, dashed }) => (
+            {series.map(({ name, color, dashed }, i) => (
               <Line
-                key={name}
+                key={seriesKey(i)}
                 type="monotone"
-                dataKey={name}
+                dataKey={seriesKey(i)}
+                name={name}
                 stroke={color}
                 strokeWidth={2}
                 strokeDasharray={dashed ? "5 4" : undefined}

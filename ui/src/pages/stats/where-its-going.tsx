@@ -34,7 +34,7 @@ interface Segment {
 
 /** Live memory of the selected hosts, split by stack. With one host,
  * a bar shows how its used memory divides between stacks, other
- * containers and everything outside containers. */
+ * containers and the rest of the host. */
 export default function WhereItsGoing({
   hosts,
   stacks,
@@ -200,8 +200,8 @@ function HostBar({
   const stacksTotal = measured.reduce((sum, row) => sum + stackBytes(row), 0);
 
   // The agents' totals cover every container, in a stack or not. Only
-  // when every reachable agent has one is the remainder known; a partial
-  // sum would pass part of the containers off as "outside containers".
+  // when every listed reachable agent has one is the remainder shown; a
+  // partial sum would pass part of the containers off as the rest.
   const reachable = host.servers.filter(
     (s) => s.info.state === Types.ServerState.Ok,
   );
@@ -227,10 +227,14 @@ function HostBar({
     const outside = used - Math.max(containers, stacksTotal);
     if (outside > 0) {
       segments.push({
-        label: "outside containers",
+        label: "rest of host",
         bytes: outside,
         color: OUTSIDE_COLOR,
-        tooltip: "Host memory in use by anything not in a container.",
+        tooltip:
+          "Host memory in use that no measured container accounts for: " +
+          "the kernel, other processes, and any agent hidden by the " +
+          "search or tag filter. Approximate, since the host and the " +
+          "containers count page cache differently.",
       });
     }
   }

@@ -135,6 +135,7 @@ pub fn refresh_server_cache(
         None,
         None,
         None,
+        Vec::new(),
         None,
       )
       .await;
@@ -153,6 +154,7 @@ pub fn refresh_server_cache(
           None,
           None,
           None,
+          Vec::new(),
           Serror::from(&e),
         )
         .await;
@@ -182,6 +184,7 @@ pub fn refresh_server_cache(
           None,
           None,
           None,
+          Vec::new(),
           Serror::from(&e),
         )
         .await;
@@ -202,7 +205,7 @@ pub fn refresh_server_cache(
     // an image prune holds the storage lock), not that nothing is
     // running. Reading it as an empty list paged every stack down and
     // back up.
-    match &containers {
+    let stack_usage = match &containers {
       Some(containers) => {
         resources::update_server_stack_cache(
           resources.stacks,
@@ -211,9 +214,10 @@ pub fn refresh_server_cache(
         .await
       }
       None => {
-        resources::keep_server_stack_cache(resources.stacks).await
+        resources::keep_server_stack_cache(resources.stacks).await;
+        Vec::new()
       }
-    }
+    };
 
     let host_name =
       system_info.host_name.as_deref().unwrap_or_default();
@@ -241,6 +245,7 @@ pub fn refresh_server_cache(
       Some(system_info),
       system_stats.map(|stats| filter_volumes(server, stats)),
       containers,
+      stack_usage,
       None,
     )
     .await;

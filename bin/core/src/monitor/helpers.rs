@@ -8,7 +8,9 @@ use komodo_client::entities::{
     ServerHealthState, ServerState,
   },
   stack::{Stack, StackState},
-  stats::{SingleDiskUsage, SystemInformation, SystemStats},
+  stats::{
+    SingleDiskUsage, StackUsage, SystemInformation, SystemStats,
+  },
 };
 use std::sync::{
   OnceLock,
@@ -24,6 +26,7 @@ use crate::state::{
   stack_status_cache,
 };
 
+#[allow(clippy::too_many_arguments)]
 pub async fn insert_server_status(
   server: &Server,
   state: ServerState,
@@ -31,6 +34,7 @@ pub async fn insert_server_status(
   system_info: Option<SystemInformation>,
   system_stats: Option<SystemStats>,
   containers: Option<Vec<ContainerListItem>>,
+  stack_usage: Vec<StackUsage>,
   err: impl Into<Option<Serror>>,
 ) {
   let health =
@@ -60,6 +64,7 @@ pub async fn insert_server_status(
         system_stats,
         health,
         containers,
+        stack_usage,
         containers_failed_since,
         err: err.into(),
       }

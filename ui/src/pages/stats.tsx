@@ -369,7 +369,11 @@ function MemoryCard({
           label={
             containers === undefined
               ? `In use: ${fmtBytes(used * GiB)}`
-              : `Outside containers: ${fmtBytes((used - inContainers) * GiB)}`
+              : `Rest of in use memory: ${fmtBytes((used - inContainers) * GiB)}${
+                  partial
+                    ? ", including containers on agents with no reading"
+                    : ""
+                }. Approximate: the host and containers count page cache differently.`
           }
         >
           <Progress.Section value={Math.max(0, restPerc)} color="bw" />

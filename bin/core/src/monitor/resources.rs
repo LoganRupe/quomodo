@@ -5,6 +5,7 @@ use komodo_client::entities::{
   stack::{
     QuadletKind, Stack, StackService, StackServiceState, StackState,
   },
+  stats::StackUsage,
 };
 
 use super::helpers::{
@@ -19,10 +20,13 @@ use crate::{
 
 /// Match the stack's units against the containers on the server,
 /// and cache the resulting services and state.
+///
+/// Returns each stack's measured usage, for the stats record.
 pub async fn update_server_stack_cache(
   stacks: Vec<Stack>,
   containers: &[ContainerListItem],
-) {
+) -> Vec<StackUsage> {
+  let mut stack_usage = Vec::new();
   for stack in stacks {
     let units = units_of_stack(&stack);
     let mut services = units
@@ -108,6 +112,14 @@ pub async fn update_server_stack_cache(
 
     services.sort_by(|a, b| a.service.cmp(&b.service));
 
+    if let Some(usage) = usage {
+      stack_usage.push(StackUsage {
+        id: stack.id.clone(),
+        cpu_cores: usage.cpu_cores,
+        mem_bytes: usage.mem_bytes,
+      });
+    }
+
     record_stack_status(CachedStackStatus {
       id: stack.id,
       server_id: stack.config.server_id,
@@ -118,6 +130,7 @@ pub async fn update_server_stack_cache(
     })
     .await;
   }
+  stack_usage
 }
 
 fn pod_members<'a>(
@@ -442,8 +455,9 @@ mod tests {
         Some((Some(9.0), Some(9.0))),
       ),
     ];
-    update_server_stack_cache(vec![app_stack("sum")], &containers)
-      .await;
+    let recorded =
+      update_server_stack_cache(vec![app_stack("sum")], &containers)
+        .await;
     let status = usage("sum").await;
     let pod = status
       .services
@@ -462,6 +476,10 @@ mod tests {
     let total = status.usage.unwrap();
     assert_eq!(total.mem_bytes, Some(310.0));
     assert!((total.cpu_cores.unwrap() - 0.76).abs() < 1e-9);
+    // The stats record gets the same poll's totals.
+    assert_eq!(recorded.len(), 1);
+    assert_eq!(recorded[0].id, "sum");
+    assert_eq!(recorded[0].mem_bytes, Some(310.0));
   }
 
   #[tokio::test]

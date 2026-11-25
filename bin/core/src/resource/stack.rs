@@ -116,9 +116,13 @@ impl super::KomodoResource for Stack {
           .unwrap_or_else(default_git)
       };
 
+    let cached = stack_status_cache().get(&stack.id).await;
+    // Usage is read whatever the state: a stack of only pod or kube
+    // units reads Down (state looks at container units) while its
+    // pods run.
     let cached = match state {
       StackState::Down | StackState::Unknown => None,
-      _ => stack_status_cache().get(&stack.id).await,
+      _ => cached,
     };
     let status = cached.as_ref().map(|s| {
       let running = s
