@@ -99,7 +99,13 @@ export default function Stats() {
   ).data;
   const servers = useMemo(() => serversData ?? [], [serversData]);
 
-  const stacksData = useRead("ListStacks", { limit: 0 }).data;
+  // Same cadence as the servers, so the breakdown never pairs fresh
+  // agent totals with old stack usage.
+  const stacksData = useRead(
+    "ListStacks",
+    { limit: 0 },
+    { refetchInterval: 30_000 },
+  ).data;
   const stacks = useMemo(() => stacksData ?? [], [stacksData]);
 
   const filteredServers = useMemo(
@@ -423,10 +429,9 @@ function HistoricalStats({
   // host lines from each host's primary agent. Agents and stacks are
   // ranked by their live memory, so the top ones get a line.
   const plan = useMemo(() => {
-    // Offline agents stay charted: their history is still stored, and
-    // an outage is when it matters. Only disabled ones are left out.
-    const charts = (server: Types.ServerListItem) =>
-      server.info.state !== Types.ServerState.Disabled;
+    // Offline and disabled agents stay charted: their history is still
+    // stored, and an outage is when it matters. One with nothing in the
+    // window draws no line.
     const offline = (server: Types.ServerListItem) =>
       server.info.state !== Types.ServerState.Ok;
     // Live memory first, then unreachable (no live reading, but history),
@@ -435,19 +440,19 @@ function HistoricalStats({
       mem !== undefined ? mem : offline(server) ? -1 : -2;
     const label = (name: string, server: Types.ServerListItem) =>
       offline(server) ? `${name} (unreachable)` : name;
-    const okHosts = hosts
-      .filter((host) => charts(host.primary))
-      .sort((a, b) => Number(offline(a.primary)) - Number(offline(b.primary)));
-    const okAgents = hosts
-      .flatMap((host) => host.servers.map((server) => ({ server, host })))
-      .filter(({ server }) => charts(server));
+    const chartHosts = [...hosts].sort(
+      (a, b) => Number(offline(a.primary)) - Number(offline(b.primary)),
+    );
+    const chartAgents = hosts.flatMap((host) =>
+      host.servers.map((server) => ({ server, host })),
+    );
     if (view === "hosts") {
       return {
         usage: [] as UsageLine[],
-        hosts: okHosts.slice(0, MAX_SERIES),
+        hosts: chartHosts.slice(0, MAX_SERIES),
         note:
-          okHosts.length > MAX_SERIES
-            ? `Charting the first ${MAX_SERIES} of ${okHosts.length} hosts. Filter to specific Servers to compare the others.`
+          chartHosts.length > MAX_SERIES
+            ? `Charting the first ${MAX_SERIES} of ${chartHosts.length} hosts. Filter to specific Servers to compare the others.`
             : undefined,
       };
     }
@@ -455,7 +460,7 @@ function HistoricalStats({
     let noun: string;
     if (view === "agents") {
       noun = "agents";
-      lines = [...okAgents]
+      lines = [...chartAgents]
         .sort(
           (a, b) =>
             rank(b.server, b.server.info.usage?.mem_bytes) -
@@ -468,8 +473,8 @@ function HistoricalStats({
         }));
     } else {
       noun = "stacks";
-      const agents = new Map(okAgents.map((a) => [a.server.id, a]));
-      const agentHost = new Map(okAgents.map((a) => [a.server.id, a.host]));
+      const agents = new Map(chartAgents.map((a) => [a.server.id, a]));
+      const agentHost = new Map(chartAgents.map((a) => [a.server.id, a.host]));
       lines = stacks
         .filter((stack) => agentHost.has(stack.info.server_id))
         .sort(
@@ -490,9 +495,7 @@ function HistoricalStats({
     }
     const charted = lines.slice(0, MAX_SERIES);
     // Load and disk stay host wide: one line for each host charted above.
-    const chartedHosts = [...new Set(charted.map((line) => line.host))].filter(
-      (host) => charts(host.primary),
-    );
+    const chartedHosts = [...new Set(charted.map((line) => line.host))];
     const where =
       hosts.length === 1
         ? `on ${hosts[0].name}`

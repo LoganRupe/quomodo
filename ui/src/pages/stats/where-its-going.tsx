@@ -242,14 +242,14 @@ function HostBar({
     const outside = used - Math.max(containers, stacksTotal);
     if (outside > 0) {
       segments.push({
-        label: "rest of host",
+        label: "not broken down",
         bytes: outside,
         color: OUTSIDE_COLOR,
         tooltip:
-          "Host memory in use that no measured container accounts for: " +
-          "the kernel, other processes, and any agent hidden by the " +
-          "search or tag filter. Approximate, since the host and the " +
-          "containers count page cache differently.",
+          "The rest of the host's memory in use. It includes other " +
+          "processes, the kernel, and containers of any agent not shown " +
+          "here. Approximate, since the host and the containers count " +
+          "page cache differently.",
       });
     }
   }

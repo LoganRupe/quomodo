@@ -1,22 +1,52 @@
+use std::{collections::HashMap, str::FromStr};
+
+use database::mungos::{
+  find::find_collect,
+  mongodb::bson::{doc, oid::ObjectId},
+};
 use komodo_client::entities::stats::{
   SystemStatsRecord, TotalDiskUsage, sum_disk_usage,
 };
 
 use crate::{
   helpers::query::running_usage,
-  state::{all_resources_cache, db_client, server_status_cache},
+  state::{db_client, server_status_cache},
 };
 
 pub async fn record_server_stats(ts: i64) {
   let status = server_status_cache().get_values().await;
   // A stack that moved during this cycle can be in two servers' last
-  // polls. Record it only under the server it is assigned to now.
-  let resources = all_resources_cache().load();
+  // polls. Record it only under the server it is assigned to now, read
+  // from the database: the resource cache can lag a create or a move.
+  let stack_ids = status
+    .iter()
+    .flat_map(|s| s.stack_usage.iter())
+    .filter_map(|stack| ObjectId::from_str(&stack.id).ok())
+    .collect::<Vec<_>>();
+  let assignments = if stack_ids.is_empty() {
+    HashMap::new()
+  } else {
+    match find_collect(
+      &db_client().stacks,
+      doc! { "_id": { "$in": stack_ids } },
+      None,
+    )
+    .await
+    {
+      Ok(stacks) => stacks
+        .into_iter()
+        .map(|stack| (stack.id, stack.config.server_id))
+        .collect::<HashMap<_, _>>(),
+      Err(e) => {
+        error!("Failed to read stack assignments for stats | {e:#}");
+        HashMap::new()
+      }
+    }
+  };
   let assigned = |stack_id: &str, server_id: &str| {
-    resources
-      .stacks
+    assignments
       .get(stack_id)
-      .is_some_and(|stack| stack.config.server_id == server_id)
+      .is_some_and(|assigned| assigned == server_id)
   };
   let records = status
     .into_iter()
