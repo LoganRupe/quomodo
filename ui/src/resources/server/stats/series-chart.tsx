@@ -132,7 +132,12 @@ export function SeriesChart({
   const fmtValue = (value: number, precise: boolean) => {
     if (isNetwork) return fmtSizeBytes(value);
     if (isLoadAvg) return value.toFixed(precise ? 2 : 1);
-    if (isCores) return fmtCores(value, precise);
+    // Idle containers use thousandths of a core: two decimals would
+    // label every tick 0.00.
+    if (isCores)
+      return value === 0 || value >= 0.1
+        ? fmtCores(value, precise)
+        : `${value.toFixed(3)}${precise ? " cores" : ""}`;
     if (isBytes) return fmtBytes(value);
     return `${value.toFixed(precise ? 1 : 0)}%`;
   };
