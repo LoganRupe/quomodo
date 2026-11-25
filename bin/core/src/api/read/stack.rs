@@ -444,13 +444,12 @@ impl Resolve<ReadArgs> for GetHistoricalStackStats {
     // on at the time, so read across every agent. The ts index
     // bounds this to one page of timestamps, whatever the retention.
     let timestamps = history_timestamps(granularity, page);
-    let oldest_in_window =
-      timestamps.last().copied().unwrap_or_default();
+    let readable_ids = readable.iter().cloned().collect::<Vec<_>>();
     let rows = find_collect(
       &db_client().stats.clone_with_type::<StackUsageRow>(),
       doc! {
         "ts": { "$in": timestamps },
-        "stacks.id": { "$in": readable.iter().collect::<Vec<_>>() },
+        "stacks.id": { "$in": &readable_ids },
       },
       FindOptions::builder()
         .projection(doc! { "_id": 0, "ts": 1, "stacks": 1 })
@@ -480,16 +479,19 @@ impl Resolve<ReadArgs> for GetHistoricalStackStats {
       .map(|(ts, stacks)| StackStatsRecord { ts, stacks })
       .collect::<Vec<_>>();
     // A stack has gaps (stopped, unreachable), so a short page doesn't
-    // mean the end. There is more while older records are stored.
-    let oldest_stored = db_client()
+    // mean the end: there is a next page while it has a sample of these
+    // stacks. Looking one window ahead costs what this page did and
+    // tells nothing about stacks or servers the caller can't read; a
+    // gap longer than a whole window ends the paging.
+    let next_page = db_client()
       .stats
-      .find_one(doc! {})
-      .sort(doc! { "ts": 1 })
+      .find_one(doc! {
+        "ts": { "$in": history_timestamps(granularity, page.saturating_add(1)) },
+        "stacks.id": { "$in": &readable_ids },
+      })
+      .projection(doc! { "_id": 0, "ts": 1 })
       .await
-      .context("failed to read the oldest stats record")?
-      .map(|record| record.ts);
-    let next_page = oldest_stored
-      .filter(|oldest| *oldest < oldest_in_window)
+      .context("failed to look for older stack samples")?
       .map(|_| page.saturating_add(1));
     Ok(GetHistoricalStackStatsResponse { stats, next_page })
   }
