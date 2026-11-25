@@ -538,25 +538,34 @@ function HistoricalStats({
       return usage?.cpu_cores !== undefined || usage?.mem_bytes !== undefined;
     });
   const chartedLines = plan.lines.filter(hasReading).slice(0, MAX_SERIES);
-  const chartedHostsOnly = plan.hosts
+  // Host lines (load, disk) are chosen on host history alone, so they
+  // show even when the window has no container readings (records from
+  // before the upgrade). In usage modes, hosts of charted lines first.
+  const hostCandidates =
+    view === "hosts"
+      ? plan.hosts
+      : [
+          ...new Set([
+            ...chartedLines.map((line) => line.host),
+            ...plan.lines.map((line) => line.host),
+          ]),
+        ];
+  const hostIds = [
+    ...new Set(
+      hostCandidates
+        .map((host) => host.primary.id)
+        .filter((id) => !history.has(id)),
+    ),
+  ];
+  const hostQueries = useQueries({
+    queries: hostIds.map((id) => historicalStatsQuery(id, granularity)),
+  });
+  hostIds.forEach((id, i) =>
+    history.set(id, hostQueries[i]?.data?.stats ?? []),
+  );
+  const chartedHosts = hostCandidates
     .filter((host) => (history.get(host.primary.id) ?? []).length > 0)
     .slice(0, MAX_SERIES);
-  // Load and disk stay host wide: one line for each host charted.
-  const chartedHosts =
-    view === "hosts"
-      ? chartedHostsOnly
-      : [...new Set(chartedLines.map((line) => line.host))];
-  // The host lines of usage modes may need agents not fetched yet.
-  const hostQueries = useQueries({
-    queries: chartedHosts
-      .map((host) => host.primary.id)
-      .filter((id) => !history.has(id))
-      .map((id) => historicalStatsQuery(id, granularity)),
-  });
-  chartedHosts
-    .map((host) => host.primary.id)
-    .filter((id) => !history.has(id))
-    .forEach((id, i) => history.set(id, hostQueries[i]?.data?.stats ?? []));
   const isPending = [...candidateQueries, ...hostQueries].some(
     (query) => query.isPending,
   );

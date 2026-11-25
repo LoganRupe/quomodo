@@ -173,7 +173,8 @@ rootless agent, the agent total is that user's containers.
   last poll.
 - Memory is the working set: `memory.current` less the reclaimable
   `inactive_file` page cache, which is how `podman stats` counts it. A limit
-  shows when the unit sets `MemoryMax`.
+  shows when the container's own cgroup has one (`memory.max`), as with
+  podman's `--memory`. A limit set only on the systemd service doesn't show.
 - A pod's numbers include its infra container.
 - A number that can't be measured shows as a dash, never 0. That happens on
   the first poll after a container starts (CPU needs two samples), on a host
@@ -192,7 +193,7 @@ history charts switch between hosts, agents and Stacks. A rootless agent's
 Stats tab has a **This agent** view.
 
 Each agent's usage and each Stack's is kept with the server stats history,
-for as long as `keep_stats_for_days`. A Stack's history is kept under the
+for as long as `keep_stats_for_days` (0 keeps it forever). A Stack's history is kept under the
 Server it ran on. Host CPU, memory and disk, and the alerts on them, are
 unchanged: agents on one machine still report the whole host, and agent
 totals won't add up to it, since the kernel, page cache and other processes
