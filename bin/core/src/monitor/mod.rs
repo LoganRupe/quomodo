@@ -192,11 +192,22 @@ pub fn refresh_server_cache(
       });
     }
 
-    resources::update_server_stack_cache(
-      resources.stacks,
-      containers.as_deref().unwrap_or(&[]),
-    )
-    .await;
+    // `None` means `podman ps` failed on the agent (it times out while
+    // an image prune holds the storage lock), not that nothing is
+    // running. Reading it as an empty list paged every stack down and
+    // back up.
+    match &containers {
+      Some(containers) => {
+        resources::update_server_stack_cache(
+          resources.stacks,
+          containers,
+        )
+        .await
+      }
+      None => {
+        resources::keep_server_stack_cache(resources.stacks).await
+      }
+    }
 
     let host_name =
       system_info.host_name.as_deref().unwrap_or_default();

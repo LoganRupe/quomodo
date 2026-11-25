@@ -56,6 +56,7 @@ pub async fn insert_stacks_status_unknown(stacks: Vec<Stack>) {
         History {
           curr: CachedStackStatus {
             id: stack.id,
+            server_id: stack.config.server_id,
             state: StackState::Unknown,
             services: Vec::new(),
           },

@@ -99,6 +99,8 @@ pub fn server_status_cache() -> &'static ServerStatusCache {
 pub struct CachedStackStatus {
   /// The stack id
   pub id: String,
+  /// The server the state was observed on
+  pub server_id: String,
   /// The stack state
   pub state: StackState,
   /// The services connected to the stack
