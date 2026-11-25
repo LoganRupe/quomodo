@@ -14,6 +14,7 @@ use super::{
   FileContents, SystemCommand,
   docker::container::{ContainerListItem, ContainerStateStatusEnum},
   resource::{Resource, ResourceListItem, ResourceQuery},
+  stats::ContainerUsage,
 };
 
 #[cfg(feature = "utoipa")]
@@ -69,6 +70,10 @@ pub struct StackListItemInfo {
   pub deployed_hash: Option<String>,
   /// Latest short commit hash, or null.
   pub latest_hash: Option<String>,
+  /// CPU and memory summed over the stack's running containers,
+  /// including pod members.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub usage: Option<ContainerUsage>,
 }
 
 #[typeshare]
@@ -495,6 +500,9 @@ pub struct StackService {
   /// The container backing the unit, if found.
   pub container: Option<ContainerListItem>,
   pub state: StackServiceState,
+  /// The container's usage, or for a pod, its members' summed.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub usage: Option<ContainerUsage>,
 }
 
 #[typeshare]

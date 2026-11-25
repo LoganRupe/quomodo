@@ -10,6 +10,7 @@ use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 use crate::{config::periphery_config, state::stats_client};
 
 mod mem;
+pub mod usage;
 
 /// This should be called before starting the server in main.rs.
 /// Keeps the cached stats up to date

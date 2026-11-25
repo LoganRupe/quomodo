@@ -92,10 +92,51 @@ pub async fn insert_stacks_status_unknown(stacks: Vec<Stack>) {
       server_id: stack.config.server_id,
       state: StackState::Unknown,
       services: Vec::new(),
+      usage: None,
       baseline: 0,
     })
     .await;
   }
+}
+
+/// The agent could not list containers, so the stack's cached usage
+/// is no longer current. Drop it, keeping the state and the alert
+/// baseline as they are.
+pub async fn clear_stack_usage(id: &String) {
+  let _lock = stack_status_write_lock().lock().await;
+  let cache = stack_status_cache();
+  let Some(entry) = cache.get(id).await else {
+    return;
+  };
+  let has_usage = entry.curr.usage.is_some()
+    || entry.curr.services.iter().any(|service| {
+      service.usage.is_some()
+        || service
+          .container
+          .as_ref()
+          .is_some_and(|c| c.usage.is_some())
+    });
+  if !has_usage {
+    return;
+  }
+  let mut curr = entry.curr.clone();
+  curr.usage = None;
+  for service in &mut curr.services {
+    service.usage = None;
+    if let Some(container) = &mut service.container {
+      container.usage = None;
+    }
+  }
+  cache
+    .insert(
+      id.clone(),
+      History {
+        curr,
+        prev: entry.prev,
+      }
+      .into(),
+    )
+    .await;
 }
 
 /// Serializes every read-modify-write of the stack status cache. The

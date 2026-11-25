@@ -1,11 +1,32 @@
+use std::collections::HashMap;
+
 use komodo_client::entities::stats::{
-  SystemStatsRecord, TotalDiskUsage, sum_disk_usage,
+  StackUsage, SystemStatsRecord, TotalDiskUsage, sum_disk_usage,
 };
 
-use crate::state::{db_client, server_status_cache};
+use crate::{
+  helpers::query::running_usage,
+  state::{db_client, server_status_cache, stack_status_cache},
+};
 
 pub async fn record_server_stats(ts: i64) {
   let status = server_status_cache().get_values().await;
+  // Each server's stacks with a measured usage, as last observed
+  // on that server.
+  let mut stacks = HashMap::<String, Vec<StackUsage>>::new();
+  for stack in stack_status_cache().get_values().await {
+    let Some(usage) = stack.curr.usage else {
+      continue;
+    };
+    stacks
+      .entry(stack.curr.server_id.clone())
+      .or_default()
+      .push(StackUsage {
+        id: stack.curr.id.clone(),
+        cpu_cores: usage.cpu_cores,
+        mem_bytes: usage.mem_bytes,
+      });
+  }
   let records = status
     .into_iter()
     .filter_map(|status| {
@@ -32,6 +53,11 @@ pub async fn record_server_stats(ts: i64) {
         disks: stats.disks.clone(),
         network_ingress_bytes: stats.network_ingress_bytes,
         network_egress_bytes: stats.network_egress_bytes,
+        containers: status
+          .containers
+          .as_deref()
+          .and_then(running_usage),
+        stacks: stacks.remove(&status.id).unwrap_or_default(),
       })
     })
     .collect::<Vec<_>>();

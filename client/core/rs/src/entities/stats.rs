@@ -87,6 +87,80 @@ pub struct SystemStatsRecord {
   // /// Network usage by interface name (ingress, egress in bytes)
   // #[serde(default)]
   // pub network_usage_interface: Vec<SingleNetworkInterfaceUsage>, // interface -> (ingress, egress)
+  /// Usage of every running container on this agent, in a stack or
+  /// not. None when it could not be measured.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub containers: Option<ContainerUsage>,
+  /// Usage of each of this agent's stacks that could be measured.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub stacks: Vec<StackUsage>,
+}
+
+/// CPU and memory used by a container, or summed over a pod, stack
+/// or agent. Read from the container's cgroup v2 files.
+/// A field is None when it could not be measured, never 0.
+#[typeshare]
+#[derive(
+  Serialize, Deserialize, Debug, Default, Clone, Copy, PartialEq,
+)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+pub struct ContainerUsage {
+  /// CPU in cores (1.5 = one and a half cores), averaged over
+  /// the agent's last sampling window.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub cpu_cores: Option<f64>,
+  /// Working set memory in bytes: `memory.current` less the
+  /// reclaimable `inactive_file` page cache.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub mem_bytes: Option<f64>,
+  /// The `memory.max` limit in bytes, if one is set.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub mem_limit_bytes: Option<f64>,
+}
+
+impl ContainerUsage {
+  /// Sum the usage of running containers. A total is None when any
+  /// of them lacks that number, so a partial sum never poses as the
+  /// whole. Limits are not summed. None for no containers, or when
+  /// neither number is known.
+  pub fn sum<'a>(
+    usages: impl IntoIterator<Item = Option<&'a ContainerUsage>>,
+  ) -> Option<ContainerUsage> {
+    let mut cpu = Some(0.0);
+    let mut mem = Some(0.0);
+    let mut any = false;
+    for usage in usages {
+      any = true;
+      let usage = usage.copied().unwrap_or_default();
+      cpu = cpu.zip(usage.cpu_cores).map(|(a, b)| a + b);
+      mem = mem.zip(usage.mem_bytes).map(|(a, b)| a + b);
+    }
+    if !any || (cpu.is_none() && mem.is_none()) {
+      return None;
+    }
+    Some(ContainerUsage {
+      cpu_cores: cpu,
+      mem_bytes: mem,
+      mem_limit_bytes: None,
+    })
+  }
+}
+
+/// A stack's usage at one point in time, kept in [SystemStatsRecord].
+#[typeshare]
+#[derive(
+  Serialize, Deserialize, Debug, Default, Clone, PartialEq,
+)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+pub struct StackUsage {
+  /// The stack id
+  pub id: String,
+  /// CPU in cores
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub cpu_cores: Option<f64>,
+  /// Working set memory in bytes
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub mem_bytes: Option<f64>,
 }
 
 /// Realtime system stats data.

@@ -9,7 +9,7 @@ use komodo_client::entities::{
   repo::RepoState,
   server::{PeripheryInformation, ServerHealth, ServerState},
   stack::{StackService, StackState},
-  stats::{SystemInformation, SystemStats},
+  stats::{ContainerUsage, SystemInformation, SystemStats},
 };
 use mogh_cache::CloneCache;
 use tokio_util::sync::CancellationToken;
@@ -108,6 +108,8 @@ pub struct CachedStackStatus {
   pub state: StackState,
   /// The services connected to the stack
   pub services: Vec<StackService>,
+  /// CPU and memory summed over the stack's running containers.
+  pub usage: Option<ContainerUsage>,
   /// Changes whenever the entry's alert baseline (`prev`) is set, so
   /// the alert loop only moves a baseline it read.
   pub baseline: u64,

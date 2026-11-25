@@ -1931,6 +1931,26 @@ export interface Port {
 }
 
 /**
+ * CPU and memory used by a container, or summed over a pod, stack
+ * or agent. Read from the container's cgroup v2 files.
+ * A field is None when it could not be measured, never 0.
+ */
+export interface ContainerUsage {
+	/**
+	 * CPU in cores (1.5 = one and a half cores), averaged over
+	 * the agent's last sampling window.
+	 */
+	cpu_cores?: number;
+	/**
+	 * Working set memory in bytes: `memory.current` less the
+	 * reclaimable `inactive_file` page cache.
+	 */
+	mem_bytes?: number;
+	/** The `memory.max` limit in bytes, if one is set. */
+	mem_limit_bytes?: number;
+}
+
+/**
  * Container summary returned by container list apis.
  * Populated from `podman ps -a --format json`.
  */
@@ -1966,6 +1986,11 @@ export interface ContainerListItem {
 	ports?: Port[];
 	/** The volume / mount sources attached to container */
 	volumes?: string[];
+	/**
+	 * CPU and memory, for a running container on an agent with
+	 * stats monitoring on.
+	 */
+	usage?: ContainerUsage;
 }
 
 export type ListAllContainersResponse = ContainerListItem[];
@@ -1995,6 +2020,8 @@ export interface StackService {
 	/** The container backing the unit, if found. */
 	container?: ContainerListItem;
 	state: StackServiceState;
+	/** The container's usage, or for a pod, its members' summed. */
+	usage?: ContainerUsage;
 }
 
 export type ListAllStackServicesResponse = StackService[];
@@ -2337,6 +2364,11 @@ export interface ServerListItemInfo {
 	err?: _Serror;
 	/** System stats, if available */
 	stats?: MinimalSystemStats;
+	/**
+	 * CPU and memory summed over this agent's running containers.
+	 * For a rootless agent, that user's usage.
+	 */
+	usage?: ContainerUsage;
 	/** The server alerting thresholds */
 	alerting_thresholds: ServerAlertingThresholds;
 	/** The server's number of physical cores. */
@@ -2452,6 +2484,11 @@ export interface StackListItemInfo {
 	deployed_hash?: string;
 	/** Latest short commit hash, or null. */
 	latest_hash?: string;
+	/**
+	 * CPU and memory summed over the stack's running containers,
+	 * including pod members.
+	 */
+	usage?: ContainerUsage;
 }
 
 export type StackListItem = ResourceListItem<StackListItemInfo>;
@@ -3611,6 +3648,16 @@ export interface GetHistoricalServerStats {
 	page?: number;
 }
 
+/** A stack's usage at one point in time, kept in [SystemStatsRecord]. */
+export interface StackUsage {
+	/** The stack id */
+	id: string;
+	/** CPU in cores */
+	cpu_cores?: number;
+	/** Working set memory in bytes */
+	mem_bytes?: number;
+}
+
 /** System stats stored on the database. */
 export interface SystemStatsRecord {
 	/** Unix timestamp in milliseconds */
@@ -3655,6 +3702,13 @@ export interface SystemStatsRecord {
 	network_ingress_bytes?: number;
 	/** Total network egress in bytes */
 	network_egress_bytes?: number;
+	/**
+	 * Usage of every running container on this agent, in a stack or
+	 * not. None when it could not be measured.
+	 */
+	containers?: ContainerUsage;
+	/** Usage of each of this agent's stacks that could be measured. */
+	stacks?: StackUsage[];
 }
 
 /** Response to [GetHistoricalServerStats]. */
