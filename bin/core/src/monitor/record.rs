@@ -10,7 +10,7 @@ use komodo_client::entities::stats::{
 
 use crate::{
   helpers::query::running_usage,
-  state::{db_client, server_status_cache},
+  state::{all_resources_cache, db_client, server_status_cache},
 };
 
 pub async fn record_server_stats(ts: i64) {
@@ -37,9 +37,20 @@ pub async fn record_server_stats(ts: i64) {
         .into_iter()
         .map(|stack| (stack.id, stack.config.server_id))
         .collect::<HashMap<_, _>>(),
+      // Fall back to the resource cache rather than drop every
+      // stack sample of this bucket.
       Err(e) => {
-        error!("Failed to read stack assignments for stats | {e:#}");
-        HashMap::new()
+        warn!(
+          "Failed to read stack assignments for stats, using the cache | {e:#}"
+        );
+        all_resources_cache()
+          .load()
+          .stacks
+          .values()
+          .map(|stack| {
+            (stack.id.clone(), stack.config.server_id.clone())
+          })
+          .collect()
       }
     }
   };

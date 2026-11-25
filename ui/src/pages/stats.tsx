@@ -434,10 +434,17 @@ function HistoricalStats({
     // window draws no line.
     const offline = (server: Types.ServerListItem) =>
       server.info.state !== Types.ServerState.Ok;
-    // Live memory first, then unreachable (no live reading, but history),
-    // then the rest with no reading.
+    // Live memory first, then unreachable (recent history), then
+    // reachable with no reading, then disabled (oldest history, if any),
+    // so a disabled agent never takes a slot from a live one.
     const rank = (server: Types.ServerListItem, mem: number | undefined) =>
-      mem !== undefined ? mem : offline(server) ? -1 : -2;
+      mem !== undefined
+        ? mem
+        : server.info.state === Types.ServerState.NotOk
+          ? -1
+          : server.info.state === Types.ServerState.Ok
+            ? -2
+            : -3;
     const label = (name: string, server: Types.ServerListItem) =>
       offline(server) ? `${name} (unreachable)` : name;
     const chartHosts = [...hosts].sort(
