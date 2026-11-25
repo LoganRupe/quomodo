@@ -23,6 +23,7 @@ import { resourceTypeCrumb, usableResourcePath } from "@/lib/utils";
 import ResourceDescription from "@/resources/description";
 import ResourceNotFound from "@/resources/not-found";
 import NewResource from "@/resources/new";
+import ShowStatsToggle from "@/components/show-stats-toggle";
 
 export default function Resource() {
   const type = useResourceParamType()!;
@@ -79,6 +80,9 @@ function ResourceInner({ type, id }: { type: UsableResource; id: string }) {
       }
       actions={
         <>
+          {type === "Stack" && (
+            <ShowStatsToggle preference="showStackPageStats" label="Stats" />
+          )}
           {canCreate && <NewResource type={type} copyId={id} />}
           {showExport && <ExportToml targets={[{ type, id }]} />}
         </>

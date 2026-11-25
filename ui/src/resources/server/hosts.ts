@@ -1,4 +1,4 @@
-import { useRead, useServerView } from "@/lib/hooks";
+import { useRead, useServerView, useStackView } from "@/lib/hooks";
 import { Types } from "komodo_client";
 import { serverStateIntention } from "@/lib/color";
 import { useMemo } from "react";
@@ -114,8 +114,13 @@ export function diskPerc(stats: Types.MinimalSystemStats | undefined) {
 /** The host views need every agent of a host on one page,
  * so they list Servers without pagination. */
 export function useUnpaginatedServerList(type: string) {
-  const [view] = useServerView();
-  return type === "Server" && view !== "agents";
+  const [serverView] = useServerView();
+  const [stackView] = useStackView();
+  // The host views group the whole list, so they can't page it.
+  return (
+    (type === "Server" && serverView !== "agents") ||
+    (type === "Stack" && stackView === "hosts")
+  );
 }
 
 /** The host's color: its state, or a warning when an agent's

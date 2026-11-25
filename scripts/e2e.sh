@@ -20,7 +20,8 @@
 #      host sync's directory through .., an absolute path or a symlink
 #   2. DeployStack installs the quadlet units, systemd starts them, podman runs
 #      them; every pod and standalone container gets its own fixed user
-#      namespace slice, a pod member shares the pod's
+#      namespace slice, a pod member shares the pod's; every container and pod
+#      unit reports CPU and memory, and the stack's usage is recorded
 #   3. DeployStackIfChanged is a no-op with nothing changed, and skips a
 #      stack that is mid deploy
 #   4. a changed unit file redeploys only that unit, on the same slice
@@ -267,6 +268,28 @@ elif cmd == "stack":
     print(json.dumps({"latest_units": [u["file"] for u in i.get("latest_units", [])], "deployed_units": [u["file"] for u in (i.get("deployed_units") or [])], "deployed_hash": i.get("deployed_hash"), "contents_hash": i.get("deployed_contents_hash")}))
 elif cmd == "state":
     print(api("read", "ListStacks", {"query": {"names": [STACK]}})[0]["info"]["state"])
+elif cmd == "usage":
+    # Waits for container usage to reach Core: every container and pod
+    # unit has CPU and memory, a pod unit is running (its members are
+    # matched by PodName), the stack has a total, the server an agent
+    # total, and a stats record lists the stack.
+    st_id = api("read", "ListStacks", {"query": {"names": [STACK]}})[0]["id"]
+    def full(u): return bool(u) and u.get("cpu_cores") is not None and (u.get("mem_bytes") or 0) > 0
+    last = None
+    for _ in range(60):
+        svcs = [s for s in api("read", "ListStackServices", {"stack": STACK}) if s["unit"]["kind"] in ("container", "pod")]
+        st = api("read", "ListStacks", {"query": {"names": [STACK]}})[0]["info"]
+        sv = [s for s in api("read", "ListServers", {}) if s["name"] == SERVER][0]["info"]
+        recs = api("read", "GetHistoricalServerStats", {"server": SERVER, "granularity": "15-sec"}).get("stats", [])
+        rec = next((r for r in recs if any(x["id"] == st_id and x.get("mem_bytes") for x in r.get("stacks", []))), None)
+        last = {"services": [(s["service"], s["state"], s.get("usage")) for s in svcs], "stack": st.get("usage"), "server": sv.get("usage"), "recorded": bool(rec)}
+        if svcs and all(full(s.get("usage")) and s["state"].lower() == "running" for s in svcs) \
+                and full(st.get("usage")) and full(sv.get("usage")) and rec and rec.get("containers"):
+            print(json.dumps({"stack": st["usage"], "server": sv["usage"], "units": {s["service"]: s["usage"] for s in svcs}}))
+            break
+        time.sleep(3)
+    else:
+        raise SystemExit("container usage never complete: %s" % json.dumps(last))
 elif cmd == "services":
     print(json.dumps([(s["service"], s["state"]) for s in api("read", "ListStackServices", {"stack": STACK})]))
 elif cmd in ("DeployStack", "DeployStackIfChanged", "DestroyStack", "RestartStack", "StopStack"):
@@ -477,6 +500,7 @@ echo "slices: pod $SLICE0, web $SLICE1, worker $SLICE2, member shares the pod's"
 $API stack; sleep 12
 [ "$($API state)" = "running" ] || fail "stack state is $($API state), expected running"
 $API services
+$API usage || fail "no container usage for the rootful stack"
 
 log "3. no change is a no-op"
 WEB_ID_BEFORE=$(hexec podman inspect -f '{{.Id}}' e2e-web)
@@ -657,6 +681,9 @@ for want in "UIDMap=0:1:1000" "UIDMap=1000:0:1" "UIDMap=1001:1001:64535" "GIDMap
   hexec grep -q "^$want$" "$RD/r-solo.container" || { hexec cat "$RD/r-solo.container"; fail "r-solo is missing $want"; }
 done
 hexec grep -q '"e2e-rootless/r.pod": 1' /home/alice/.local/share/quomodo/idmap.json || { hexec cat /home/alice/.local/share/quomodo/idmap.json; fail "rootless slice table not recorded in alice's home"; }
+# Rootless usage: cpu.stat is read whether or not the cpu controller is
+# delegated to alice.
+$RL usage || fail "no container usage for the rootless stack"
 # On the host, slice 0 is alice's default range and slice 1 starts the one added after it.
 host_map() { hexec cat "/proc/$(aexec podman inspect -f '{{.State.Pid}}' "$1")/uid_map" | awk 'NR==1 {print $1":"$2":"$3}'; }
 [ "$(host_map r-solo)" = "0:524288:1000" ] || fail "r-solo runs on host ids $(host_map r-solo), expected 0:524288:1000"

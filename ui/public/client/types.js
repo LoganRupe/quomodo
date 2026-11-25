@@ -422,6 +422,10 @@ export var ContainerSortBy;
     ContainerSortBy["Ports"] = "Ports";
     /** Sort by first volume. */
     ContainerSortBy["Volumes"] = "Volumes";
+    /** Sort by CPU usage. Containers with no reading sort lowest. */
+    ContainerSortBy["Cpu"] = "Cpu";
+    /** Sort by memory usage. Containers with no reading sort lowest. */
+    ContainerSortBy["Memory"] = "Memory";
 })(ContainerSortBy || (ContainerSortBy = {}));
 export var ProcedureSortBy;
 (function (ProcedureSortBy) {
@@ -492,6 +496,10 @@ export var StackSortBy;
     StackSortBy["Source"] = "Source";
     StackSortBy["Host"] = "Host";
     StackSortBy["State"] = "State";
+    /** Stack CPU usage. Stacks with no reading sort lowest. */
+    StackSortBy["Cpu"] = "Cpu";
+    /** Stack memory usage. Stacks with no reading sort lowest. */
+    StackSortBy["Memory"] = "Memory";
 })(StackSortBy || (StackSortBy = {}));
 export var ServiceUserQueryBehavior;
 (function (ServiceUserQueryBehavior) {

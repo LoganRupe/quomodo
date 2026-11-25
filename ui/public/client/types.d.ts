@@ -3992,7 +3992,11 @@ export declare enum ContainerSortBy {
     /** Sort by first port. */
     Ports = "Ports",
     /** Sort by first volume. */
-    Volumes = "Volumes"
+    Volumes = "Volumes",
+    /** Sort by CPU usage. Containers with no reading sort lowest. */
+    Cpu = "Cpu",
+    /** Sort by memory usage. Containers with no reading sort lowest. */
+    Memory = "Memory"
 }
 /**
  * List all containers on the target servers.
@@ -4532,7 +4536,11 @@ export declare enum StackSortBy {
     Name = "Name",
     Source = "Source",
     Host = "Host",
-    State = "State"
+    State = "State",
+    /** Stack CPU usage. Stacks with no reading sort lowest. */
+    Cpu = "Cpu",
+    /** Stack memory usage. Stacks with no reading sort lowest. */
+    Memory = "Memory"
 }
 /** List stacks matching optional query. Response: [ListStacksResponse]. */
 export interface ListStacks {

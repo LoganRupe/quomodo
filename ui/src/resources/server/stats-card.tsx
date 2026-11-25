@@ -15,6 +15,7 @@ import {
 import { ColorIntention, hexColorByIntention } from "mogh_ui";
 import { LucideIcon } from "lucide-react";
 import { serverThresholds } from "./hooks";
+import UsageBars from "./usage-bars";
 
 export interface ServerStatsCardProps {
   id: string;
@@ -64,10 +65,6 @@ export default function ServerStatsCard({ id }: ServerStatsCardProps) {
     },
   ).data;
 
-  if (!server) {
-    return null;
-  }
-
   const calculations = useMemo(() => {
     const diskUsed = stats
       ? stats.disks.reduce((acc, disk) => acc + disk.used_gb, 0)
@@ -83,10 +80,10 @@ export default function ServerStatsCard({ id }: ServerStatsCardProps) {
           ? (stats.mem_used_gb / stats.mem_total_gb) * 100
           : 0,
       diskPercentage: diskTotal > 0 ? (diskUsed / diskTotal) * 100 : 0,
-      isUnreachable: !stats || server.info.state === Types.ServerState.NotOk,
-      isDisabled: server.info.state === Types.ServerState.Disabled,
+      isUnreachable: !stats || server?.info.state === Types.ServerState.NotOk,
+      isDisabled: server?.info.state === Types.ServerState.Disabled,
     };
-  }, [stats, server.info.state]);
+  }, [stats, server?.info.state]);
 
   const {
     cpuPercentage,
@@ -120,20 +117,47 @@ export default function ServerStatsCard({ id }: ServerStatsCardProps) {
     [cpuPercentage, memoryPercentage, diskPercentage],
   );
   const theme = useComputedColorScheme();
+
+  if (!server) {
+    return null;
+  }
+
   return (
     <Stack
       gap="xs"
       p={isUnreachable || isDisabled ? "xs" : undefined}
       pos="relative"
     >
-      {statItems.map((item) => (
-        <StatItem
-          key={item.label}
-          isUnreachable={isUnreachable || isDisabled}
-          intention={intention}
-          {...item}
-        />
-      ))}
+      {server.info.rootless_user ? (
+        // A rootless agent's card shows its own containers. Every agent
+        // on the machine reports the same host stats, so they go on one
+        // line underneath instead of looking like this agent's numbers.
+        <>
+          <UsageBars usage={server.info.usage} server={server} />
+          <Text size="xs" c="dimmed" ff="monospace">
+            {[
+              "host",
+              ...statItems.map(
+                (item) =>
+                  `${item.type === "memory" ? "mem" : item.type} ${
+                    isUnreachable || isDisabled
+                      ? "N/A"
+                      : `${item.percentage.toFixed(1)}%`
+                  }`,
+              ),
+            ].join(" · ")}
+          </Text>
+        </>
+      ) : (
+        statItems.map((item) => (
+          <StatItem
+            key={item.label}
+            isUnreachable={isUnreachable || isDisabled}
+            intention={intention}
+            {...item}
+          />
+        ))
+      )}
       {(isUnreachable || isDisabled) && (
         <Center
           renderRoot={(props) => (

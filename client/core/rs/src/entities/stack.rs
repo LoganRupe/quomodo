@@ -584,6 +584,10 @@ pub enum StackSortBy {
   Source,
   Host,
   State,
+  /// Stack CPU usage. Stacks with no reading sort lowest.
+  Cpu,
+  /// Stack memory usage. Stacks with no reading sort lowest.
+  Memory,
 }
 
 #[typeshare]

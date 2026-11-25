@@ -119,6 +119,14 @@ pub struct ContainerUsage {
 }
 
 impl ContainerUsage {
+  /// Order two optional readings, a missing one lowest.
+  pub fn cmp_reading(
+    a: Option<f64>,
+    b: Option<f64>,
+  ) -> std::cmp::Ordering {
+    a.partial_cmp(&b).unwrap_or(std::cmp::Ordering::Equal)
+  }
+
   /// Sum the usage of running containers. A total is None when any
   /// of them lacks that number, so a partial sum never poses as the
   /// whole. Limits are not summed. None for no containers, or when

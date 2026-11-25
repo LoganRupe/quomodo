@@ -124,6 +124,10 @@ pub enum ContainerSortBy {
   Ports,
   /// Sort by first volume.
   Volumes,
+  /// Sort by CPU usage. Containers with no reading sort lowest.
+  Cpu,
+  /// Sort by memory usage. Containers with no reading sort lowest.
+  Memory,
 }
 
 #[typeshare]

@@ -7,6 +7,7 @@ use komodo_client::{
       Stack, StackActionState, StackListItem, StackQuery,
       StackService, StackSortBy, StackState,
     },
+    stats::ContainerUsage,
   },
 };
 use mogh_resolver::Resolve;
@@ -79,6 +80,24 @@ impl Resolve<ReadArgs> for ListStacks {
               .state
               .cmp(&b.info.state)
               .then_with(|| a.name.cmp(&b.name))
+          }))
+        }
+        StackSortBy::Cpu => {
+          resource::ListItemSort::InMemory(Box::new(|a, b| {
+            ContainerUsage::cmp_reading(
+              a.info.usage.and_then(|u| u.cpu_cores),
+              b.info.usage.and_then(|u| u.cpu_cores),
+            )
+            .then_with(|| a.name.cmp(&b.name))
+          }))
+        }
+        StackSortBy::Memory => {
+          resource::ListItemSort::InMemory(Box::new(|a, b| {
+            ContainerUsage::cmp_reading(
+              a.info.usage.and_then(|u| u.mem_bytes),
+              b.info.usage.and_then(|u| u.mem_bytes),
+            )
+            .then_with(|| a.name.cmp(&b.name))
           }))
         }
       };
