@@ -1,4 +1,7 @@
-use std::sync::{Arc, OnceLock};
+use std::{
+  collections::HashSet,
+  sync::{Arc, OnceLock},
+};
 
 use async_timing_util::wait_until_timelength;
 use database::mungos::{find::find_collect, mongodb::bson::doc};
@@ -119,11 +122,12 @@ pub fn refresh_server_cache(
 
     *lock = now;
 
-    let resources = RefreshCacheResources::load_server(server).await;
+    let mut resources =
+      RefreshCacheResources::load_server(server).await;
 
     // Handle server disabled
     if !server.config.enabled {
-      resources.insert_status_unknown().await;
+      resources.insert_status_unknown(server).await;
       insert_server_status(
         server,
         ServerState::Disabled,
@@ -141,7 +145,7 @@ pub fn refresh_server_cache(
     let periphery = match periphery_client(server).await {
       Ok(periphery) => periphery,
       Err(e) => {
-        resources.insert_status_unknown().await;
+        resources.insert_status_unknown(server).await;
         insert_server_status(
           server,
           ServerState::NotOk,
@@ -170,7 +174,7 @@ pub fn refresh_server_cache(
     {
       Ok(info) => info,
       Err(e) => {
-        resources.insert_status_unknown().await;
+        resources.insert_status_unknown(server).await;
         insert_server_status(
           server,
           ServerState::NotOk,
@@ -191,6 +195,8 @@ pub fn refresh_server_cache(
         container.server_name = Some(server.name.clone());
       });
     }
+
+    resources.retain_assigned_stacks(server).await;
 
     // `None` means `podman ps` failed on the agent (it times out while
     // an image prune holds the storage lock), not that nothing is
@@ -291,7 +297,34 @@ impl RefreshCacheResources {
     Self { stacks, repos }
   }
 
-  pub async fn insert_status_unknown(self) {
+  /// Drop stacks moved to another server since `load_server`. This
+  /// poll's view of them is stale, and writing it would overwrite
+  /// what their new server reported.
+  async fn retain_assigned_stacks(&mut self, server: &Server) {
+    if self.stacks.is_empty() {
+      return;
+    }
+    match db_client()
+      .stacks
+      .distinct("_id", doc! { "config.server_id": &server.id })
+      .await
+    {
+      Ok(ids) => {
+        let ids = ids
+          .iter()
+          .filter_map(|id| id.as_object_id().map(|id| id.to_hex()))
+          .collect::<HashSet<_>>();
+        self.stacks.retain(|stack| ids.contains(&stack.id));
+      }
+      Err(e) => error!(
+        "Failed to recheck stacks on server {} (update server status cache) | {e:#}",
+        server.name
+      ),
+    }
+  }
+
+  pub async fn insert_status_unknown(mut self, server: &Server) {
+    self.retain_assigned_stacks(server).await;
     insert_stacks_status_unknown(self.stacks).await;
     insert_repos_status_unknown(self.repos).await;
   }
