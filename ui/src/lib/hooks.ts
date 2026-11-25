@@ -714,12 +714,28 @@ export function useContainerPortsMap(ports: Types.Port[]) {
 /** How the Servers list is laid out. */
 export type ServerView = "hosts" | "cards" | "agents";
 
+/** How the Stacks list is laid out. */
+export type StackView = "table" | "hosts";
+
 interface DashboardPreferences {
   showServerStats: boolean;
   showTables: boolean;
   /** Missing in preferences saved before it was added. */
   serverView?: ServerView;
+  /** Container usage on the Stacks list and the dashboard's stack
+   * cards. Missing in older saved preferences: off. */
+  showStackStats?: boolean;
+  /** Container usage on a Stack's own page. Missing: off. */
+  showStackPageStats?: boolean;
+  /** Missing in older saved preferences: "table". */
+  stackView?: StackView;
 }
+
+type TogglePreference =
+  | "showServerStats"
+  | "showTables"
+  | "showStackStats"
+  | "showStackPageStats";
 
 const dashboardPreferencesAtom = atomWithStorage<DashboardPreferences>(
   "komodo-dashboard-preferences-v2",
@@ -742,7 +758,7 @@ export function useDashboardPreferences() {
     setPreferences({ ...preferences, [key]: value });
   };
 
-  const togglePreference = (key: "showServerStats" | "showTables") => {
+  const togglePreference = (key: TogglePreference) => {
     updatePreference(key, !preferences[key]);
   };
 
@@ -758,6 +774,14 @@ export function useServerView(): [ServerView, (view: ServerView) => void] {
   return [
     preferences.serverView ?? "hosts",
     (view) => updatePreference("serverView", view),
+  ];
+}
+
+export function useStackView(): [StackView, (view: StackView) => void] {
+  const { preferences, updatePreference } = useDashboardPreferences();
+  return [
+    preferences.stackView ?? "table",
+    (view) => updatePreference("stackView", view),
   ];
 }
 
