@@ -45,6 +45,10 @@ import {
 import { ReactNode, useMemo } from "react";
 import WhereItsGoing from "./stats/where-its-going";
 
+/** History is fetched for this many candidates, to fill MAX_SERIES
+ * lines with ones that have readings. */
+const CANDIDATES = 2 * MAX_SERIES;
+
 const GiB = 1024 * 1024 * 1024;
 
 const HOST_CHARTS: [ChartKind, ReactNode][] = [
@@ -455,12 +459,11 @@ function HistoricalStats({
     );
     if (view === "hosts") {
       return {
-        usage: [] as UsageLine[],
-        hosts: chartHosts.slice(0, MAX_SERIES),
-        note:
-          chartHosts.length > MAX_SERIES
-            ? `Charting the first ${MAX_SERIES} of ${chartHosts.length} hosts. Filter to specific Servers to compare the others.`
-            : undefined,
+        lines: [] as UsageLine[],
+        hosts: chartHosts.slice(0, CANDIDATES),
+        total: chartHosts.length,
+        noun: "hosts",
+        where: "",
       };
     }
     let lines: UsageLine[];
@@ -500,46 +503,80 @@ function HistoricalStats({
             record.stacks?.find((s) => s.id === stack.id),
         }));
     }
-    const charted = lines.slice(0, MAX_SERIES);
-    // Load and disk stay host wide: one line for each host charted above.
-    const chartedHosts = [...new Set(charted.map((line) => line.host))];
     const where =
       hosts.length === 1
         ? `on ${hosts[0].name}`
         : `across ${hosts.length} hosts`;
     return {
-      usage: charted,
-      hosts: chartedHosts,
-      note:
-        lines.length === 0
-          ? `No ${noun} ${where}.`
-          : lines.length > MAX_SERIES
-            ? `Charting the top ${MAX_SERIES} of ${lines.length} ${noun} ${where}, by memory.`
-            : undefined,
+      lines: lines.slice(0, CANDIDATES),
+      hosts: [] as ServerHost[],
+      total: lines.length,
+      noun,
+      where,
     };
   }, [view, hosts, stacks]);
 
-  const serverIds = [
-    ...new Set([
-      ...plan.usage.map((line) => line.server),
-      ...plan.hosts.map((host) => host.primary.id),
-    ]),
+  // A candidate with nothing stored in the window (a long disabled
+  // agent, say) must not take a slot from one with history, so history
+  // is fetched for up to CANDIDATES before choosing MAX_SERIES of them.
+  const candidateIds = [
+    ...plan.lines.map((line) => line.server),
+    ...plan.hosts.map((host) => host.primary.id),
   ];
-  const historicalQueries = useQueries({
-    queries: serverIds.map((id) => historicalStatsQuery(id, granularity)),
+  const candidateQueries = useQueries({
+    queries: [...new Set(candidateIds)].map((id) =>
+      historicalStatsQuery(id, granularity),
+    ),
   });
-  const history = new Map(
-    serverIds.map((id, i) => [id, historicalQueries[i].data?.stats ?? []]),
+  const history = new Map<string, Types.SystemStatsRecord[]>();
+  [...new Set(candidateIds)].forEach((id, i) =>
+    history.set(id, candidateQueries[i].data?.stats ?? []),
   );
-  const isPending = historicalQueries.some((query) => query.isPending);
+  const hasReading = (line: UsageLine) =>
+    (history.get(line.server) ?? []).some((record) => {
+      const usage = line.usage ? line.usage(record) : record.containers;
+      return usage?.cpu_cores !== undefined || usage?.mem_bytes !== undefined;
+    });
+  const chartedLines = plan.lines.filter(hasReading).slice(0, MAX_SERIES);
+  const chartedHostsOnly = plan.hosts
+    .filter((host) => (history.get(host.primary.id) ?? []).length > 0)
+    .slice(0, MAX_SERIES);
+  // Load and disk stay host wide: one line for each host charted.
+  const chartedHosts =
+    view === "hosts"
+      ? chartedHostsOnly
+      : [...new Set(chartedLines.map((line) => line.host))];
+  // The host lines of usage modes may need agents not fetched yet.
+  const hostQueries = useQueries({
+    queries: chartedHosts
+      .map((host) => host.primary.id)
+      .filter((id) => !history.has(id))
+      .map((id) => historicalStatsQuery(id, granularity)),
+  });
+  chartedHosts
+    .map((host) => host.primary.id)
+    .filter((id) => !history.has(id))
+    .forEach((id, i) => history.set(id, hostQueries[i]?.data?.stats ?? []));
+  const isPending = [...candidateQueries, ...hostQueries].some(
+    (query) => query.isPending,
+  );
+  const charted = view === "hosts" ? chartedHosts.length : chartedLines.length;
+  const note =
+    plan.total === 0
+      ? `No ${plan.noun} ${plan.where}.`
+      : plan.total > charted && !isPending
+        ? view === "hosts"
+          ? `Charting ${charted} of ${plan.total} hosts with history. Filter to specific Servers to compare the others.`
+          : `Charting the top ${charted} of ${plan.total} ${plan.noun} ${plan.where} with history, by memory.`
+        : undefined;
 
-  const hostSeries: ChartSeries[] = plan.hosts.map((host) => ({
+  const hostSeries: ChartSeries[] = chartedHosts.map((host) => ({
     name: host.name,
     color: hostColors.get(host.name) ?? SERIES_COLORS[0],
     stats: history.get(host.primary.id) ?? [],
   }));
   // Colors by rank, so the charted lines never share one.
-  const usageSeries: ChartSeries[] = plan.usage.map((line, i) => ({
+  const usageSeries: ChartSeries[] = chartedLines.map((line, i) => ({
     name: line.name,
     color: SERIES_COLORS[i % SERIES_COLORS.length],
     stats: history.get(line.server) ?? [],
@@ -581,9 +618,9 @@ function HistoricalStats({
       }
     >
       <Stack>
-        {plan.note && (
+        {note && (
           <Text c="dimmed" size="sm">
-            {plan.note}
+            {note}
           </Text>
         )}
         <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="xl">
