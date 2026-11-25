@@ -15,6 +15,7 @@ use database::mungos::{
 use komodo_client::{
   api::read::*,
   entities::{
+    Timelength,
     permission::PermissionLevel,
     server::{
       Server, ServerActionState, ServerListItem, ServerSortBy,
@@ -392,7 +393,28 @@ impl Resolve<ReadArgs> for ListSystemProcesses {
   }
 }
 
-const STATS_PER_PAGE: i64 = 200;
+pub(super) const STATS_PER_PAGE: i64 = 200;
+
+/// The bucket-aligned timestamps of one page of history, newest
+/// first. Records are matched on these exactly.
+pub(super) fn history_timestamps(
+  granularity: Timelength,
+  page: u32,
+) -> Vec<i64> {
+  let granularity =
+    get_timelength_in_ms(granularity.to_string().parse().unwrap())
+      as i64;
+  let curr_ts = unix_timestamp_ms() as i64;
+  let mut curr_ts = curr_ts
+    - curr_ts % granularity
+    - granularity * (page as i64).saturating_mul(STATS_PER_PAGE);
+  let mut ts_vec = Vec::with_capacity(STATS_PER_PAGE as usize);
+  for _ in 0..STATS_PER_PAGE {
+    ts_vec.push(curr_ts);
+    curr_ts -= granularity;
+  }
+  ts_vec
+}
 
 impl Resolve<ReadArgs> for GetHistoricalServerStats {
   async fn resolve(
@@ -410,18 +432,7 @@ impl Resolve<ReadArgs> for GetHistoricalServerStats {
       PermissionLevel::Read.into(),
     )
     .await?;
-    let granularity =
-      get_timelength_in_ms(granularity.to_string().parse().unwrap())
-        as i64;
-    let mut ts_vec = Vec::<i64>::new();
-    let curr_ts = unix_timestamp_ms() as i64;
-    let mut curr_ts = curr_ts
-      - curr_ts % granularity
-      - granularity * (page as i64).saturating_mul(STATS_PER_PAGE);
-    for _ in 0..STATS_PER_PAGE {
-      ts_vec.push(curr_ts);
-      curr_ts -= granularity;
-    }
+    let ts_vec = history_timestamps(granularity, page);
 
     let mut stats = find_collect(
       &db_client().stats,

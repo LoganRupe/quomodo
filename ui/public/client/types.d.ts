@@ -3565,6 +3565,42 @@ export interface GetHistoricalServerStatsResponse {
     next_page?: number;
 }
 /**
+ * Paginated endpoint serving the CPU and memory history of some
+ * stacks, across every agent they ran on. A stack the user can't
+ * read is left out. Response: [GetHistoricalStackStatsResponse].
+ */
+export interface GetHistoricalStackStats {
+    /** Stack ids or names. At most 32. */
+    stacks: string[];
+    /** The granularity of the data. */
+    granularity: Timelength;
+    /**
+     * Page of historical data. Default is 0, which is the most recent data.
+     * Use with the `next_page` field of the response.
+     */
+    page?: number;
+}
+/**
+ * The usage of some stacks at one point in time, collected from the
+ * stats records of every agent they ran on.
+ */
+export interface StackStatsRecord {
+    /** Unix timestamp in milliseconds */
+    ts: I64;
+    /** The usage of each requested stack recorded at `ts`. */
+    stacks: StackUsage[];
+}
+/** Response to [GetHistoricalStackStats]. */
+export interface GetHistoricalStackStatsResponse {
+    /**
+     * The timeseries page of data, newest first, one record per
+     * timestamp with any readings.
+     */
+    stats: StackStatsRecord[];
+    /** If there is a next page of data, pass this to `page` to get it. */
+    next_page?: number;
+}
+/**
  * Get a specific image registry account.
  * Response: [GetImageRegistryAccountResponse].
  *
@@ -5693,6 +5729,9 @@ export type ReadRequest = {
 } | {
     type: "ListAllStackServices";
     params: ListAllStackServices;
+} | {
+    type: "GetHistoricalStackStats";
+    params: GetHistoricalStackStats;
 } | {
     type: "GetReposSummary";
     params: GetReposSummary;

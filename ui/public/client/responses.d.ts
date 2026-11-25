@@ -30,6 +30,7 @@ export type ReadResponses = {
     ListFullStacks: Types.ListFullStacksResponse;
     ListStackServices: Types.ListStackServicesResponse;
     ListAllStackServices: Types.ListAllStackServicesResponse;
+    GetHistoricalStackStats: Types.GetHistoricalStackStatsResponse;
     GetReposSummary: Types.GetReposSummaryResponse;
     GetRepo: Types.GetRepoResponse;
     GetRepoActionState: Types.GetRepoActionStateResponse;

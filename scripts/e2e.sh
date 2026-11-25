@@ -272,7 +272,8 @@ elif cmd == "usage":
     # Waits for container usage to reach Core: every container and pod
     # unit has CPU and memory, a pod unit is running (its members are
     # matched by PodName), the stack has a total, the server an agent
-    # total, and a stats record lists the stack.
+    # total, a stats record lists the stack, and the stack's own history
+    # (read by name) has it.
     st_id = api("read", "ListStacks", {"query": {"names": [STACK]}})[0]["id"]
     def full(u): return bool(u) and u.get("cpu_cores") is not None and (u.get("mem_bytes") or 0) > 0
     last = None
@@ -282,9 +283,11 @@ elif cmd == "usage":
         sv = [s for s in api("read", "ListServers", {}) if s["name"] == SERVER][0]["info"]
         recs = api("read", "GetHistoricalServerStats", {"server": SERVER, "granularity": "15-sec"}).get("stats", [])
         rec = next((r for r in recs if any(x["id"] == st_id and x.get("mem_bytes") for x in r.get("stacks", []))), None)
-        last = {"services": [(s["service"], s["state"], s.get("usage")) for s in svcs], "stack": st.get("usage"), "server": sv.get("usage"), "recorded": bool(rec)}
+        hist = api("read", "GetHistoricalStackStats", {"stacks": [STACK], "granularity": "15-sec"}).get("stats", [])
+        hist_ok = any(x["id"] == st_id and x.get("mem_bytes") for r in hist for x in r["stacks"])
+        last = {"services": [(s["service"], s["state"], s.get("usage")) for s in svcs], "stack": st.get("usage"), "server": sv.get("usage"), "recorded": bool(rec), "stack_history": hist_ok}
         if svcs and all(full(s.get("usage")) and s["state"].lower() == "running" for s in svcs) \
-                and full(st.get("usage")) and full(sv.get("usage")) and rec and rec.get("containers"):
+                and full(st.get("usage")) and full(sv.get("usage")) and rec and rec.get("containers") and hist_ok:
             print(json.dumps({"stack": st["usage"], "server": sv["usage"], "units": {s["service"]: s["usage"] for s in svcs}}))
             break
         time.sleep(3)

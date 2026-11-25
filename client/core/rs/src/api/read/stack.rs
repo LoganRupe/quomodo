@@ -3,11 +3,12 @@ use serde::{Deserialize, Serialize};
 use typeshare::typeshare;
 
 use crate::entities::{
-  SearchCombinator, U64,
+  SearchCombinator, Timelength, U64,
   stack::{
     Stack, StackActionState, StackListItem, StackQuery, StackService,
     StackServiceState, StackSortBy,
   },
+  stats::StackStatsRecord,
   update::Log,
 };
 
@@ -400,4 +401,50 @@ pub struct GetStacksSummaryResponse {
   pub unhealthy: u32,
   /// The number of stacks with Unknown state.
   pub unknown: u32,
+}
+
+//
+
+#[cfg(feature = "utoipa")]
+#[utoipa::path(
+  post,
+  path = "/GetHistoricalStackStats",
+  description = "Paginated endpoint serving the CPU and memory history of some stacks, across every agent they ran on.",
+  request_body(content = GetHistoricalStackStats),
+  responses(
+    (status = 200, description = "The historical stack stats", body = GetHistoricalStackStatsResponse),
+  ),
+)]
+pub fn get_historical_stack_stats() {}
+
+/// Paginated endpoint serving the CPU and memory history of some
+/// stacks, across every agent they ran on. A stack the user can't
+/// read is left out. Response: [GetHistoricalStackStatsResponse].
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug, Clone, Resolve)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[empty_traits(KomodoReadRequest)]
+#[response(GetHistoricalStackStatsResponse)]
+#[error(mogh_error::Error)]
+pub struct GetHistoricalStackStats {
+  /// Stack ids or names. At most 32.
+  pub stacks: Vec<String>,
+  /// The granularity of the data.
+  pub granularity: Timelength,
+  /// Page of historical data. Default is 0, which is the most recent data.
+  /// Use with the `next_page` field of the response.
+  #[serde(default)]
+  pub page: u32,
+}
+
+/// Response to [GetHistoricalStackStats].
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+pub struct GetHistoricalStackStatsResponse {
+  /// The timeseries page of data, newest first, one record per
+  /// timestamp with any readings.
+  pub stats: Vec<StackStatsRecord>,
+  /// If there is a next page of data, pass this to `page` to get it.
+  pub next_page: Option<u32>,
 }

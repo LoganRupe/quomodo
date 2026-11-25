@@ -40,6 +40,7 @@ use crate::api::read;
     read::list_all_stack_services,
     read::get_stack_log,
     read::search_stack_log,
+    read::get_historical_stack_stats,
     // deployment
     // build
     // repo

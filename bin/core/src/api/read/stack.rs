@@ -1,4 +1,10 @@
-use anyhow::Context;
+use std::collections::{BTreeMap, HashSet};
+
+use anyhow::{Context, anyhow};
+use database::mungos::{
+  find::find_collect,
+  mongodb::{bson::doc, options::FindOptions},
+};
 use komodo_client::{
   api::read::*,
   entities::{
@@ -7,11 +13,13 @@ use komodo_client::{
       Stack, StackActionState, StackListItem, StackQuery,
       StackService, StackSortBy, StackState,
     },
-    stats::ContainerUsage,
+    stats::{ContainerUsage, StackStatsRecord, StackUsage},
   },
 };
+use mogh_error::AddStatusCodeError;
 use mogh_resolver::Resolve;
 use periphery_client::api::quadlet;
+use reqwest::StatusCode;
 
 use crate::{
   helpers::{
@@ -21,10 +29,13 @@ use crate::{
   permission::get_check_permissions,
   resource,
   stack::setup_stack_execution,
-  state::{action_states, stack_status_cache},
+  state::{action_states, db_client, stack_status_cache},
 };
 
-use super::{ReadArgs, list_limit};
+use super::{
+  ReadArgs, list_limit,
+  server::{STATS_PER_PAGE, history_timestamps},
+};
 
 impl Resolve<ReadArgs> for GetStack {
   async fn resolve(
@@ -377,5 +388,102 @@ impl Resolve<ReadArgs> for GetStacksSummary {
     }
 
     Ok(res)
+  }
+}
+
+/// The most stacks one [GetHistoricalStackStats] call may name.
+const MAX_HISTORY_STACKS: usize = 32;
+
+/// The fields of a stats record that hold stack usage.
+#[derive(serde::Deserialize)]
+struct StackUsageRow {
+  ts: i64,
+  #[serde(default)]
+  stacks: Vec<StackUsage>,
+}
+
+impl Resolve<ReadArgs> for GetHistoricalStackStats {
+  async fn resolve(
+    self,
+    ReadArgs { user }: &ReadArgs,
+  ) -> mogh_error::Result<GetHistoricalStackStatsResponse> {
+    let GetHistoricalStackStats {
+      stacks,
+      granularity,
+      page,
+    } = self;
+    if stacks.len() > MAX_HISTORY_STACKS {
+      return Err(
+        anyhow!(
+          "At most {MAX_HISTORY_STACKS} stacks per request, got {}",
+          stacks.len()
+        )
+        .status_code(StatusCode::BAD_REQUEST),
+      );
+    }
+    // Checked the way GetStack checks. Reading a Stack is enough: its
+    // history doesn't need the Servers it ran on. A stack the user
+    // can't read, or that no longer exists, is left out.
+    let mut readable = HashSet::new();
+    for stack in &stacks {
+      if let Ok(stack) = get_check_permissions::<Stack>(
+        stack,
+        user,
+        PermissionLevel::Read.into(),
+      )
+      .await
+      {
+        readable.insert(stack.id);
+      }
+    }
+    if readable.is_empty() {
+      return Ok(GetHistoricalStackStatsResponse {
+        stats: Vec::new(),
+        next_page: None,
+      });
+    }
+
+    // A stack's samples sit in the record of whichever agent it was
+    // on at the time, so read across every agent. The ts index
+    // bounds this to one page of timestamps, whatever the retention.
+    let rows = find_collect(
+      &db_client().stats.clone_with_type::<StackUsageRow>(),
+      doc! {
+        "ts": { "$in": history_timestamps(granularity, page) },
+        "stacks.id": { "$in": readable.iter().collect::<Vec<_>>() },
+      },
+      FindOptions::builder()
+        .projection(doc! { "_id": 0, "ts": 1, "stacks": 1 })
+        .build(),
+    )
+    .await
+    .context("failed to pull stats from db")?;
+
+    // Merge the agents' records into one per timestamp. The recorder
+    // keeps a stack under one agent per timestamp; keep the first
+    // reading in case that ever changes.
+    let mut by_ts = BTreeMap::<i64, Vec<StackUsage>>::new();
+    for row in rows {
+      let entry = by_ts.entry(row.ts).or_default();
+      for usage in row.stacks {
+        if readable.contains(&usage.id)
+          && !entry.iter().any(|seen| seen.id == usage.id)
+        {
+          entry.push(usage);
+        }
+      }
+    }
+    let stats = by_ts
+      .into_iter()
+      .rev()
+      .filter(|(_, stacks)| !stacks.is_empty())
+      .map(|(ts, stacks)| StackStatsRecord { ts, stacks })
+      .collect::<Vec<_>>();
+    let next_page = if stats.len() == STATS_PER_PAGE as usize {
+      Some(page + 1)
+    } else {
+      None
+    };
+    Ok(GetHistoricalStackStatsResponse { stats, next_page })
   }
 }

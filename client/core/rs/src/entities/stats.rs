@@ -171,6 +171,18 @@ pub struct StackUsage {
   pub mem_bytes: Option<f64>,
 }
 
+/// The usage of some stacks at one point in time, collected from the
+/// stats records of every agent they ran on.
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+pub struct StackStatsRecord {
+  /// Unix timestamp in milliseconds
+  pub ts: I64,
+  /// The usage of each requested stack recorded at `ts`.
+  pub stacks: Vec<StackUsage>,
+}
+
 /// Realtime system stats data.
 #[typeshare]
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
