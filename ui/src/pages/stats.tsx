@@ -548,8 +548,9 @@ function HistoricalStats({
           ...new Set([
             ...chartedLines.map((line) => line.host),
             ...plan.lines.map((line) => line.host),
+            ...hosts,
           ]),
-        ];
+        ].slice(0, CANDIDATES);
   const hostIds = [
     ...new Set(
       hostCandidates

@@ -137,7 +137,7 @@ export function SeriesChart({
     if (isCores)
       return value === 0 || value >= 0.1
         ? fmtCores(value, precise)
-        : `${value.toFixed(3)}${precise ? " cores" : ""}`;
+        : `${value < 0.0005 ? "<0.001" : value.toFixed(3)}${precise ? " cores" : ""}`;
     if (isBytes) return fmtBytes(value);
     return `${value.toFixed(precise ? 1 : 0)}%`;
   };
