@@ -105,6 +105,9 @@ pub struct CachedStackStatus {
   pub state: StackState,
   /// The services connected to the stack
   pub services: Vec<StackService>,
+  /// Changes whenever the entry's alert baseline (`prev`) is set, so
+  /// the alert loop only moves a baseline it read.
+  pub baseline: u64,
 }
 
 pub type StackStatusCache =

@@ -9,6 +9,7 @@ use komodo_client::entities::{
 
 use crate::{
   alert::send_alerts,
+  monitor::helpers::consume_stack_transition,
   resource,
   state::{action_states, db_client, stack_status_cache},
 };
@@ -22,6 +23,7 @@ pub async fn alert_stacks(
   for status in stack_status_cache().get_values().await {
     // Don't alert if prev None
     let Some(prev) = status.prev else {
+      consume_stack_transition(&status).await;
       continue;
     };
 
@@ -30,10 +32,12 @@ pub async fn alert_stacks(
     if status.curr.state == StackState::Unknown
       || prev == StackState::Unknown
     {
+      consume_stack_transition(&status).await;
       continue;
     }
 
-    // Don't alert if deploying
+    // Don't alert if deploying. The refresh at the end of the deploy
+    // resets the baseline, so nothing is consumed here.
     if action_states
       .stack
       .get(&status.curr.id)
@@ -54,8 +58,10 @@ pub async fn alert_stacks(
           |e| error!("failed to get stack from db | {e:#?}"),
         )
       else {
+        // Left pending, to retry next time.
         continue;
       };
+      consume_stack_transition(&status).await;
       if !stack.config.send_alerts {
         continue;
       }
