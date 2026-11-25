@@ -49,14 +49,22 @@ export type ChartKind =
 
 const seriesKey = (i: number) => `series-${i}`;
 
+/** An agent's stats record, or a stack history record, which carries
+ * stack usage only. */
+export type ChartRecord = Types.SystemStatsRecord | Types.StackStatsRecord;
+
+export const isHostRecord = (
+  record: ChartRecord,
+): record is Types.SystemStatsRecord => "cpu_perc" in record;
+
 export interface ChartSeries {
   name: string;
   color: string;
-  stats: Types.SystemStatsRecord[];
+  stats: ChartRecord[];
   /** Where "Cpu Cores" and "Memory Bytes" read a record's usage from.
    * Default: the agent's total over all its containers. */
   usage?: (
-    record: Types.SystemStatsRecord,
+    record: ChartRecord,
   ) => { cpu_cores?: number; mem_bytes?: number } | undefined;
   dashed?: boolean;
 }
@@ -269,10 +277,16 @@ function chartTitle(kind: ChartKind) {
 }
 
 function getValue(
-  stat: Types.SystemStatsRecord,
+  stat: ChartRecord,
   kind: ChartKind,
   series: ChartSeries,
 ): number | undefined {
+  if (kind === "Cpu Cores")
+    return (series.usage ?? agentUsage)(stat)?.cpu_cores;
+  if (kind === "Memory Bytes")
+    return (series.usage ?? agentUsage)(stat)?.mem_bytes;
+  // Host kinds read an agent's record. A stack record has none.
+  if (!isHostRecord(stat)) return undefined;
   switch (kind) {
     case "Cpu":
       return stat.cpu_perc || 0;
@@ -290,13 +304,9 @@ function getValue(
       return stat.network_egress_bytes || 0;
     case "Load Average":
       return stat.load_average?.one ?? 0;
-    case "Cpu Cores":
-      return (series.usage ?? agentUsage)(stat)?.cpu_cores;
-    case "Memory Bytes":
-      return (series.usage ?? agentUsage)(stat)?.mem_bytes;
   }
 }
 
-function agentUsage(stat: Types.SystemStatsRecord) {
-  return stat.containers;
+function agentUsage(stat: ChartRecord) {
+  return isHostRecord(stat) ? stat.containers : undefined;
 }

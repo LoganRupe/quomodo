@@ -1,9 +1,9 @@
 import { useRead } from "@/lib/hooks";
 import { ICONS } from "@/lib/icons";
-import { Types } from "komodo_client";
 import { useMemo } from "react";
 import { useStatsGranularity } from "../hooks";
 import {
+  ChartRecord,
   ChartSeries,
   historicalRefetchInterval,
   MAX_SERIES,
@@ -57,7 +57,7 @@ export default function AgentUsageCharts({ id }: { id: string }) {
         name: names.get(stackId) ?? stackId,
         color: SERIES_COLORS[i],
         stats,
-        usage: (record: Types.SystemStatsRecord) =>
+        usage: (record: ChartRecord) =>
           record.stacks?.find((s) => s.id === stackId),
       })),
     ];

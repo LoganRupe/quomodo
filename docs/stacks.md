@@ -186,15 +186,17 @@ rootless agent, the agent total is that user's containers.
   default.
 
 The numbers are off by default. Turn them on with **Show Stats** on a Stack's
-page, **Show Stack Stats** on the Stacks list and the dashboard, and the
-existing **Show Server Stats**, which fills in each agent's row in the Host
-table. The Stats page shows where a host's memory goes by Stack, and its
+page, which also adds a **Stats** tab charting the Stack's history, **Show
+Stack Stats** on the Stacks list and the dashboard, and the existing **Show
+Server Stats**, which fills in each agent's row in the Host table. The Stats page shows where a host's memory goes by Stack, and its
 history charts switch between hosts, agents and Stacks. A rootless agent's
 Stats tab has a **This agent** view.
 
 Each agent's usage and each Stack's is kept with the server stats history,
-for as long as `keep_stats_for_days` (0 keeps it forever). A Stack's history is kept under the
-Server it ran on. Host CPU, memory and disk, and the alerts on them, are
+for as long as `keep_stats_for_days` (0 keeps it forever). A Stack's history
+follows it: after a move to another Server, its charts still show what it
+used before the move. Reading that history needs Read on the Stack only, not
+on the Servers it ran on. Host CPU, memory and disk, and the alerts on them, are
 unchanged: agents on one machine still report the whole host, and agent
 totals won't add up to it, since the kernel, page cache and other processes
 sit outside any container.

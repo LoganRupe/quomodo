@@ -12,8 +12,11 @@ import { useStatsGranularity } from "@/resources/server/hooks";
 import { groupServersByHost, ServerHost } from "@/resources/server/hosts";
 import {
   ChartKind,
+  ChartRecord,
   ChartSeries,
+  historicalRefetchInterval,
   historicalStatsQuery,
+  isHostRecord,
   MAX_SERIES,
   SeriesChart,
   SERIES_COLORS,
@@ -429,9 +432,11 @@ function HistoricalStats({
     defaultValue: "hosts",
   });
 
-  // What each mode charts. Usage lines come from `usage` (agents, stacks),
-  // host lines from each host's primary agent. Agents and stacks are
-  // ranked by their live memory, so the top ones get a line.
+  // What each mode charts. Usage lines come from `usage`: an agent's
+  // from its own history, a stack's from its history across every agent
+  // it ran on. Host lines come from each host's primary agent. Agents
+  // and stacks are ranked by their live memory, so the top ones get a
+  // line. Stacks mode charts the stacks now on the shown hosts.
   const plan = useMemo(() => {
     // Offline and disabled agents stay charted: their history is still
     // stored, and an outage is when it matters. One with nothing in the
@@ -497,9 +502,9 @@ function HistoricalStats({
         )
         .map((stack) => ({
           name: label(stack.name, agents.get(stack.info.server_id)!.server),
-          server: stack.info.server_id,
+          stack: stack.id,
           host: agentHost.get(stack.info.server_id)!,
-          usage: (record: Types.SystemStatsRecord) =>
+          usage: (record: ChartRecord) =>
             record.stacks?.find((s) => s.id === stack.id),
         }));
     }
@@ -520,7 +525,7 @@ function HistoricalStats({
   // agent, say) must not take a slot from one with history, so history
   // is fetched for up to CANDIDATES before choosing MAX_SERIES of them.
   const candidateIds = [
-    ...plan.lines.map((line) => line.server),
+    ...plan.lines.flatMap((line) => (line.server ? [line.server] : [])),
     ...plan.hosts.map((host) => host.primary.id),
   ];
   const candidateQueries = useQueries({
@@ -532,9 +537,30 @@ function HistoricalStats({
   [...new Set(candidateIds)].forEach((id, i) =>
     history.set(id, candidateQueries[i].data?.stats ?? []),
   );
+  // Every candidate stack in one call. Sorted, so a change in the live
+  // memory ranking doesn't change the query.
+  const stackIds = plan.lines
+    .flatMap((line) => (line.stack ? [line.stack] : []))
+    .sort();
+  const stackQuery = useRead(
+    "GetHistoricalStackStats",
+    { stacks: stackIds, granularity },
+    {
+      enabled: stackIds.length > 0,
+      refetchInterval: historicalRefetchInterval(granularity),
+    },
+  );
+  const records = (line: UsageLine): ChartRecord[] =>
+    line.stack
+      ? (stackQuery.data?.stats ?? [])
+      : (history.get(line.server!) ?? []);
   const hasReading = (line: UsageLine) =>
-    (history.get(line.server) ?? []).some((record) => {
-      const usage = line.usage ? line.usage(record) : record.containers;
+    records(line).some((record) => {
+      const usage = line.usage
+        ? line.usage(record)
+        : isHostRecord(record)
+          ? record.containers
+          : undefined;
       return usage?.cpu_cores !== undefined || usage?.mem_bytes !== undefined;
     });
   const chartedLines = plan.lines.filter(hasReading).slice(0, MAX_SERIES);
@@ -567,9 +593,9 @@ function HistoricalStats({
   const chartedHosts = hostCandidates
     .filter((host) => (history.get(host.primary.id) ?? []).length > 0)
     .slice(0, MAX_SERIES);
-  const isPending = [...candidateQueries, ...hostQueries].some(
-    (query) => query.isPending,
-  );
+  const isPending =
+    [...candidateQueries, ...hostQueries].some((query) => query.isPending) ||
+    (stackIds.length > 0 && stackQuery.isPending);
   const charted = view === "hosts" ? chartedHosts.length : chartedLines.length;
   const note =
     plan.total === 0
@@ -589,7 +615,7 @@ function HistoricalStats({
   const usageSeries: ChartSeries[] = chartedLines.map((line, i) => ({
     name: line.name,
     color: SERIES_COLORS[i % SERIES_COLORS.length],
-    stats: history.get(line.server) ?? [],
+    stats: records(line),
     usage: line.usage,
   }));
 
@@ -685,8 +711,10 @@ function HistoricalStats({
 /** One agent's or one stack's line on the usage charts. */
 interface UsageLine {
   name: string;
-  /** The agent whose history holds the line's readings. */
-  server: string;
+  /** An agent's line: the agent whose history holds its readings. */
+  server?: string;
+  /** A stack's line: read from the stack's history across agents. */
+  stack?: string;
   host: ServerHost;
   usage?: ChartSeries["usage"];
 }
