@@ -158,7 +158,8 @@ pub struct ServerConfig {
   #[builder(default)]
   pub ignore_mounts: Vec<String>,
 
-  /// Whether to trigger 'docker image prune -a -f' every 24 hours.
+  /// Whether to run `podman image prune -a -f` once a day. Each server
+  /// prunes at its own fixed time between 00:00 and 01:00 UTC.
   /// default: true
   #[serde(default = "default_auto_prune")]
   #[builder(default = "default_auto_prune()")]

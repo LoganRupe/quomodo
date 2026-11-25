@@ -150,7 +150,7 @@
           }
         },
         "auto_prune": {
-          "description": "Whether to trigger 'docker image prune -a -f' every 24 hours.\ndefault: true",
+          "description": "Whether to run `podman image prune -a -f` once a day. Each server\nprunes at its own fixed time between 00:00 and 01:00 UTC.\ndefault: true",
           "type": [
             "boolean",
             "null"
