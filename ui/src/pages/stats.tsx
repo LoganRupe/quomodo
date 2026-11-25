@@ -77,6 +77,9 @@ export default function Stats() {
     localStorageKey: "stats.search.v1",
   });
   const tags = useTagsFilter();
+  // A search or tag filter can hide some of a host's agents, so their
+  // containers are missing from any per-host container total.
+  const filtered = terms.length > 0 || tags.length > 0;
 
   // Server side sort, passed up from the table.
   const [sortBy, setSortBy] = useLocalStorage<Types.ServerSortBy>({
@@ -140,8 +143,8 @@ export default function Stats() {
       <Text c="dimmed">No Servers found.</Text>
     ) : (
       <>
-        <CurrentStatsSummary hosts={hosts} />
-        <WhereItsGoing hosts={hosts} stacks={stacks} />
+        <CurrentStatsSummary hosts={hosts} filtered={filtered} />
+        <WhereItsGoing hosts={hosts} stacks={stacks} filtered={filtered} />
         <HistoricalStats
           hosts={hosts}
           hostColors={hostColors}
@@ -200,7 +203,13 @@ export default function Stats() {
   );
 }
 
-function CurrentStatsSummary({ hosts }: { hosts: ServerHost[] }) {
+function CurrentStatsSummary({
+  hosts,
+  filtered,
+}: {
+  hosts: ServerHost[];
+  filtered: boolean;
+}) {
   const agents = hosts.flatMap((host) => host.servers);
   const okCount = agents.filter(
     (server) => server.info.state === Types.ServerState.Ok,
@@ -286,7 +295,11 @@ function CurrentStatsSummary({ hosts }: { hosts: ServerHost[] }) {
           used={memUsed}
           total={memTotal}
           containers={measuredAgents.length ? containersGb : undefined}
-          partial={measuredAgents.length < statsAgents.length}
+          partial={
+            filtered ||
+            measuredAgents.length < statsAgents.length ||
+            statsAgents.some((s) => s.info.state !== Types.ServerState.Ok)
+          }
         />
         <StatBar
           title="Disk Usage"
@@ -353,13 +366,21 @@ function MemoryCard({
       {total > 0 && (
         <Text c="dimmed" size="sm">
           <b>{used.toFixed(1)} GB</b> of <b>{total.toFixed(1)} GB</b> in use
+          {containers !== undefined && (
+            <>
+              , containers <b>{fmtBytes(containers * GiB)}</b>
+              {partial && " (partial)"}
+            </>
+          )}
         </Text>
       )}
       <Progress.Root size="xl">
         {containers !== undefined && (
           <Tooltip
-            label={`Containers: ${fmtBytes(inContainers * GiB)}${
-              partial ? " (some agents have no reading)" : ""
+            label={`Containers: ${fmtBytes((containers ?? 0) * GiB)} measured${
+              partial
+                ? ", partial: an agent is unreachable, has no reading, or is hidden by the filter"
+                : ""
             }`}
           >
             <Progress.Section value={containersPerc} color="green" />

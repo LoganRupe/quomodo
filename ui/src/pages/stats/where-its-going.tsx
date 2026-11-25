@@ -38,9 +38,12 @@ interface Segment {
 export default function WhereItsGoing({
   hosts,
   stacks,
+  filtered,
 }: {
   hosts: ServerHost[];
   stacks: Types.StackListItem[];
+  /** A search or tag filter may hide some of a host's agents. */
+  filtered: boolean;
 }) {
   const rows = useMemo(() => {
     const byServer = new Map<
@@ -100,7 +103,13 @@ export default function WhereItsGoing({
     >
       <Stack>
         {single && total > 0 && (
-          <HostBar host={single} rows={rows} used={used} total={total} />
+          <HostBar
+            host={single}
+            rows={rows}
+            used={used}
+            total={total}
+            filtered={filtered}
+          />
         )}
         {rows.length === 0 ? (
           <Text c="dimmed" size="sm">
@@ -172,11 +181,13 @@ function HostBar({
   rows,
   used,
   total,
+  filtered,
 }: {
   host: ServerHost;
   rows: StackRow[];
   used: number;
   total: number;
+  filtered: boolean;
 }) {
   const measured = rows.filter(
     (row) => row.stack.info.usage?.mem_bytes !== undefined,
@@ -200,14 +211,18 @@ function HostBar({
   const stacksTotal = measured.reduce((sum, row) => sum + stackBytes(row), 0);
 
   // The agents' totals cover every container, in a stack or not. Only
-  // when every listed reachable agent has one is the remainder shown; a
-  // partial sum would pass part of the containers off as the rest.
-  const reachable = host.servers.filter(
-    (s) => s.info.state === Types.ServerState.Ok,
-  );
+  // when every agent has one is the remainder shown; a partial sum
+  // would pass part of the containers off as the rest.
+  // Every agent of the host must be listed, reachable and measured.
+  const reachable = host.servers;
   const complete =
+    !filtered &&
     reachable.length > 0 &&
-    reachable.every((s) => s.info.usage?.mem_bytes !== undefined);
+    reachable.every(
+      (s) =>
+        s.info.state === Types.ServerState.Ok &&
+        s.info.usage?.mem_bytes !== undefined,
+    );
   if (complete) {
     const containers = reachable.reduce(
       (sum, s) => sum + (s.info.usage?.mem_bytes ?? 0),

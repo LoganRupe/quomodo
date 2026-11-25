@@ -35,7 +35,7 @@ use crate::{
     periphery_client,
     query::{get_all_tags, get_cached_server_state},
   },
-  permission::{get_check_permissions, list_resource_ids_for_user},
+  permission::get_check_permissions,
   resource,
   state::{action_states, db_client, server_status_cache},
 };
@@ -437,22 +437,26 @@ impl Resolve<ReadArgs> for GetHistoricalServerStats {
     .await
     .context("failed to pull stats from db")?;
     // Reading a Server does not grant reading its Stacks: keep only
-    // the stacks this user can read. Not filtered by the stack's
-    // current server, so history from before a move stays.
-    if stats.iter().any(|record| !record.stacks.is_empty())
-      && let Some(ids) = list_resource_ids_for_user::<Stack>(
-        None,
-        None,
-        None,
+    // the stacks this user can read, checked the way GetStack checks.
+    let stack_ids = stats
+      .iter()
+      .flat_map(|record| record.stacks.iter().map(|s| s.id.clone()))
+      .collect::<HashSet<_>>();
+    let mut readable = HashSet::new();
+    for id in stack_ids {
+      if get_check_permissions::<Stack>(
+        &id,
         user,
         PermissionLevel::Read.into(),
       )
-      .await?
-    {
-      let ids = ids.into_iter().collect::<HashSet<_>>();
-      for record in &mut stats {
-        record.stacks.retain(|stack| ids.contains(&stack.id));
+      .await
+      .is_ok()
+      {
+        readable.insert(id);
       }
+    }
+    for record in &mut stats {
+      record.stacks.retain(|stack| readable.contains(&stack.id));
     }
     let next_page = if stats.len() == STATS_PER_PAGE as usize {
       Some(page + 1)

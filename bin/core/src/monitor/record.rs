@@ -4,11 +4,20 @@ use komodo_client::entities::stats::{
 
 use crate::{
   helpers::query::running_usage,
-  state::{db_client, server_status_cache},
+  state::{all_resources_cache, db_client, server_status_cache},
 };
 
 pub async fn record_server_stats(ts: i64) {
   let status = server_status_cache().get_values().await;
+  // A stack that moved during this cycle can be in two servers' last
+  // polls. Record it only under the server it is assigned to now.
+  let resources = all_resources_cache().load();
+  let assigned = |stack_id: &str, server_id: &str| {
+    resources
+      .stacks
+      .get(stack_id)
+      .is_some_and(|stack| stack.config.server_id == server_id)
+  };
   let records = status
     .into_iter()
     .filter_map(|status| {
@@ -39,7 +48,12 @@ pub async fn record_server_stats(ts: i64) {
           .containers
           .as_deref()
           .and_then(running_usage),
-        stacks: status.stack_usage.clone(),
+        stacks: status
+          .stack_usage
+          .iter()
+          .filter(|stack| assigned(&stack.id, &status.id))
+          .cloned()
+          .collect(),
       })
     })
     .collect::<Vec<_>>();

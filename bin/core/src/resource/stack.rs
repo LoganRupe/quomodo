@@ -119,7 +119,11 @@ impl super::KomodoResource for Stack {
     let cached = stack_status_cache().get(&stack.id).await;
     // Usage is read whatever the state: a stack of only pod or kube
     // units reads Down (state looks at container units) while its
-    // pods run.
+    // pods run. Only an observation from the stack's own server counts.
+    let usage = cached
+      .as_ref()
+      .filter(|s| s.curr.server_id == stack.config.server_id)
+      .and_then(|s| s.curr.usage);
     let cached = match state {
       StackState::Down | StackState::Unknown => None,
       _ => cached,
@@ -136,7 +140,6 @@ impl super::KomodoResource for Stack {
         .count();
       format!("{running}/{} units running", s.curr.services.len())
     });
-    let usage = cached.as_ref().and_then(|s| s.curr.usage);
 
     let server_name = all_resources_cache()
       .load()
