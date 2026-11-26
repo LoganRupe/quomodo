@@ -14,6 +14,9 @@ import { notifications } from "@mantine/notifications";
 import { CircleCheckBig } from "lucide-react";
 import { ChangeEvent, useState } from "react";
 
+export const GIT_TOKEN_HINT =
+  "The username only names the account here. Clones send the token as the password with the username 'token', so use an access token with read access to the repo, not an account password. To send a username and password, enter 'username:password' as the token.";
+
 export default function NewProviderAccount({
   type,
 }: {
@@ -102,6 +105,12 @@ export default function NewProviderAccount({
               </Group>
             );
           })}
+
+          {type === "GitProvider" && (
+            <Text c="dimmed" size="sm">
+              {GIT_TOKEN_HINT}
+            </Text>
+          )}
 
           <Group justify="end">
             <Button
