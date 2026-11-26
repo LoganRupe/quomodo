@@ -4,6 +4,7 @@
 //        runs for real.
 //   4.   the Servers page groups agents by host: root and rootless side by side.
 //   5.   the Stacks page, with the hover card on the shield that marks a root agent.
+//   6.   on the same page, Show Stack Stats adds CPU and memory for every stack.
 // Writes one video per page and marks.json to $OUT; assemble.py cuts them.
 //
 // Usage: PLAYWRIGHT=/path/to/node_modules/playwright/index.mjs node record.mjs
@@ -56,6 +57,22 @@ const marks = {};
 const born = {};
 const now = () => Date.now() / 1000;
 const mark = (page, name) => (marks[name] = { page, t: now() - born[page] });
+
+// Off camera, a helper on the lab network sends real web requests to four apps so scene 6 shows CPU in use.
+const LOAD = "quomodo-demo-load";
+const hit = (url, pause) => `while :; do wget -qT 5 -O /dev/null ${url}; sleep ${pause}; done &`;
+const loadScript = [
+  hit("http://atlas.home.arpa:3000/explore/repos", 0),
+  hit("http://atlas.home.arpa:3000/explore/users", 0),
+  hit("http://atlas.home.arpa:8080/", 0.1),
+  hit("http://hermes.home.arpa:8081/", 0),
+  hit("http://hermes.home.arpa:3001/", 0.01),
+  "wait",
+].join(" ");
+const stopLoad = () => execSync(`docker rm -f ${LOAD}`, { stdio: "ignore" });
+process.on("exit", stopLoad);
+sh(`docker rm -f ${LOAD} >/dev/null 2>&1; docker run -d --name ${LOAD} --network quomodo-demo docker.io/library/caddy:2-alpine sh -c '${loadScript}' >/dev/null`);
+const loadStart = now();
 
 async function newPage(name) {
   const p = await ctx.newPage();
@@ -225,6 +242,15 @@ await glide(servers, servers.getByText("monitor", { exact: true }).first());
 await servers.waitForTimeout(2600);
 mark("servers", "s4-end");
 
+// Off camera, wait until every stack has CPU again for scene 6: the deploy in
+// scene 2 restarted gitea, and CPU needs two polls. The load needs a minute
+// of polls behind it too.
+const t6 = now();
+while (now() - loadStart < 75 || apiEval(`[s["name"] for s in api("read", "ListStacks", {}) if s["info"].get("usage", {}).get("cpu_cores") is None]`).length) {
+  if (now() - t6 > 180) throw new Error("stack CPU never showed");
+  await sleep(2000);
+}
+
 // Scene 5: Stacks. Root agents carry a shield; hover the one beside hermes,
 // whose rootless twin hermes-monitor runs uptime-kuma.
 const stacks = await newPage("stacks");
@@ -244,6 +270,19 @@ mark("stacks", "s5-hover");
 await stacks.waitForTimeout(4500);
 mark("stacks", "s5-end");
 
+// Scene 6: same page. Show Stack Stats adds CPU and memory columns, totalled
+// from each stack's containers.
+await caption(stacks, "6. CPU and memory for every stack", LEFT);
+mark("stacks", "s6-start");
+const toggle = stacks.getByRole("button", { name: "Show Stack Stats" });
+await glide(stacks, toggle, 34);
+await stacks.waitForTimeout(300);
+await toggle.click();
+await stacks.getByRole("columnheader", { name: "Memory" }).waitFor();
+await stacks.waitForTimeout(4200);
+mark("stacks", "s6-end");
+
+stopLoad();
 const videos = {};
 for (const [name, p] of Object.entries({ login, ui, s1, s3, servers, stacks })) {
   await p.close();

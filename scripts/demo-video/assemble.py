@@ -18,6 +18,7 @@ segs = [
     (v["s3"], m["s3-start"], m["s3-start"] + 4.2, 1.0),
     (v["servers"], m["s4-start"], m["s4-end"], 1.0),
     (v["stacks"], m["s5-start"], m["s5-end"], 1.0),
+    (v["stacks"], m["s6-start"], m["s6-end"], 1.0),
 ]
 inputs, parts = [], []
 for i, (f, a, b, sp) in enumerate(segs):
