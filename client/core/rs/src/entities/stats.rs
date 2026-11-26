@@ -39,6 +39,8 @@ pub struct SystemInformation {
   derive(mongo_indexed::derive::MongoIndexed)
 )]
 #[cfg_attr(feature = "mongo", collection_name(Stats))]
+// For GetHistoricalStackStats: a stack's samples across every agent.
+#[cfg_attr(feature = "mongo", doc_index({ "stacks.id": 1, "ts": -1 }))]
 pub struct SystemStatsRecord {
   /// Unix timestamp in milliseconds
   #[cfg_attr(feature = "mongo", index)]

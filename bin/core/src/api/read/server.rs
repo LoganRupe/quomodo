@@ -420,6 +420,14 @@ pub(super) fn history_timestamps(
   ts_vec
 }
 
+/// The granularity in ms of a page from [history_timestamps].
+pub(super) fn timestamps_step(timestamps: &[i64]) -> i64 {
+  match timestamps {
+    [newer, older, ..] => (newer - older).max(1),
+    _ => 1,
+  }
+}
+
 impl Resolve<ReadArgs> for GetHistoricalServerStats {
   async fn resolve(
     self,

@@ -3,7 +3,10 @@ use std::collections::{BTreeMap, HashSet};
 use anyhow::{Context, anyhow};
 use database::mungos::{
   find::find_collect,
-  mongodb::{bson::doc, options::FindOptions},
+  mongodb::{
+    bson::{Document, doc},
+    options::FindOptions,
+  },
 };
 use komodo_client::{
   api::read::*,
@@ -32,7 +35,10 @@ use crate::{
   state::{action_states, db_client, stack_status_cache},
 };
 
-use super::{ReadArgs, list_limit, server::history_timestamps};
+use super::{
+  ReadArgs, list_limit,
+  server::{STATS_PER_PAGE, history_timestamps, timestamps_step},
+};
 
 impl Resolve<ReadArgs> for GetStack {
   async fn resolve(
@@ -448,7 +454,7 @@ impl Resolve<ReadArgs> for GetHistoricalStackStats {
     let rows = find_collect(
       &db_client().stats.clone_with_type::<StackUsageRow>(),
       doc! {
-        "ts": { "$in": timestamps },
+        "ts": { "$in": &timestamps },
         "stacks.id": { "$in": &readable_ids },
       },
       FindOptions::builder()
@@ -479,22 +485,33 @@ impl Resolve<ReadArgs> for GetHistoricalStackStats {
       .map(|(ts, stacks)| StackStatsRecord { ts, stacks })
       .collect::<Vec<_>>();
     // A stack has gaps (stopped, unreachable), so a short page doesn't
-    // mean the end: there is a next page while it has a sample of these
-    // stacks. Looking one window ahead costs what this page did and
-    // tells nothing about stacks or servers the caller can't read; a
-    // gap longer than a whole window ends the paging.
-    // A count decodes no record: a projected find into the typed
-    // collection fails on the fields it leaves out.
+    // mean the end. The next page is the one holding the newest older
+    // sample of these stacks, on this granularity's buckets. The
+    // { stacks.id, ts } index makes this a short backwards scan per
+    // stack, and it says nothing about stacks the caller can't read.
+    // Decoded as a Document: the projection leaves out required fields.
+    let step = timestamps_step(&timestamps);
+    let oldest_in_window =
+      timestamps.last().copied().unwrap_or_default();
     let older = db_client()
       .stats
-      .count_documents(doc! {
-        "ts": { "$in": history_timestamps(granularity, page.saturating_add(1)) },
+      .clone_with_type::<Document>()
+      .find_one(doc! {
         "stacks.id": { "$in": &readable_ids },
+        "ts": { "$lt": oldest_in_window, "$mod": [step, 0] },
       })
-      .limit(1)
+      .sort(doc! { "ts": -1 })
+      .projection(doc! { "_id": 0, "ts": 1 })
       .await
-      .context("failed to look for older stack samples")?;
-    let next_page = (older > 0).then(|| page.saturating_add(1));
+      .context("failed to look for older stack samples")?
+      .and_then(|older| older.get_i64("ts").ok());
+    let next_page = older.map(|ts| {
+      // Pages count back from the newest bucket of page 0.
+      let newest =
+        timestamps[0] + step * STATS_PER_PAGE * page as i64;
+      u32::try_from((newest - ts) / (step * STATS_PER_PAGE))
+        .unwrap_or(u32::MAX)
+    });
     Ok(GetHistoricalStackStatsResponse { stats, next_page })
   }
 }
