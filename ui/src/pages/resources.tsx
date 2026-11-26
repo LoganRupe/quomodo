@@ -9,6 +9,8 @@ import ExportToml from "@/components/export-toml";
 import ServerShowStats from "@/resources/server/show-stats";
 import ServerViewSelect from "@/resources/server/view-select";
 import ResourceTable from "@/resources/table";
+import StackViewSelect from "@/resources/stack/view-select";
+import ShowStatsToggle from "@/components/show-stats-toggle";
 
 export default function Resources({ _type }: { _type?: UsableResource }) {
   const __type = useResourceParamType()!;
@@ -36,6 +38,10 @@ export default function Resources({ _type }: { _type?: UsableResource }) {
         <Group w={{ base: "100%", xs: "fit-content" }}>
           {type === "Server" && <ServerViewSelect />}
           {type === "Server" && <ServerShowStats />}
+          {type === "Stack" && <StackViewSelect />}
+          {type === "Stack" && (
+            <ShowStatsToggle preference="showStackStats" label="Stack Stats" />
+          )}
           <ExportToml listQuery={{ type, query }} tags={tags} />
         </Group>
       }

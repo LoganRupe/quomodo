@@ -22,8 +22,23 @@ impl Resolve<crate::api::Args> for PollStatus {
     };
 
     let (podman_connected, containers) = if self.include_containers {
-      match podman::list_containers().await {
-        Ok(containers) => (true, Some(containers)),
+      match podman::list_containers_with_pids().await {
+        Ok(mut containers) => {
+          // Container usage goes with the system stats: a server
+          // with stats monitoring off gets neither.
+          if self.include_stats {
+            crate::stats::usage::fill(&mut containers);
+          }
+          (
+            true,
+            Some(
+              containers
+                .into_iter()
+                .map(|(container, _)| container)
+                .collect(),
+            ),
+          )
+        }
         Err(e) => {
           warn!("Failed to list containers | {e:#}");
           (false, None)

@@ -23,7 +23,7 @@ use periphery_client::api;
 
 use crate::{
   config::core_config,
-  helpers::periphery_client,
+  helpers::{periphery_client, query::running_usage},
   monitor::refresh_server_cache,
   state::{
     action_states, db_client, periphery_connections,
@@ -97,6 +97,10 @@ impl super::KomodoResource for Server {
         state: status.as_ref().map(|s| s.state).unwrap_or_default(),
         err: status.as_ref().and_then(|s| s.err.clone()),
         stats: system_stats.map(Into::into),
+        usage: status
+          .as_ref()
+          .and_then(|s| s.containers.as_deref())
+          .and_then(running_usage),
         alerting_thresholds: (&server.config).into(),
         core_count: system_info.and_then(|i| i.core_count),
         logical_core_count: system_info

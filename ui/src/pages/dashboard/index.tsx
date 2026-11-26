@@ -9,6 +9,7 @@ import { Group } from "@mantine/core";
 import DashboardRecents from "./recents";
 import ExportToml from "@/components/export-toml";
 import ServerShowStats from "@/resources/server/show-stats";
+import ShowStatsToggle from "@/components/show-stats-toggle";
 import ShowTables from "./show-tables";
 import DashboardTables from "./tables";
 import DashboardActiveResources from "./active";
@@ -26,6 +27,7 @@ export default function Dashboard() {
         <Group w={{ base: "100%", xs: "fit-content" }}>
           <ShowTables />
           <ServerShowStats />
+          <ShowStatsToggle preference="showStackStats" label="Stack Stats" />
           <ExportToml tags={preferences.showTables ? tags : undefined} />
         </Group>
       }

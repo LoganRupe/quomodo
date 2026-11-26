@@ -1,6 +1,6 @@
 import { useLocalStorage } from "@mantine/hooks";
 import { useStack } from ".";
-import { usePermissions } from "@/lib/hooks";
+import { useDashboardPreferences, usePermissions } from "@/lib/hooks";
 import { Types } from "komodo_client";
 import { useMemo } from "react";
 import { MobileFriendlyTabsSelector, TabNoContent } from "mogh_ui";
@@ -11,8 +11,9 @@ import StackConfig from "./config";
 import StackInfo from "./info";
 import StackServices from "./services";
 import StackLog from "./log";
+import StackStats from "./stats";
 
-type StackTabsView = "Config" | "Info" | "Services" | "Log";
+type StackTabsView = "Config" | "Info" | "Services" | "Stats" | "Log";
 
 export default function StackTabs({ id }: { id: string }) {
   const [_view, setView] = useLocalStorage<StackTabsView>({
@@ -25,6 +26,9 @@ export default function StackTabs({ id }: { id: string }) {
     id,
   });
 
+  // The usage history shows with the page's Show Stats toggle.
+  const hideStats = !useDashboardPreferences().preferences.showStackPageStats;
+
   const state = info?.state;
   const hideInfo = !info?.repo && !info?.linked_repo;
   const hideLogs =
@@ -34,7 +38,9 @@ export default function StackTabs({ id }: { id: string }) {
     !specificLogs;
 
   const view =
-    (_view === "Info" && hideInfo) || (_view === "Log" && hideLogs)
+    (_view === "Info" && hideInfo) ||
+    (_view === "Stats" && hideStats) ||
+    (_view === "Log" && hideLogs)
       ? "Config"
       : _view;
 
@@ -54,12 +60,17 @@ export default function StackTabs({ id }: { id: string }) {
         icon: ICONS.Service,
       },
       {
+        value: "Stats",
+        hidden: hideStats,
+        icon: ICONS.Stats,
+      },
+      {
         value: "Log",
         disabled: hideLogs,
         icon: ICONS.Log,
       },
     ],
-    [hideInfo, hideLogs],
+    [hideInfo, hideStats, hideLogs],
   );
 
   const Selector = (
@@ -80,6 +91,9 @@ export default function StackTabs({ id }: { id: string }) {
       break;
     case "Services":
       View = <StackServices id={id} titleOther={Selector} />;
+      break;
+    case "Stats":
+      View = <StackStats id={id} titleOther={Selector} />;
       break;
     case "Log":
       View = <StackLog id={id} titleOther={Selector} />;

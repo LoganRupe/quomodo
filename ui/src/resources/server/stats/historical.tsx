@@ -1,6 +1,6 @@
 import { fmtSizeBytes, Section } from "mogh_ui";
 import { useStatsGranularity } from "../hooks";
-import { ReactNode, useMemo } from "react";
+import { ReactNode, useMemo, useState } from "react";
 import { Types } from "komodo_client";
 import { hexColorByIntention } from "mogh_ui";
 import { useRead } from "@/lib/hooks";
@@ -11,6 +11,7 @@ import {
   Group,
   lighten,
   Loader,
+  SegmentedControl,
   Select,
   SimpleGrid,
   Stack,
@@ -28,6 +29,8 @@ import {
 } from "recharts";
 import { ICONS } from "@/lib/icons";
 import { useLocalStorage } from "@mantine/hooks";
+import { useServer } from "..";
+import AgentUsageCharts from "./agent-usage";
 
 type StatType =
   | "Cpu"
@@ -54,6 +57,11 @@ export default function ServerHistoricalStats({ id }: { id: string }) {
     key: "server-stats-historical-show-v1",
     defaultValue: true,
   });
+  // A rootless agent can chart its own containers instead of the host.
+  // Root agents only have the host view.
+  const rootless = !!useServer(id)?.info.rootless_user;
+  const [scope, setScope] = useState<"host" | "agent">("host");
+  const agentView = rootless && scope === "agent";
   return (
     <Section
       withBorder
@@ -80,18 +88,46 @@ export default function ServerHistoricalStats({ id }: { id: string }) {
             ]}
             w={120}
           />
+          {rootless && (
+            <SegmentedControl
+              value={scope}
+              onChange={(value) => setScope(value as "host" | "agent")}
+              data={[
+                { value: "host", label: "Host" },
+                { value: "agent", label: "This agent" },
+              ]}
+            />
+          )}
           <ShowHideButton show={show} setShow={setShow} />
         </Group>
       }
       onHeaderClick={() => setShow((s) => !s)}
     >
-      {show && (
-        <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="xl">
-          {STAT_TYPES.map(([type, icon]) => (
-            <StatChart key={type} serverId={id} type={type} icon={icon} />
-          ))}
-        </SimpleGrid>
-      )}
+      {show &&
+        (agentView ? (
+          <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="xl">
+            <AgentUsageCharts id={id} />
+            {/* Load and disk have no per agent value: they stay host. */}
+            <StatChart
+              serverId={id}
+              type="Load Average"
+              icon={<ICONS.LoadAvg size="1.1rem" />}
+              note="host"
+            />
+            <StatChart
+              serverId={id}
+              type="Disk"
+              icon={<ICONS.Disk size="1.1rem" />}
+              note="host"
+            />
+          </SimpleGrid>
+        ) : (
+          <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="xl">
+            {STAT_TYPES.map(([type, icon]) => (
+              <StatChart key={type} serverId={id} type={type} icon={icon} />
+            ))}
+          </SimpleGrid>
+        ))}
     </Section>
   );
 }
@@ -100,10 +136,13 @@ function StatChart({
   serverId,
   type,
   icon,
+  note,
 }: {
   serverId: string;
   type: StatType;
   icon: ReactNode;
+  /** Dimmed text after the title, eg. "host". */
+  note?: string;
 }) {
   const [granularity] = useStatsGranularity();
 
@@ -266,6 +305,11 @@ function StatChart({
         <Text fz="xl" fw={500}>
           {type}
         </Text>
+        {note && (
+          <Text c="dimmed" size="sm">
+            {note}
+          </Text>
+        )}
       </Group>
       {isPending ? (
         <Center h={200}>
@@ -335,7 +379,9 @@ function StatChart({
                 fontSize: 12,
               }}
               labelStyle={{ color: "var(--mantine-color-dimmed)" }}
-              labelFormatter={(label) => new Date(Number(label)).toLocaleString()}
+              labelFormatter={(label) =>
+                new Date(Number(label)).toLocaleString()
+              }
               // Memory tooltip lists top-of-stack first, matching the chart.
               itemSorter={
                 isMemory
@@ -365,7 +411,11 @@ function StatChart({
                     ? ({ payload }) => (
                         <Group justify="center" gap="lg" pt={4}>
                           {[...(payload ?? [])].reverse().map((entry) => (
-                            <Group key={String(entry.value)} gap={6} wrap="nowrap">
+                            <Group
+                              key={String(entry.value)}
+                              gap={6}
+                              wrap="nowrap"
+                            >
                               <span
                                 style={{
                                   display: "inline-block",

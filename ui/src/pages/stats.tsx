@@ -1,6 +1,6 @@
 import TagsFilter from "@/components/tags/filter";
+import { fmtBytes } from "@/components/usage";
 import {
-  komodo_client,
   useDebouncedTermSearch,
   useRead,
   useSetTitle,
@@ -9,23 +9,36 @@ import {
 import { ICONS } from "@/lib/icons";
 import ResourceMultiSelector from "@/resources/multi-selector";
 import { useStatsGranularity } from "@/resources/server/hooks";
+import { groupServersByHost, ServerHost } from "@/resources/server/hosts";
+import {
+  ChartKind,
+  ChartRecord,
+  ChartSeries,
+  historicalRefetchInterval,
+  historicalStatsQuery,
+  isHostRecord,
+  MAX_SERIES,
+  SeriesChart,
+  SERIES_COLORS,
+} from "@/resources/server/stats/series-chart";
 import StatsServerTable from "@/resources/server/table/stats";
 import {
-  Center,
   Group,
-  Loader,
+  Progress,
+  SegmentedControl,
   Select,
   SimpleGrid,
   Stack,
   Text,
+  Tooltip,
 } from "@mantine/core";
 import { useLocalStorage } from "@mantine/hooks";
 import { keepPreviousData, useQueries } from "@tanstack/react-query";
 import { Types } from "komodo_client";
 import { ChartLine, Download, Upload } from "lucide-react";
 import {
-  fmtSizeBytes,
   fmtUpperCamelcase,
+  hexColorByIntention,
   InfoCard,
   Page,
   SearchInput,
@@ -33,46 +46,15 @@ import {
   StatBar,
 } from "mogh_ui";
 import { ReactNode, useMemo } from "react";
-import {
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import WhereItsGoing from "./stats/where-its-going";
 
-/**
- * Fixed categorical palette for per-server chart series (Mantine hues,
- * CVD-separation and contrast validated on light and dark surfaces).
- * Colors are assigned by position in the full server list, so filtering
- * never repaints the remaining servers.
- */
-const SERVER_COLORS = [
-  "#1c7ed6", // blue.7
-  "#e8590c", // orange.8
-  "#0ca678", // teal.7
-  "#be4bdb", // grape.6
-  "#f03e3e", // red.7
-  "#1098ad", // cyan.7
-  "#7950f2", // violet.6
-  "#d6336c", // pink.7
-];
+/** History is fetched for this many candidates, to fill MAX_SERIES
+ * lines with ones that have readings. */
+const CANDIDATES = 2 * MAX_SERIES;
 
-/** Beyond this many series, lines become unreadable and colors would repeat. */
-const MAX_CHART_SERVERS = SERVER_COLORS.length;
+const GiB = 1024 * 1024 * 1024;
 
-type StatType =
-  | "Cpu"
-  | "Memory"
-  | "Disk"
-  | "Load Average"
-  | "Network Ingress"
-  | "Network Egress";
-
-const STAT_TYPES: [StatType, ReactNode][] = [
+const HOST_CHARTS: [ChartKind, ReactNode][] = [
   ["Load Average", <ICONS.LoadAvg size="1.1rem" />],
   ["Cpu", <ICONS.Cpu size="1.1rem" />],
   ["Memory", <ICONS.Memory size="1.1rem" />],
@@ -81,10 +63,18 @@ const STAT_TYPES: [StatType, ReactNode][] = [
   ["Network Egress", <Upload size="1.1rem" />],
 ];
 
+type HistoricalView = "hosts" | "agents" | "stacks";
+
+const HISTORICAL_VIEWS: { value: HistoricalView; label: string }[] = [
+  { value: "hosts", label: "Hosts" },
+  { value: "agents", label: "Agents" },
+  { value: "stacks", label: "Stacks" },
+];
+
 export default function Stats() {
   useSetTitle("Stats");
 
-  // Server ids
+  // Server names
   const [selectedServers, setSelectedServers] = useLocalStorage<string[]>({
     key: "stats.selected-servers.v1",
     defaultValue: [],
@@ -94,6 +84,9 @@ export default function Stats() {
     localStorageKey: "stats.search.v1",
   });
   const tags = useTagsFilter();
+  // A search or tag filter can hide some of a host's agents, so their
+  // containers are missing from any per-host container total.
+  const filtered = terms.length > 0 || tags.length > 0;
 
   // Server side sort, passed up from the table.
   const [sortBy, setSortBy] = useLocalStorage<Types.ServerSortBy>({
@@ -101,27 +94,26 @@ export default function Stats() {
     defaultValue: Types.ServerSortBy.LoadAverage,
   });
 
-  const servers =
-    useRead(
-      "ListServers",
-      {
-        query: { terms, tags },
-        limit: 0,
-        sort_by: sortBy,
-        sort_desc: true,
-      },
-      { refetchInterval: 30_000, placeholderData: keepPreviousData },
-    ).data ?? [];
+  const serversData = useRead(
+    "ListServers",
+    {
+      query: { terms, tags },
+      limit: 0,
+      sort_by: sortBy,
+      sort_desc: true,
+    },
+    { refetchInterval: 30_000, placeholderData: keepPreviousData },
+  ).data;
+  const servers = useMemo(() => serversData ?? [], [serversData]);
 
-  // Stable color per server, keyed on the full (unfiltered) list
-  // so the assignment survives filtering.
-  const serverColors = useMemo(() => {
-    const colors = new Map<string, string>();
-    servers.forEach((server, i) =>
-      colors.set(server.id, SERVER_COLORS[i % SERVER_COLORS.length]),
-    );
-    return colors;
-  }, [servers]);
+  // Same cadence as the servers, so the breakdown never pairs fresh
+  // agent totals with old stack usage.
+  const stacksData = useRead(
+    "ListStacks",
+    { limit: 0 },
+    { refetchInterval: 30_000 },
+  ).data;
+  const stacks = useMemo(() => stacksData ?? [], [stacksData]);
 
   const filteredServers = useMemo(
     () =>
@@ -131,24 +123,51 @@ export default function Stats() {
     [servers, selectedServers],
   );
 
-  const Content = useMemo(
-    () =>
-      servers.length === 0 ? (
-        <Text c="dimmed">No Servers found.</Text>
-      ) : (
-        <>
-          <CurrentStatsSummary servers={filteredServers} />
-          <HistoricalStats
-            servers={filteredServers}
-            serverColors={serverColors}
-          />
-          <Section title="Servers" icon={<ICONS.Server size="1.3rem" />}>
-            <StatsServerTable resources={filteredServers} disableSorting />
-          </Section>
-        </>
-      ),
-    [servers, filteredServers],
-  );
+  // Every agent on one machine reports the same host stats, so the
+  // summary, breakdown and host charts count each host once. Selecting
+  // any agent of a host selects the whole host.
+  const allHosts = useMemo(() => groupServersByHost(servers), [servers]);
+  const hosts = useMemo(() => {
+    // In the server side sort order: a host sorts where its first agent does.
+    const position = new Map(servers.map((s, i) => [s.id, i]));
+    const first = (host: ServerHost) =>
+      Math.min(...host.servers.map((s) => position.get(s.id) ?? Infinity));
+    return allHosts
+      .filter(
+        (host) =>
+          !selectedServers.length ||
+          host.servers.some((s) => selectedServers.includes(s.name)),
+      )
+      .sort((a, b) => first(a) - first(b));
+  }, [servers, allHosts, selectedServers]);
+
+  // Stable color per host, keyed on the full (unfiltered, name sorted)
+  // list so the assignment survives filtering and sorting.
+  const hostColors = useMemo(() => {
+    const colors = new Map<string, string>();
+    allHosts.forEach((host, i) =>
+      colors.set(host.name, SERIES_COLORS[i % SERIES_COLORS.length]),
+    );
+    return colors;
+  }, [allHosts]);
+
+  const Content =
+    servers.length === 0 ? (
+      <Text c="dimmed">No Servers found.</Text>
+    ) : (
+      <>
+        <CurrentStatsSummary hosts={hosts} filtered={filtered} />
+        <WhereItsGoing hosts={hosts} stacks={stacks} filtered={filtered} />
+        <HistoricalStats
+          hosts={hosts}
+          hostColors={hostColors}
+          stacks={stacks}
+        />
+        <Section title="Servers" icon={<ICONS.Server size="1.3rem" />}>
+          <StatsServerTable resources={filteredServers} disableSorting />
+        </Section>
+      </>
+    );
 
   return (
     <Page
@@ -197,18 +216,25 @@ export default function Stats() {
   );
 }
 
-function CurrentStatsSummary({ servers }: { servers: Types.ServerListItem[] }) {
-  const okCount = servers.filter(
+function CurrentStatsSummary({
+  hosts,
+  filtered,
+}: {
+  hosts: ServerHost[];
+  filtered: boolean;
+}) {
+  const agents = hosts.flatMap((host) => host.servers);
+  const okCount = agents.filter(
     (server) => server.info.state === Types.ServerState.Ok,
   ).length;
-  const disabledCount = servers.filter(
+  const disabledCount = agents.filter(
     (server) => server.info.state === Types.ServerState.Disabled,
   ).length;
-  const unreachableCount = servers.length - okCount - disabledCount;
+  const unreachableCount = agents.length - okCount - disabledCount;
 
   // The list items already carry the latest stats,
-  // no per server stats queries needed.
-  const stats = servers.flatMap((server) => server.info.stats ?? []);
+  // no per server stats queries needed. One reading per host.
+  const stats = hosts.flatMap((host) => host.primary.info.stats ?? []);
   const cpu =
     stats.length > 0
       ? stats.reduce((acc, s) => acc + s.cpu_perc, 0) / stats.length
@@ -218,18 +244,39 @@ function CurrentStatsSummary({ servers }: { servers: Types.ServerListItem[] }) {
   const diskUsed = stats.reduce((acc, s) => acc + s.disk_used_gb, 0);
   const diskTotal = stats.reduce((acc, s) => acc + s.disk_total_gb, 0);
 
+  // Container memory: every agent's own total, summed over the hosts
+  // that have stats (the same hosts memUsed covers).
+  const statsAgents = hosts
+    .filter((host) => host.primary.info.stats)
+    .flatMap((host) => host.servers);
+  const measuredAgents = statsAgents.filter(
+    (s) => s.info.usage?.mem_bytes !== undefined,
+  );
+  const containersGb =
+    measuredAgents.reduce((acc, s) => acc + (s.info.usage?.mem_bytes ?? 0), 0) /
+    GiB;
+
   return (
     <Section>
       <Group align="stretch">
         <InfoCard
-          title="Servers"
+          title="Hosts"
           info={<ICONS.Server size="1.3rem" />}
           w={{ base: "100%", lg: 300 }}
           gap="0.2rem"
           justify="space-between"
         >
           <Text c="dimmed" size="sm">
-            <b>{okCount}</b> of <b>{servers.length}</b> reachable
+            <b>{hosts.length}</b> host{hosts.length === 1 ? "" : "s"} ·{" "}
+            {okCount === agents.length ? (
+              <>
+                <b>{okCount}</b> agent{okCount === 1 ? "" : "s"} reachable
+              </>
+            ) : (
+              <>
+                <b>{okCount}</b> of <b>{agents.length}</b> agents reachable
+              </>
+            )}
           </Text>
           <Group gap="md">
             {unreachableCount > 0 && (
@@ -249,7 +296,7 @@ function CurrentStatsSummary({ servers }: { servers: Types.ServerListItem[] }) {
           icon={<ICONS.Cpu size="1.3rem" />}
           description={
             <>
-              Average across <b>{stats.length}</b> reachable server
+              Average across <b>{stats.length}</b> host
               {stats.length === 1 ? "" : "s"}
             </>
           }
@@ -257,20 +304,15 @@ function CurrentStatsSummary({ servers }: { servers: Types.ServerListItem[] }) {
           warning={75}
           critical={90}
         />
-        <StatBar
-          title="Memory Usage"
-          icon={<ICONS.Memory size="1.3rem" />}
-          description={
-            memTotal > 0 && (
-              <>
-                <b>{memUsed.toFixed(1)} GB</b> of{" "}
-                <b>{memTotal.toFixed(1)} GB</b> in use
-              </>
-            )
+        <MemoryCard
+          used={memUsed}
+          total={memTotal}
+          containers={measuredAgents.length ? containersGb : undefined}
+          partial={
+            filtered ||
+            measuredAgents.length < statsAgents.length ||
+            statsAgents.some((s) => s.info.state !== Types.ServerState.Ok)
           }
-          percentage={memTotal > 0 ? (memUsed / memTotal) * 100 : 0}
-          warning={75}
-          critical={90}
         />
         <StatBar
           title="Disk Usage"
@@ -292,45 +334,290 @@ function CurrentStatsSummary({ servers }: { servers: Types.ServerListItem[] }) {
   );
 }
 
-function HistoricalStats({
-  servers,
-  serverColors,
+/** StatBar for memory, with the bar split into containers (green)
+ * and the rest of the used memory (the usual white). */
+function MemoryCard({
+  used,
+  total,
+  containers,
+  partial,
 }: {
-  servers: Types.ServerListItem[];
-  serverColors: Map<string, string>;
+  used: number;
+  total: number;
+  /** GB used by containers, undefined when no agent measured any. */
+  containers: number | undefined;
+  /** Some agents have no container reading. */
+  partial: boolean;
+}) {
+  const percentage = total > 0 ? (used / total) * 100 : undefined;
+  const intent =
+    percentage === undefined
+      ? undefined
+      : percentage > 90
+        ? "Critical"
+        : percentage > 75
+          ? "Warning"
+          : "Good";
+  const inContainers = Math.min(containers ?? 0, used);
+  const containersPerc = total > 0 ? (inContainers / total) * 100 : 0;
+  const restPerc = (percentage ?? 0) - containersPerc;
+  return (
+    <InfoCard
+      title="Memory Usage"
+      info={
+        <Group gap="xs">
+          <Text c={intent ? hexColorByIntention(intent) : "dimmed"} fz="lg">
+            {percentage === undefined ? "N/A" : `${percentage.toFixed(2)}%`}
+          </Text>
+          <ICONS.Memory size="1.3rem" />
+        </Group>
+      }
+      w={{ base: "100%", lg: 300 }}
+      gap="0.2rem"
+      justify="space-between"
+    >
+      {total > 0 && (
+        <Text c="dimmed" size="sm">
+          <b>{used.toFixed(1)} GB</b> of <b>{total.toFixed(1)} GB</b> in use
+          {containers !== undefined && (
+            <>
+              , containers <b>{fmtBytes(containers * GiB)}</b>
+              {partial && " (partial)"}
+            </>
+          )}
+        </Text>
+      )}
+      <Progress.Root size="xl">
+        {containers !== undefined && (
+          <Tooltip
+            label={`Containers: ${fmtBytes((containers ?? 0) * GiB)} measured${
+              partial
+                ? ", partial: an agent is unreachable, has no reading, or is hidden by the filter"
+                : ""
+            }`}
+          >
+            <Progress.Section value={containersPerc} color="green" />
+          </Tooltip>
+        )}
+        <Tooltip
+          label={
+            containers === undefined
+              ? `In use: ${fmtBytes(used * GiB)}`
+              : `Rest of in use memory: ${fmtBytes((used - inContainers) * GiB)}${
+                  partial
+                    ? ", including containers on agents with no reading"
+                    : ""
+                }. Approximate: the host and containers count page cache differently.`
+          }
+        >
+          <Progress.Section value={Math.max(0, restPerc)} color="bw" />
+        </Tooltip>
+      </Progress.Root>
+    </InfoCard>
+  );
+}
+
+function HistoricalStats({
+  hosts,
+  hostColors,
+  stacks,
+}: {
+  hosts: ServerHost[];
+  hostColors: Map<string, string>;
+  stacks: Types.StackListItem[];
 }) {
   const [granularity, setGranularity] = useStatsGranularity();
-
-  const chartServers = servers
-    .filter((server) => server.info.state === Types.ServerState.Ok)
-    .slice(0, MAX_CHART_SERVERS);
-
-  const historicalQueries = useQueries({
-    queries: chartServers.map((server) => ({
-      queryKey: [
-        "GetHistoricalServerStats",
-        { server: server.id, granularity },
-      ],
-      queryFn: () =>
-        komodo_client().read("GetHistoricalServerStats", {
-          server: server.id,
-          granularity,
-        }),
-      refetchInterval:
-        granularity === Types.Timelength.FiveSeconds
-          ? 5_000
-          : granularity === Types.Timelength.FifteenSeconds
-            ? 10_000
-            : 15_000,
-    })),
+  const [view, setView] = useLocalStorage<HistoricalView>({
+    key: "stats.historical-view.v1",
+    defaultValue: "hosts",
   });
 
-  const series = chartServers.map((server, i) => ({
-    name: server.name,
-    color: serverColors.get(server.id) ?? SERVER_COLORS[0],
-    stats: historicalQueries[i].data?.stats ?? [],
+  // What each mode charts. Usage lines come from `usage`: an agent's
+  // from its own history, a stack's from its history across every agent
+  // it ran on. Host lines come from each host's primary agent. Agents
+  // and stacks are ranked by their live memory, so the top ones get a
+  // line. Stacks mode charts the stacks now on the shown hosts.
+  const plan = useMemo(() => {
+    // Offline and disabled agents stay charted: their history is still
+    // stored, and an outage is when it matters. One with nothing in the
+    // window draws no line.
+    const offline = (server: Types.ServerListItem) =>
+      server.info.state !== Types.ServerState.Ok;
+    // Live memory first, then unreachable (recent history), then
+    // reachable with no reading, then disabled (oldest history, if any),
+    // so a disabled agent never takes a slot from a live one.
+    const rank = (server: Types.ServerListItem, mem: number | undefined) =>
+      mem !== undefined
+        ? mem
+        : server.info.state === Types.ServerState.NotOk
+          ? -1
+          : server.info.state === Types.ServerState.Ok
+            ? -2
+            : -3;
+    const label = (name: string, server: Types.ServerListItem) =>
+      offline(server) ? `${name} (unreachable)` : name;
+    const chartHosts = [...hosts].sort(
+      (a, b) => Number(offline(a.primary)) - Number(offline(b.primary)),
+    );
+    const chartAgents = hosts.flatMap((host) =>
+      host.servers.map((server) => ({ server, host })),
+    );
+    if (view === "hosts") {
+      return {
+        lines: [] as UsageLine[],
+        hosts: chartHosts.slice(0, CANDIDATES),
+        total: chartHosts.length,
+        noun: "hosts",
+        where: "",
+      };
+    }
+    let lines: UsageLine[];
+    let noun: string;
+    if (view === "agents") {
+      noun = "agents";
+      lines = [...chartAgents]
+        .sort(
+          (a, b) =>
+            rank(b.server, b.server.info.usage?.mem_bytes) -
+            rank(a.server, a.server.info.usage?.mem_bytes),
+        )
+        .map(({ server, host }) => ({
+          name: label(server.name, server),
+          server: server.id,
+          host,
+        }));
+    } else {
+      noun = "stacks";
+      const agents = new Map(chartAgents.map((a) => [a.server.id, a]));
+      const agentHost = new Map(chartAgents.map((a) => [a.server.id, a.host]));
+      lines = stacks
+        .filter((stack) => agentHost.has(stack.info.server_id))
+        .sort(
+          (a, b) =>
+            rank(
+              agents.get(b.info.server_id)!.server,
+              b.info.usage?.mem_bytes,
+            ) -
+            rank(agents.get(a.info.server_id)!.server, a.info.usage?.mem_bytes),
+        )
+        .map((stack) => ({
+          name: label(stack.name, agents.get(stack.info.server_id)!.server),
+          stack: stack.id,
+          host: agentHost.get(stack.info.server_id)!,
+          usage: (record: ChartRecord) =>
+            record.stacks?.find((s) => s.id === stack.id),
+        }));
+    }
+    const where =
+      hosts.length === 1
+        ? `on ${hosts[0].name}`
+        : `across ${hosts.length} hosts`;
+    return {
+      lines: lines.slice(0, CANDIDATES),
+      hosts: [] as ServerHost[],
+      total: lines.length,
+      noun,
+      where,
+    };
+  }, [view, hosts, stacks]);
+
+  // A candidate with nothing stored in the window (a long disabled
+  // agent, say) must not take a slot from one with history, so history
+  // is fetched for up to CANDIDATES before choosing MAX_SERIES of them.
+  const candidateIds = [
+    ...plan.lines.flatMap((line) => (line.server ? [line.server] : [])),
+    ...plan.hosts.map((host) => host.primary.id),
+  ];
+  const candidateQueries = useQueries({
+    queries: [...new Set(candidateIds)].map((id) =>
+      historicalStatsQuery(id, granularity),
+    ),
+  });
+  const history = new Map<string, Types.SystemStatsRecord[]>();
+  [...new Set(candidateIds)].forEach((id, i) =>
+    history.set(id, candidateQueries[i].data?.stats ?? []),
+  );
+  // Every candidate stack in one call. Sorted, so a change in the live
+  // memory ranking doesn't change the query.
+  const stackIds = plan.lines
+    .flatMap((line) => (line.stack ? [line.stack] : []))
+    .sort();
+  const stackQuery = useRead(
+    "GetHistoricalStackStats",
+    { stacks: stackIds, granularity },
+    {
+      enabled: stackIds.length > 0,
+      refetchInterval: historicalRefetchInterval(granularity),
+    },
+  );
+  const records = (line: UsageLine): ChartRecord[] =>
+    line.stack
+      ? (stackQuery.data?.stats ?? [])
+      : (history.get(line.server!) ?? []);
+  const hasReading = (line: UsageLine) =>
+    records(line).some((record) => {
+      const usage = line.usage
+        ? line.usage(record)
+        : isHostRecord(record)
+          ? record.containers
+          : undefined;
+      return usage?.cpu_cores !== undefined || usage?.mem_bytes !== undefined;
+    });
+  const chartedLines = plan.lines.filter(hasReading).slice(0, MAX_SERIES);
+  // Host lines (load, disk) are chosen on host history alone, so they
+  // show even when the window has no container readings (records from
+  // before the upgrade). In usage modes, hosts of charted lines first.
+  const hostCandidates =
+    view === "hosts"
+      ? plan.hosts
+      : [
+          ...new Set([
+            ...chartedLines.map((line) => line.host),
+            ...plan.lines.map((line) => line.host),
+            ...hosts,
+          ]),
+        ].slice(0, CANDIDATES);
+  const hostIds = [
+    ...new Set(
+      hostCandidates
+        .map((host) => host.primary.id)
+        .filter((id) => !history.has(id)),
+    ),
+  ];
+  const hostQueries = useQueries({
+    queries: hostIds.map((id) => historicalStatsQuery(id, granularity)),
+  });
+  hostIds.forEach((id, i) =>
+    history.set(id, hostQueries[i]?.data?.stats ?? []),
+  );
+  const chartedHosts = hostCandidates
+    .filter((host) => (history.get(host.primary.id) ?? []).length > 0)
+    .slice(0, MAX_SERIES);
+  const isPending =
+    [...candidateQueries, ...hostQueries].some((query) => query.isPending) ||
+    (stackIds.length > 0 && stackQuery.isPending);
+  const charted = view === "hosts" ? chartedHosts.length : chartedLines.length;
+  const note =
+    plan.total === 0
+      ? `No ${plan.noun} ${plan.where}.`
+      : plan.total > charted && !isPending
+        ? view === "hosts"
+          ? `Charting ${charted} of ${plan.total} hosts with history. Filter to specific Servers to compare the others.`
+          : `Charting the top ${charted} of ${plan.total} ${plan.noun} ${plan.where} with history, by memory.`
+        : undefined;
+
+  const hostSeries: ChartSeries[] = chartedHosts.map((host) => ({
+    name: host.name,
+    color: hostColors.get(host.name) ?? SERIES_COLORS[0],
+    stats: history.get(host.primary.id) ?? [],
   }));
-  const isPending = historicalQueries.some((query) => query.isPending);
+  // Colors by rank, so the charted lines never share one.
+  const usageSeries: ChartSeries[] = chartedLines.map((line, i) => ({
+    name: line.name,
+    color: SERIES_COLORS[i % SERIES_COLORS.length],
+    stats: records(line),
+    usage: line.usage,
+  }));
 
   return (
     <Section
@@ -358,190 +645,76 @@ function HistoricalStats({
             ]}
             w={120}
           />
+          <SegmentedControl
+            value={view}
+            onChange={(value) => setView(value as HistoricalView)}
+            data={HISTORICAL_VIEWS}
+          />
         </Group>
       }
     >
       <Stack>
-        {servers.length > MAX_CHART_SERVERS && (
+        {note && (
           <Text c="dimmed" size="sm">
-            Charting the first {MAX_CHART_SERVERS} of {servers.length} servers.
-            Filter to specific Servers to compare the others.
+            {note}
           </Text>
         )}
         <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="xl">
-          {STAT_TYPES.map(([type, icon]) => (
-            <MultiServerStatChart
-              key={type}
-              type={type}
-              icon={icon}
-              series={series}
-              isPending={isPending}
-            />
-          ))}
+          {view === "hosts" ? (
+            HOST_CHARTS.map(([kind, icon]) => (
+              <SeriesChart
+                key={kind}
+                kind={kind}
+                icon={icon}
+                series={hostSeries}
+                isPending={isPending}
+              />
+            ))
+          ) : (
+            <>
+              <SeriesChart
+                kind="Cpu Cores"
+                icon={<ICONS.Cpu size="1.1rem" />}
+                note="cores"
+                series={usageSeries}
+                isPending={isPending}
+              />
+              <SeriesChart
+                kind="Memory Bytes"
+                icon={<ICONS.Memory size="1.1rem" />}
+                note="working set"
+                series={usageSeries}
+                isPending={isPending}
+              />
+              <SeriesChart
+                kind="Load Average"
+                icon={<ICONS.LoadAvg size="1.1rem" />}
+                note="host"
+                series={hostSeries}
+                isPending={isPending}
+              />
+              <SeriesChart
+                kind="Disk"
+                icon={<ICONS.Disk size="1.1rem" />}
+                note="host"
+                series={hostSeries}
+                isPending={isPending}
+              />
+            </>
+          )}
         </SimpleGrid>
       </Stack>
     </Section>
   );
 }
 
-function MultiServerStatChart({
-  type,
-  icon,
-  series,
-  isPending,
-}: {
-  type: StatType;
-  icon: ReactNode;
-  series: { name: string; color: string; stats: Types.SystemStatsRecord[] }[];
-  isPending: boolean;
-}) {
-  // Timestamps are bucket-aligned to the granularity server side,
-  // so records merge across servers by exact ts.
-  const chartData = useMemo(() => {
-    const byTs = new Map<number, Record<string, number>>();
-    for (const { name, stats } of series) {
-      for (const record of stats) {
-        const entry = byTs.get(record.ts) ?? { date: record.ts };
-        entry[name] = getStat(record, type);
-        byTs.set(record.ts, entry);
-      }
-    }
-    return [...byTs.values()].sort((a, b) => a.date - b.date);
-  }, [series, type]);
-
-  const minTime = chartData[0]?.date ?? 0;
-  const maxTime = chartData[chartData.length - 1]?.date ?? 0;
-  const timeDiff = maxTime - minTime;
-
-  const isNetwork = type === "Network Ingress" || type === "Network Egress";
-  const isLoadAvg = type === "Load Average";
-  const isPercent = !isNetwork && !isLoadAvg;
-
-  const yTickFormatter = (value: number) => {
-    if (isNetwork) return fmtSizeBytes(value);
-    if (isLoadAvg) return value.toFixed(1);
-    return `${value.toFixed(0)}%`;
-  };
-
-  const xTickFormatter = (ts: number) => {
-    const date = new Date(ts);
-    if (timeDiff < 2 * 60 * 60 * 1000) {
-      return date.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    }
-    return date.toLocaleString([], {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
-  return (
-    <Stack gap={4} className="bordered-light" p="md" bdrs="md">
-      <Group gap="xs">
-        {icon}
-        <Text fz="xl" fw={500}>
-          {isLoadAvg ? "Load Average (1m)" : type}
-        </Text>
-      </Group>
-      {isPending ? (
-        <Center h={200}>
-          <Loader size="xl" />
-        </Center>
-      ) : (
-        <ResponsiveContainer width="100%" height={200}>
-          <LineChart
-            data={chartData}
-            margin={{ top: 5, right: 5, bottom: 0, left: 0 }}
-          >
-            <CartesianGrid
-              strokeDasharray="3 3"
-              stroke="rgba(255,255,255,0.07)"
-              vertical={false}
-            />
-            <XAxis
-              dataKey="date"
-              type="number"
-              domain={["dataMin", "dataMax"]}
-              tickFormatter={xTickFormatter}
-              tick={{ fontSize: 10, fill: "var(--mantine-color-dimmed)" }}
-              axisLine={false}
-              tickLine={false}
-              minTickGap={60}
-            />
-            <YAxis
-              tickFormatter={yTickFormatter}
-              tick={{ fontSize: 10, fill: "var(--mantine-color-dimmed)" }}
-              axisLine={false}
-              tickLine={false}
-              width={isNetwork ? 70 : 42}
-              domain={isPercent ? [0, 100] : ["auto", "auto"]}
-            />
-            <Legend
-              iconType="line"
-              wrapperStyle={{ fontSize: 11, paddingTop: 4 }}
-            />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: "var(--mantine-color-dark-7)",
-                border: "1px solid var(--mantine-color-dark-4)",
-                borderRadius: "var(--mantine-radius-sm)",
-                fontSize: 12,
-              }}
-              labelStyle={{ color: "var(--mantine-color-dimmed)" }}
-              labelFormatter={(label) => new Date(Number(label)).toLocaleString()}
-              // List the busiest server first.
-              itemSorter={(item) => -Number(item.value)}
-              formatter={(value, name) => {
-                const v = Number(value);
-                const formatted = isNetwork
-                  ? fmtSizeBytes(v)
-                  : isLoadAvg
-                    ? v.toFixed(2)
-                    : `${v.toFixed(1)}%`;
-                return [formatted, name];
-              }}
-            />
-            {series.map(({ name, color }) => (
-              <Line
-                key={name}
-                type="monotone"
-                dataKey={name}
-                stroke={color}
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 3 }}
-                connectNulls
-                isAnimationActive={false}
-              />
-            ))}
-          </LineChart>
-        </ResponsiveContainer>
-      )}
-    </Stack>
-  );
-}
-
-function getStat(stat: Types.SystemStatsRecord, type: StatType) {
-  switch (type) {
-    case "Cpu":
-      return stat.cpu_perc || 0;
-    case "Memory":
-      return stat.mem_total_gb > 0
-        ? (100 * stat.mem_used_gb) / stat.mem_total_gb
-        : 0;
-    case "Disk":
-      return stat.disk_total_gb > 0
-        ? (100 * stat.disk_used_gb) / stat.disk_total_gb
-        : 0;
-    case "Network Ingress":
-      return stat.network_ingress_bytes || 0;
-    case "Network Egress":
-      return stat.network_egress_bytes || 0;
-    case "Load Average":
-      return stat.load_average?.one ?? 0;
-  }
+/** One agent's or one stack's line on the usage charts. */
+interface UsageLine {
+  name: string;
+  /** An agent's line: the agent whose history holds its readings. */
+  server?: string;
+  /** A stack's line: read from the stack's history across agents. */
+  stack?: string;
+  host: ServerHost;
+  usage?: ChartSeries["usage"];
 }

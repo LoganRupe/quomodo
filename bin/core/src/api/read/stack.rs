@@ -1,4 +1,13 @@
-use anyhow::Context;
+use std::collections::{BTreeMap, HashSet};
+
+use anyhow::{Context, anyhow};
+use database::mungos::{
+  find::find_collect,
+  mongodb::{
+    bson::{Document, doc},
+    options::FindOptions,
+  },
+};
 use komodo_client::{
   api::read::*,
   entities::{
@@ -7,10 +16,13 @@ use komodo_client::{
       Stack, StackActionState, StackListItem, StackQuery,
       StackService, StackSortBy, StackState,
     },
+    stats::{ContainerUsage, StackStatsRecord, StackUsage},
   },
 };
+use mogh_error::AddStatusCodeError;
 use mogh_resolver::Resolve;
 use periphery_client::api::quadlet;
+use reqwest::StatusCode;
 
 use crate::{
   helpers::{
@@ -20,10 +32,13 @@ use crate::{
   permission::get_check_permissions,
   resource,
   stack::setup_stack_execution,
-  state::{action_states, stack_status_cache},
+  state::{action_states, db_client, stack_status_cache},
 };
 
-use super::{ReadArgs, list_limit};
+use super::{
+  ReadArgs, list_limit,
+  server::{STATS_PER_PAGE, history_timestamps, timestamps_step},
+};
 
 impl Resolve<ReadArgs> for GetStack {
   async fn resolve(
@@ -79,6 +94,24 @@ impl Resolve<ReadArgs> for ListStacks {
               .state
               .cmp(&b.info.state)
               .then_with(|| a.name.cmp(&b.name))
+          }))
+        }
+        StackSortBy::Cpu => {
+          resource::ListItemSort::InMemory(Box::new(|a, b| {
+            ContainerUsage::cmp_reading(
+              a.info.usage.and_then(|u| u.cpu_cores),
+              b.info.usage.and_then(|u| u.cpu_cores),
+            )
+            .then_with(|| a.name.cmp(&b.name))
+          }))
+        }
+        StackSortBy::Memory => {
+          resource::ListItemSort::InMemory(Box::new(|a, b| {
+            ContainerUsage::cmp_reading(
+              a.info.usage.and_then(|u| u.mem_bytes),
+              b.info.usage.and_then(|u| u.mem_bytes),
+            )
+            .then_with(|| a.name.cmp(&b.name))
           }))
         }
       };
@@ -358,5 +391,127 @@ impl Resolve<ReadArgs> for GetStacksSummary {
     }
 
     Ok(res)
+  }
+}
+
+/// The most stacks one [GetHistoricalStackStats] call may name.
+const MAX_HISTORY_STACKS: usize = 32;
+
+/// The fields of a stats record that hold stack usage.
+#[derive(serde::Deserialize)]
+struct StackUsageRow {
+  ts: i64,
+  #[serde(default)]
+  stacks: Vec<StackUsage>,
+}
+
+impl Resolve<ReadArgs> for GetHistoricalStackStats {
+  async fn resolve(
+    self,
+    ReadArgs { user }: &ReadArgs,
+  ) -> mogh_error::Result<GetHistoricalStackStatsResponse> {
+    let GetHistoricalStackStats {
+      stacks,
+      granularity,
+      page,
+    } = self;
+    if stacks.len() > MAX_HISTORY_STACKS {
+      return Err(
+        anyhow!(
+          "At most {MAX_HISTORY_STACKS} stacks per request, got {}",
+          stacks.len()
+        )
+        .status_code(StatusCode::BAD_REQUEST),
+      );
+    }
+    // Checked the way GetStack checks. Reading a Stack is enough: its
+    // history doesn't need the Servers it ran on. A stack the user
+    // can't read, or that no longer exists, is left out.
+    let mut readable = HashSet::new();
+    for stack in &stacks {
+      if let Ok(stack) = get_check_permissions::<Stack>(
+        stack,
+        user,
+        PermissionLevel::Read.into(),
+      )
+      .await
+      {
+        readable.insert(stack.id);
+      }
+    }
+    if readable.is_empty() {
+      return Ok(GetHistoricalStackStatsResponse {
+        stats: Vec::new(),
+        next_page: None,
+      });
+    }
+
+    // A stack's samples sit in the record of whichever agent it was
+    // on at the time, so read across every agent. The ts index
+    // bounds this to one page of timestamps, whatever the retention.
+    let timestamps = history_timestamps(granularity, page);
+    let readable_ids = readable.iter().cloned().collect::<Vec<_>>();
+    let rows = find_collect(
+      &db_client().stats.clone_with_type::<StackUsageRow>(),
+      doc! {
+        "ts": { "$in": &timestamps },
+        "stacks.id": { "$in": &readable_ids },
+      },
+      FindOptions::builder()
+        .projection(doc! { "_id": 0, "ts": 1, "stacks": 1 })
+        .build(),
+    )
+    .await
+    .context("failed to pull stats from db")?;
+
+    // Merge the agents' records into one per timestamp. The recorder
+    // keeps a stack under one agent per timestamp; keep the first
+    // reading in case that ever changes.
+    let mut by_ts = BTreeMap::<i64, Vec<StackUsage>>::new();
+    for row in rows {
+      let entry = by_ts.entry(row.ts).or_default();
+      for usage in row.stacks {
+        if readable.contains(&usage.id)
+          && !entry.iter().any(|seen| seen.id == usage.id)
+        {
+          entry.push(usage);
+        }
+      }
+    }
+    let stats = by_ts
+      .into_iter()
+      .rev()
+      .filter(|(_, stacks)| !stacks.is_empty())
+      .map(|(ts, stacks)| StackStatsRecord { ts, stacks })
+      .collect::<Vec<_>>();
+    // A stack has gaps (stopped, unreachable), so a short page doesn't
+    // mean the end. The next page is the one holding the newest older
+    // sample of these stacks, on this granularity's buckets. The
+    // { stacks.id, ts } index makes this a short backwards scan per
+    // stack, and it says nothing about stacks the caller can't read.
+    // Decoded as a Document: the projection leaves out required fields.
+    let step = timestamps_step(&timestamps);
+    let oldest_in_window =
+      timestamps.last().copied().unwrap_or_default();
+    let older = db_client()
+      .stats
+      .clone_with_type::<Document>()
+      .find_one(doc! {
+        "stacks.id": { "$in": &readable_ids },
+        "ts": { "$lt": oldest_in_window, "$mod": [step, 0] },
+      })
+      .sort(doc! { "ts": -1 })
+      .projection(doc! { "_id": 0, "ts": 1 })
+      .await
+      .context("failed to look for older stack samples")?
+      .and_then(|older| older.get_i64("ts").ok());
+    let next_page = older.map(|ts| {
+      // Pages count back from the newest bucket of page 0.
+      let newest =
+        timestamps[0] + step * STATS_PER_PAGE * page as i64;
+      u32::try_from((newest - ts) / (step * STATS_PER_PAGE))
+        .unwrap_or(u32::MAX)
+    });
+    Ok(GetHistoricalStackStatsResponse { stats, next_page })
   }
 }

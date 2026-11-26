@@ -1,5 +1,18 @@
 # Upgrading
 
+## 0.7.x to 0.8.0
+
+0.8.0 adds container CPU and memory per pod, Stack and agent (see
+[Resource usage](stacks.md#resource-usage)). Nothing has to be migrated.
+
+- **Upgrade the agents too.** Core shows usage only from 0.8.0 agents. An
+  older agent keeps working, and its numbers show as a dash.
+- **A new index.** On its first start Core adds an index on the stats
+  collection (`stacks.id`, `ts`). On a large history this takes a moment.
+- **Pod units.** The agent now asks podman for each container's pod, which
+  it never got before, so a `.pod` unit shows Running with its members
+  instead of Down.
+
 ## 0.6.x to 0.7.0
 
 0.7.0 moves Core onto `mogh_auth` 11 and the UI onto `mogh_ui` 6. Nothing has

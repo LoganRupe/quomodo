@@ -119,6 +119,7 @@ enum ReadRequest {
   ListFullStacks(ListFullStacks),
   ListStackServices(ListStackServices),
   ListAllStackServices(ListAllStackServices),
+  GetHistoricalStackStats(GetHistoricalStackStats),
 
   // ==== DEPLOYMENT ====
 

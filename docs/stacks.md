@@ -162,6 +162,45 @@ into `nobody`. The agent passes `Volume=` options through as written, so
 supports idmapped mounts (ext4, xfs and btrfs do; NFS does not) and has to be
 on every mount. The fixed slices need neither.
 
+## Resource usage
+
+With stats monitoring on for a Server, its agent measures CPU and memory
+for each running container from the container's cgroup. It starts no extra
+process. Core adds the numbers up per pod, per Stack and per agent. On a
+rootless agent, the agent total is that user's containers.
+
+- CPU is in cores. 1.5 means one and a half cores, averaged since the
+  last poll.
+- Memory is the working set: `memory.current` less the reclaimable
+  `inactive_file` page cache, which is how `podman stats` counts it. A limit
+  shows when the container's own cgroup has one (`memory.max`), as with
+  podman's `--memory`. A limit set only on the systemd service doesn't show.
+- A pod's numbers include its infra container.
+- A number that can't be measured shows as a dash, never 0. That happens on
+  the first poll after a container starts (CPU needs two samples), on a host
+  without cgroup v2, with stats monitoring off, or with an agent older than
+  this feature. If any running container in a pod or Stack has no reading,
+  the total is blank rather than a partial sum.
+- Rootless agents get CPU even when the cpu controller isn't delegated to
+  the user. Memory needs the memory controller, which systemd delegates by
+  default.
+
+The numbers are off by default. Turn them on with **Show Stats** on a Stack's
+page, which also adds a **Stats** tab charting the Stack's history, **Show
+Stack Stats** on the Stacks list and the dashboard, and the existing **Show
+Server Stats**, which fills in each agent's row in the Host table. The Stats page shows where a host's memory goes by Stack, and its
+history charts switch between hosts, agents and Stacks. A rootless agent's
+Stats tab has a **This agent** view.
+
+Each agent's usage and each Stack's is kept with the server stats history,
+for as long as `keep_stats_for_days` (0 keeps it forever). A Stack's history
+follows it: after a move to another Server, its charts still show what it
+used before the move. Reading that history needs Read on the Stack only, not
+on the Servers it ran on. Host CPU, memory and disk, and the alerts on them, are
+unchanged: agents on one machine still report the whole host, and agent
+totals won't add up to it, since the kernel, page cache and other processes
+sit outside any container.
+
 ## Resource files
 
 Stacks, Servers, Procedures and the rest can live in git as ResourceSync TOML.

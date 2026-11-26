@@ -11,7 +11,8 @@ use crate::{
     option_string_list_deserializer, string_list_deserializer,
   },
   entities::{
-    _Serror, MaintenanceWindow, Timelength, stats::MinimalSystemStats,
+    _Serror, MaintenanceWindow, Timelength,
+    stats::{ContainerUsage, MinimalSystemStats},
   },
 };
 
@@ -44,6 +45,10 @@ pub struct ServerListItemInfo {
   pub err: Option<_Serror>,
   /// System stats, if available
   pub stats: Option<MinimalSystemStats>,
+  /// CPU and memory summed over this agent's running containers.
+  /// For a rootless agent, that user's usage.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub usage: Option<ContainerUsage>,
   /// The server alerting thresholds
   pub alerting_thresholds: ServerAlertingThresholds,
   /// The server's number of physical cores.

@@ -12,6 +12,7 @@ use komodo_client::{
     permission::PermissionLevel,
     server::{Server, ServerQuery, ServerState},
     stack::Stack,
+    stats::ContainerUsage,
     update::Log,
   },
 };
@@ -145,6 +146,14 @@ impl Resolve<ReadArgs> for ListAllContainers {
         ContainerSortBy::Volumes => {
           a.volumes.first().cmp(&b.volumes.first())
         }
+        ContainerSortBy::Cpu => ContainerUsage::cmp_reading(
+          a.usage.and_then(|u| u.cpu_cores),
+          b.usage.and_then(|u| u.cpu_cores),
+        ),
+        ContainerSortBy::Memory => ContainerUsage::cmp_reading(
+          a.usage.and_then(|u| u.mem_bytes),
+          b.usage.and_then(|u| u.mem_bytes),
+        ),
       };
       cmp_desc(ord).then_with(|| a.name.cmp(&b.name))
     });

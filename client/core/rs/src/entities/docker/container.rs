@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use strum::Display;
 use typeshare::typeshare;
 
-use crate::entities::I64;
+use crate::entities::{I64, stats::ContainerUsage};
 
 /// Container summary returned by container list apis.
 /// Populated from `podman ps -a --format json`.
@@ -53,6 +53,10 @@ pub struct ContainerListItem {
   /// The volume / mount sources attached to container
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
   pub volumes: Vec<String>,
+  /// CPU and memory, for a running container on an agent with
+  /// stats monitoring on.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub usage: Option<ContainerUsage>,
 }
 
 /// An open port on a container
@@ -120,6 +124,10 @@ pub enum ContainerSortBy {
   Ports,
   /// Sort by first volume.
   Volumes,
+  /// Sort by CPU usage. Containers with no reading sort lowest.
+  Cpu,
+  /// Sort by memory usage. Containers with no reading sort lowest.
+  Memory,
 }
 
 #[typeshare]

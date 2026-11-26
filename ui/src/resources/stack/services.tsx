@@ -1,6 +1,6 @@
 import { Fragment, ReactNode } from "react";
 import { useStack } from ".";
-import { useRead } from "@/lib/hooks";
+import { useDashboardPreferences, useRead } from "@/lib/hooks";
 import { Types } from "komodo_client";
 import { Section } from "mogh_ui";
 import { DataTable, SortableHeader } from "mogh_ui";
@@ -11,6 +11,52 @@ import { StatusBadge } from "mogh_ui";
 import DockerResourceLink from "@/components/docker/link";
 import { Group, Text } from "@mantine/core";
 import ContainerPorts from "@/components/docker/container-ports";
+import { UsageCell, UsageKind, usageSortValue } from "@/components/usage";
+
+/** Units that run containers, so they can have usage. */
+const USAGE_KINDS = new Set<Types.QuadletKind>([
+  Types.QuadletKind.Container,
+  Types.QuadletKind.Pod,
+  Types.QuadletKind.Kube,
+]);
+
+/** States where a unit's containers may be running. A stopped unit
+ * has no usage to show, rather than a missing reading. */
+const RUNNING_SERVICE_STATES = new Set<Types.StackServiceState>([
+  Types.StackServiceState.Running,
+  Types.StackServiceState.Unhealthy,
+  Types.StackServiceState.Restarting,
+  Types.StackServiceState.Paused,
+]);
+
+function ServiceUsageCell({
+  service,
+  kind,
+}: {
+  service: Types.StackService;
+  kind: UsageKind;
+}) {
+  if (
+    !service.usage &&
+    !(
+      USAGE_KINDS.has(service.unit.kind) &&
+      RUNNING_SERVICE_STATES.has(service.state)
+    )
+  ) {
+    return null;
+  }
+  return (
+    <UsageCell
+      usage={service.usage}
+      kind={kind}
+      showLimit={kind === "mem"}
+      // A pod's row is its members summed.
+      textProps={
+        service.unit.kind === Types.QuadletKind.Pod ? { fw: 700 } : undefined
+      }
+    />
+  );
+}
 
 export default function StackServices({
   id,
@@ -48,6 +94,7 @@ function StackServicesTable({
   serverId: string;
   services: Types.ListStackServicesResponse;
 }) {
+  const showStats = !!useDashboardPreferences().preferences.showStackPageStats;
   return (
     <DataTable
       tableKey="StackServices"
@@ -78,6 +125,26 @@ function StackServicesTable({
               text={row.original.state}
               intent={stackServiceStateIntention(row.original.state)}
             />
+          ),
+        },
+        showStats && {
+          id: "Cpu",
+          accessorFn: (row) => usageSortValue(row.usage, "cpu"),
+          header: ({ column }) => (
+            <SortableHeader column={column} title="CPU" sortDescFirst />
+          ),
+          cell: ({ row }) => (
+            <ServiceUsageCell service={row.original} kind="cpu" />
+          ),
+        },
+        showStats && {
+          id: "Memory",
+          accessorFn: (row) => usageSortValue(row.usage, "mem"),
+          header: ({ column }) => (
+            <SortableHeader column={column} title="Memory" sortDescFirst />
+          ),
+          cell: ({ row }) => (
+            <ServiceUsageCell service={row.original} kind="mem" />
           ),
         },
         {

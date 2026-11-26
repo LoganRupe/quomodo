@@ -216,6 +216,7 @@ function onUpdate(
         ["ListFullStacks"],
         ["GetStacksSummary"],
         ["ListContainers"],
+        ["GetHistoricalStackStats"],
         ["GetStackLog", { stack: update.target.id }],
         ["SearchStackLog", { stack: update.target.id }],
         ["GetStack"],

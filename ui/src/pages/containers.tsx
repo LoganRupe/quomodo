@@ -16,6 +16,7 @@ import { SearchInput } from "mogh_ui";
 import TagsFilter from "@/components/tags/filter";
 import ResourceMultiSelector from "@/resources/multi-selector";
 import ListPagination from "@/components/list-pagination";
+import { containerUsageColumns } from "@/resources/server/docker/usage-columns";
 
 const CONTAINER_SORT_KEYS = Object.values(Types.ContainerSortBy);
 
@@ -133,6 +134,7 @@ export default function Containers() {
               );
             },
           },
+          ...containerUsageColumns(containers),
           {
             id: "Image",
             accessorKey: "image",

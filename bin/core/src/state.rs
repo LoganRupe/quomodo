@@ -9,7 +9,9 @@ use komodo_client::entities::{
   repo::RepoState,
   server::{PeripheryInformation, ServerHealth, ServerState},
   stack::{StackService, StackState},
-  stats::{SystemInformation, SystemStats},
+  stats::{
+    ContainerUsage, StackUsage, SystemInformation, SystemStats,
+  },
 };
 use mogh_cache::CloneCache;
 use tokio_util::sync::CancellationToken;
@@ -82,6 +84,10 @@ pub struct CachedServerStatus {
   pub system_info: Option<SystemInformation>,
   pub system_stats: Option<SystemStats>,
   pub containers: Option<Vec<ContainerListItem>>,
+  /// Each stack's usage from the same poll as `containers`, so a
+  /// stats record never pairs an agent total with another poll's
+  /// stack totals.
+  pub stack_usage: Vec<StackUsage>,
   /// When the agent's current run of failed container listings
   /// started (unix ms). `None` once a listing succeeds.
   pub containers_failed_since: Option<i64>,
@@ -108,6 +114,8 @@ pub struct CachedStackStatus {
   pub state: StackState,
   /// The services connected to the stack
   pub services: Vec<StackService>,
+  /// CPU and memory summed over the stack's running containers.
+  pub usage: Option<ContainerUsage>,
   /// Changes whenever the entry's alert baseline (`prev`) is set, so
   /// the alert loop only moves a baseline it read.
   pub baseline: u64,

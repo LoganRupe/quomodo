@@ -19,6 +19,7 @@ use komodo_client::{
     repo::Repo,
     server::{Server, ServerState},
     stack::{QuadletKind, QuadletUnit, Stack, StackState},
+    stats::ContainerUsage,
     sync::ResourceSync,
     tag::Tag,
     user::{User, admin_service_user},
@@ -389,4 +390,17 @@ pub async fn find_oidc_user(
     })
     .await
     .context("Failed at find user query from database")
+}
+
+/// Usage summed over the running containers. Stopped ones use
+/// nothing and are left out, rather than blanking the total.
+pub fn running_usage<'a>(
+  containers: impl IntoIterator<Item = &'a ContainerListItem>,
+) -> Option<ContainerUsage> {
+  ContainerUsage::sum(
+    containers
+      .into_iter()
+      .filter(|c| c.state == ContainerStateStatusEnum::Running)
+      .map(|c| c.usage.as_ref()),
+  )
 }

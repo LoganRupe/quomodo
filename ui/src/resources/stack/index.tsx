@@ -1,5 +1,6 @@
 import { stackStateIntention } from "@/lib/color";
 import {
+  useDashboardPreferences,
   useInvalidate,
   useListItem,
   usePermissions,
@@ -30,6 +31,7 @@ import {
   List,
   Loader,
   Text,
+  Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import ResourceLink from "@/resources/link";
@@ -39,6 +41,7 @@ import ResourceHeader from "../header";
 import BatchExecutions from "@/resources/batch-executions";
 import NewResourceWithDeployTarget from "../new-with-deploy-target";
 import { stackFileDiffs } from "@/components/stack-file-diffs";
+import { fmtUsage } from "@/components/usage";
 
 export function useStack(
   id: string | undefined,
@@ -262,6 +265,32 @@ export const StackComponents: RequiredResourceComponents<
               (d) => d.status === "same",
             )}
           />
+        </Box>
+      );
+    },
+    Usage: ({ id }) => {
+      const show = useDashboardPreferences().preferences.showStackPageStats;
+      const usage = useStack(id)?.info.usage;
+      if (!show || !usage) return null;
+      return (
+        // The divider border is added to the outer box, like Hash.
+        <Box>
+          <Tooltip label="CPU and memory of the stack's running containers">
+            <Box
+              px="sm"
+              py="0.2rem"
+              bdrs="sm"
+              ff="monospace"
+              style={{
+                borderColor: "var(--mantine-color-green-7)",
+                borderStyle: "solid",
+                borderWidth: "1px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {fmtUsage(usage)}
+            </Box>
+          </Tooltip>
         </Box>
       );
     },

@@ -30,6 +30,7 @@ import {
   useStacksByServer,
 } from "../hosts";
 import AgentBadge from "../agent-badge";
+import { UsageCell } from "@/components/usage";
 
 /** A host, or when `server` is set, one agent row under an expanded host. */
 interface HostTableRow {
@@ -235,8 +236,14 @@ export default function HostServerTable({
           header: ({ column }) => (
             <SortableHeader column={column} title="CPU" sortDescFirst />
           ),
+          // An agent row shows its own containers' total, in cores and
+          // with no bar, so it isn't read as a slice of the host bar.
           cell: ({ row: { original: row } }) =>
-            !row.server && <CpuCell server={row.host.primary} />,
+            row.server ? (
+              <UsageCell usage={row.server.info.usage} kind="cpu" unit />
+            ) : (
+              <CpuCell server={row.host.primary} />
+            ),
         },
         showStats && {
           id: "Memory",
@@ -245,7 +252,11 @@ export default function HostServerTable({
             <SortableHeader column={column} title="Memory" sortDescFirst />
           ),
           cell: ({ row: { original: row } }) =>
-            !row.server && <MemCell server={row.host.primary} />,
+            row.server ? (
+              <UsageCell usage={row.server.info.usage} kind="mem" />
+            ) : (
+              <MemCell server={row.host.primary} />
+            ),
         },
         showStats && {
           id: "Disk",

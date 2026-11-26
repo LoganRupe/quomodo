@@ -11,6 +11,7 @@ import { containerStateIntention } from "@/lib/color";
 import ContainerPorts from "@/components/docker/container-ports";
 import { SearchInput } from "mogh_ui";
 import { DividedChildren } from "mogh_ui";
+import { containerUsageColumns } from "@/resources/server/docker/usage-columns";
 
 export interface ContainersSectionProps extends SectionProps {
   serverId: string;
@@ -86,6 +87,7 @@ export default function ContainersSection({
                   );
                 },
               },
+              ...containerUsageColumns(filtered),
               {
                 accessorKey: "unit",
                 header: ({ column }) => (

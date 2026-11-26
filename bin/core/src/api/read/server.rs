@@ -1,6 +1,6 @@
 use std::{
   cmp::Ordering,
-  collections::HashMap,
+  collections::{HashMap, HashSet},
   sync::{Arc, OnceLock},
 };
 
@@ -15,11 +15,13 @@ use database::mungos::{
 use komodo_client::{
   api::read::*,
   entities::{
+    Timelength,
     permission::PermissionLevel,
     server::{
       Server, ServerActionState, ServerListItem, ServerSortBy,
       ServerState,
     },
+    stack::Stack,
     stats::{MinimalSystemStats, SystemInformation, SystemProcess},
   },
 };
@@ -391,7 +393,40 @@ impl Resolve<ReadArgs> for ListSystemProcesses {
   }
 }
 
-const STATS_PER_PAGE: i64 = 200;
+pub(super) const STATS_PER_PAGE: i64 = 200;
+
+/// The bucket-aligned timestamps of one page of history, newest
+/// first. Records are matched on these exactly.
+pub(super) fn history_timestamps(
+  granularity: Timelength,
+  page: u32,
+) -> Vec<i64> {
+  let granularity =
+    get_timelength_in_ms(granularity.to_string().parse().unwrap())
+      as i64;
+  let curr_ts = unix_timestamp_ms() as i64;
+  // Saturating: a huge page reaches before the epoch and finds nothing,
+  // rather than overflowing.
+  let mut curr_ts =
+    (curr_ts - curr_ts % granularity)
+      .saturating_sub(granularity.saturating_mul(
+        (page as i64).saturating_mul(STATS_PER_PAGE),
+      ));
+  let mut ts_vec = Vec::with_capacity(STATS_PER_PAGE as usize);
+  for _ in 0..STATS_PER_PAGE {
+    ts_vec.push(curr_ts);
+    curr_ts = curr_ts.saturating_sub(granularity);
+  }
+  ts_vec
+}
+
+/// The granularity in ms of a page from [history_timestamps].
+pub(super) fn timestamps_step(timestamps: &[i64]) -> i64 {
+  match timestamps {
+    [newer, older, ..] => (newer - older).max(1),
+    _ => 1,
+  }
+}
 
 impl Resolve<ReadArgs> for GetHistoricalServerStats {
   async fn resolve(
@@ -409,20 +444,9 @@ impl Resolve<ReadArgs> for GetHistoricalServerStats {
       PermissionLevel::Read.into(),
     )
     .await?;
-    let granularity =
-      get_timelength_in_ms(granularity.to_string().parse().unwrap())
-        as i64;
-    let mut ts_vec = Vec::<i64>::new();
-    let curr_ts = unix_timestamp_ms() as i64;
-    let mut curr_ts = curr_ts
-      - curr_ts % granularity
-      - granularity * (page as i64).saturating_mul(STATS_PER_PAGE);
-    for _ in 0..STATS_PER_PAGE {
-      ts_vec.push(curr_ts);
-      curr_ts -= granularity;
-    }
+    let ts_vec = history_timestamps(granularity, page);
 
-    let stats = find_collect(
+    let mut stats = find_collect(
       &db_client().stats,
       doc! {
         "sid": server.id,
@@ -435,6 +459,28 @@ impl Resolve<ReadArgs> for GetHistoricalServerStats {
     )
     .await
     .context("failed to pull stats from db")?;
+    // Reading a Server does not grant reading its Stacks: keep only
+    // the stacks this user can read, checked the way GetStack checks.
+    let stack_ids = stats
+      .iter()
+      .flat_map(|record| record.stacks.iter().map(|s| s.id.clone()))
+      .collect::<HashSet<_>>();
+    let mut readable = HashSet::new();
+    for id in stack_ids {
+      if get_check_permissions::<Stack>(
+        &id,
+        user,
+        PermissionLevel::Read.into(),
+      )
+      .await
+      .is_ok()
+      {
+        readable.insert(id);
+      }
+    }
+    for record in &mut stats {
+      record.stacks.retain(|stack| readable.contains(&stack.id));
+    }
     let next_page = if stats.len() == STATS_PER_PAGE as usize {
       Some(page + 1)
     } else {
@@ -442,5 +488,18 @@ impl Resolve<ReadArgs> for GetHistoricalServerStats {
     };
     let res = GetHistoricalServerStatsResponse { stats, next_page };
     Ok(res)
+  }
+}
+
+#[cfg(test)]
+mod history_tests {
+  use super::*;
+  use komodo_client::entities::Timelength;
+
+  #[test]
+  fn a_huge_page_reaches_before_the_epoch_without_overflow() {
+    let ts = history_timestamps(Timelength::OneDay, u32::MAX);
+    assert_eq!(ts.len(), STATS_PER_PAGE as usize);
+    assert!(ts.iter().all(|ts| *ts < 0));
   }
 }

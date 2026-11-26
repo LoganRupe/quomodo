@@ -21,6 +21,9 @@ import Tags from "@/components/tags";
 import ResourceName from "@/resources/name";
 import DashboardNoResources from "./no-resources";
 import ServerStatsCard from "@/resources/server/stats-card";
+import UsageBars from "@/resources/server/usage-bars";
+import { useServer } from "@/resources/server";
+import { useStack } from "@/resources/stack";
 import { FancyCard } from "mogh_ui";
 
 export default function DashboardRecents() {
@@ -167,6 +170,20 @@ function RecentCard({
         </Box>
       )}
 
+      {type === "Stack" && (
+        <Box
+          mt={preferences.showStackStats ? "md" : "0"}
+          mah={preferences.showStackStats ? "10rem" : "0rem"}
+          opacity={preferences.showStackStats ? 1 : 0}
+          style={{
+            overflow: "hidden",
+            transition: "all 500ms ease-in-out",
+          }}
+        >
+          {preferences.showStackStats && <StackUsage id={id} />}
+        </Box>
+      )}
+
       {resource.tags.length ? (
         <Group gap="xs" mt="md">
           <Tags tagIds={resource?.tags} py="0.1rem" />
@@ -174,4 +191,11 @@ function RecentCard({
       ) : undefined}
     </FancyCard>
   );
+}
+
+/** A stack's container CPU and memory, as a share of its host. */
+function StackUsage({ id }: { id: string }) {
+  const stack = useStack(id);
+  const server = useServer(stack?.info.server_id);
+  return <UsageBars usage={stack?.info.usage} server={server} />;
 }

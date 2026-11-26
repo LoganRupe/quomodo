@@ -1953,6 +1953,25 @@ export interface Port {
     typ?: PortTypeEnum;
 }
 /**
+ * CPU and memory used by a container, or summed over a pod, stack
+ * or agent. Read from the container's cgroup v2 files.
+ * A field is None when it could not be measured, never 0.
+ */
+export interface ContainerUsage {
+    /**
+     * CPU in cores (1.5 = one and a half cores), averaged over
+     * the agent's last sampling window.
+     */
+    cpu_cores?: number;
+    /**
+     * Working set memory in bytes: `memory.current` less the
+     * reclaimable `inactive_file` page cache.
+     */
+    mem_bytes?: number;
+    /** The `memory.max` limit in bytes, if one is set. */
+    mem_limit_bytes?: number;
+}
+/**
  * Container summary returned by container list apis.
  * Populated from `podman ps -a --format json`.
  */
@@ -1988,6 +2007,11 @@ export interface ContainerListItem {
     ports?: Port[];
     /** The volume / mount sources attached to container */
     volumes?: string[];
+    /**
+     * CPU and memory, for a running container on an agent with
+     * stats monitoring on.
+     */
+    usage?: ContainerUsage;
 }
 export type ListAllContainersResponse = ContainerListItem[];
 export declare enum StackServiceState {
@@ -2014,6 +2038,8 @@ export interface StackService {
     /** The container backing the unit, if found. */
     container?: ContainerListItem;
     state: StackServiceState;
+    /** The container's usage, or for a pod, its members' summed. */
+    usage?: ContainerUsage;
 }
 export type ListAllStackServicesResponse = StackService[];
 /** An api key used to authenticate requests via request headers. */
@@ -2319,6 +2345,11 @@ export interface ServerListItemInfo {
     err?: _Serror;
     /** System stats, if available */
     stats?: MinimalSystemStats;
+    /**
+     * CPU and memory summed over this agent's running containers.
+     * For a rootless agent, that user's usage.
+     */
+    usage?: ContainerUsage;
     /** The server alerting thresholds */
     alerting_thresholds: ServerAlertingThresholds;
     /** The server's number of physical cores. */
@@ -2429,6 +2460,11 @@ export interface StackListItemInfo {
     deployed_hash?: string;
     /** Latest short commit hash, or null. */
     latest_hash?: string;
+    /**
+     * CPU and memory summed over the stack's running containers,
+     * including pod members.
+     */
+    usage?: ContainerUsage;
 }
 export type StackListItem = ResourceListItem<StackListItemInfo>;
 export type ListStacksResponse = StackListItem[];
@@ -3460,6 +3496,15 @@ export interface GetHistoricalServerStats {
      */
     page?: number;
 }
+/** A stack's usage at one point in time, kept in [SystemStatsRecord]. */
+export interface StackUsage {
+    /** The stack id */
+    id: string;
+    /** CPU in cores */
+    cpu_cores?: number;
+    /** Working set memory in bytes */
+    mem_bytes?: number;
+}
 /** System stats stored on the database. */
 export interface SystemStatsRecord {
     /** Unix timestamp in milliseconds */
@@ -3504,11 +3549,54 @@ export interface SystemStatsRecord {
     network_ingress_bytes?: number;
     /** Total network egress in bytes */
     network_egress_bytes?: number;
+    /**
+     * Usage of every running container on this agent, in a stack or
+     * not. None when it could not be measured.
+     */
+    containers?: ContainerUsage;
+    /** Usage of each of this agent's stacks that could be measured. */
+    stacks?: StackUsage[];
 }
 /** Response to [GetHistoricalServerStats]. */
 export interface GetHistoricalServerStatsResponse {
     /** The timeseries page of data. */
     stats: SystemStatsRecord[];
+    /** If there is a next page of data, pass this to `page` to get it. */
+    next_page?: number;
+}
+/**
+ * Paginated endpoint serving the CPU and memory history of some
+ * stacks, across every agent they ran on. A stack the user can't
+ * read is left out. Response: [GetHistoricalStackStatsResponse].
+ */
+export interface GetHistoricalStackStats {
+    /** Stack ids or names. At most 32. */
+    stacks: string[];
+    /** The granularity of the data. */
+    granularity: Timelength;
+    /**
+     * Page of historical data. Default is 0, which is the most recent data.
+     * Use with the `next_page` field of the response.
+     */
+    page?: number;
+}
+/**
+ * The usage of some stacks at one point in time, collected from the
+ * stats records of every agent they ran on.
+ */
+export interface StackStatsRecord {
+    /** Unix timestamp in milliseconds */
+    ts: I64;
+    /** The usage of each requested stack recorded at `ts`. */
+    stacks: StackUsage[];
+}
+/** Response to [GetHistoricalStackStats]. */
+export interface GetHistoricalStackStatsResponse {
+    /**
+     * The timeseries page of data, newest first, one record per
+     * timestamp with any readings.
+     */
+    stats: StackStatsRecord[];
     /** If there is a next page of data, pass this to `page` to get it. */
     next_page?: number;
 }
@@ -3940,7 +4028,11 @@ export declare enum ContainerSortBy {
     /** Sort by first port. */
     Ports = "Ports",
     /** Sort by first volume. */
-    Volumes = "Volumes"
+    Volumes = "Volumes",
+    /** Sort by CPU usage. Containers with no reading sort lowest. */
+    Cpu = "Cpu",
+    /** Sort by memory usage. Containers with no reading sort lowest. */
+    Memory = "Memory"
 }
 /**
  * List all containers on the target servers.
@@ -4480,7 +4572,11 @@ export declare enum StackSortBy {
     Name = "Name",
     Source = "Source",
     Host = "Host",
-    State = "State"
+    State = "State",
+    /** Stack CPU usage. Stacks with no reading sort lowest. */
+    Cpu = "Cpu",
+    /** Stack memory usage. Stacks with no reading sort lowest. */
+    Memory = "Memory"
 }
 /** List stacks matching optional query. Response: [ListStacksResponse]. */
 export interface ListStacks {
@@ -5633,6 +5729,9 @@ export type ReadRequest = {
 } | {
     type: "ListAllStackServices";
     params: ListAllStackServices;
+} | {
+    type: "GetHistoricalStackStats";
+    params: GetHistoricalStackStats;
 } | {
     type: "GetReposSummary";
     params: GetReposSummary;

@@ -116,21 +116,30 @@ impl super::KomodoResource for Stack {
           .unwrap_or_else(default_git)
       };
 
-    let status = match state {
+    let cached = stack_status_cache().get(&stack.id).await;
+    // Usage is read whatever the state: a stack of only pod or kube
+    // units reads Down (state looks at container units) while its
+    // pods run. Only an observation from the stack's own server counts.
+    let usage = cached
+      .as_ref()
+      .filter(|s| s.curr.server_id == stack.config.server_id)
+      .and_then(|s| s.curr.usage);
+    let cached = match state {
       StackState::Down | StackState::Unknown => None,
-      _ => stack_status_cache().get(&stack.id).await.map(|s| {
-        let running = s
-          .curr
-          .services
-          .iter()
-          .filter(|s| {
-            s.state
-              == komodo_client::entities::stack::StackServiceState::Running
-          })
-          .count();
-        format!("{running}/{} units running", s.curr.services.len())
-      }),
+      _ => cached,
     };
+    let status = cached.as_ref().map(|s| {
+      let running = s
+        .curr
+        .services
+        .iter()
+        .filter(|s| {
+          s.state
+            == komodo_client::entities::stack::StackServiceState::Running
+        })
+        .count();
+      format!("{running}/{} units running", s.curr.services.len())
+    });
 
     let server_name = all_resources_cache()
       .load()
@@ -173,6 +182,7 @@ impl super::KomodoResource for Stack {
         branch,
         latest_hash: stack.info.latest_hash,
         deployed_hash: stack.info.deployed_hash,
+        usage,
       },
     }
   }

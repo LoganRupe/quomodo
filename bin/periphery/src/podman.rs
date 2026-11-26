@@ -94,13 +94,30 @@ struct PsItem {
   mounts: Option<Vec<String>>,
   #[serde(default)]
   pod_name: Option<String>,
+  /// The container's main process on the host, 0 when not running.
+  #[serde(default)]
+  pid: i64,
 }
 
-/// `podman ps -a --format json`
+/// `podman ps -a --pod --format json`
 pub async fn list_containers()
 -> anyhow::Result<Vec<ContainerListItem>> {
+  Ok(
+    list_containers_with_pids()
+      .await?
+      .into_iter()
+      .map(|(container, _)| container)
+      .collect(),
+  )
+}
+
+/// [list_containers], with each container's main process id
+/// (0 when not running), for reading its cgroup.
+pub async fn list_containers_with_pids()
+-> anyhow::Result<Vec<(ContainerListItem, u32)>> {
+  // `--pod` fills `PodName`, which is empty without it.
   let output = run_standard_command(
-    "podman ps -a --no-trunc --format json",
+    "podman ps -a --pod --no-trunc --format json",
     CommandOptions::default().timeout(Duration::from_secs(20)),
   )
   .await;
@@ -116,7 +133,7 @@ pub async fn list_containers()
 
 fn parse_ps_json(
   json: &str,
-) -> anyhow::Result<Vec<ContainerListItem>> {
+) -> anyhow::Result<Vec<(ContainerListItem, u32)>> {
   let items: Vec<PsItem> = serde_json::from_str(json.trim())
     .context("Failed to parse podman ps json")?;
   let mut containers = items
@@ -150,7 +167,8 @@ fn parse_ps_json(
           },
         })
         .collect();
-      ContainerListItem {
+      let pid = u32::try_from(item.pid).unwrap_or_default();
+      let container = ContainerListItem {
         server_id: None,
         server_name: None,
         name,
@@ -169,10 +187,12 @@ fn parse_ps_json(
         networks: item.networks.unwrap_or_default(),
         ports,
         volumes: item.mounts.unwrap_or_default(),
-      }
+        usage: None,
+      };
+      (container, pid)
     })
     .collect::<Vec<_>>();
-  containers.sort_by(|a, b| a.name.cmp(&b.name));
+  containers.sort_by(|a, b| a.0.name.cmp(&b.0.name));
   Ok(containers)
 }
 
@@ -386,13 +406,15 @@ mod tests {
     ]"#;
     let containers = parse_ps_json(json).unwrap();
     assert_eq!(containers.len(), 2);
-    let db = &containers[0];
+    assert_eq!(containers[0].1, 0);
+    assert_eq!(containers[1].1, 100);
+    let db = &containers[0].0;
     assert_eq!(db.name, "systemd-db");
     assert_eq!(db.state, ContainerStateStatusEnum::Exited);
     assert_eq!(db.pod.as_deref(), Some("systemd-app"));
     assert_eq!(db.created, Some(1758585600));
     assert!(db.unit.is_none());
-    let web = &containers[1];
+    let web = &containers[1].0;
     assert_eq!(web.name, "systemd-web");
     assert_eq!(web.unit.as_deref(), Some("web.service"));
     assert_eq!(web.state, ContainerStateStatusEnum::Running);
