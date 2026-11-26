@@ -10,7 +10,7 @@ import { Section } from "mogh_ui";
 import { Button, Group, Stack, Switch, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useState } from "react";
-import NewProviderAccount from "./new";
+import NewProviderAccount, { GIT_TOKEN_HINT } from "./new";
 import { DataTable, SortableHeader } from "mogh_ui";
 import DeleteProviderAccount from "./delete";
 import ProvidersFromConfig from "./from-config";
@@ -75,6 +75,12 @@ function Providers({ type }: { type: "GitProvider" | "ImageRegistry" }) {
           <NewProviderAccount type={type} />
           <SearchInput value={search} onSearch={setSearch} />
         </Group>
+
+        {type === "GitProvider" && (
+          <Text c="dimmed" size="sm">
+            {GIT_TOKEN_HINT}
+          </Text>
+        )}
 
         {/* ACCOUNTS */}
         <DataTable

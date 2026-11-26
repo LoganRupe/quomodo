@@ -386,7 +386,14 @@ in `~/.local/share/quomodo/`. Back up her `idmap.json` too.
 ## First stack
 
 1. If the stack's repo is private, add a git account under Settings, or a
-   `[[git_provider]]` block in Core's or the agent's config.
+   `[[git_provider]]` block in Core's or the agent's config. The account's
+   username is only the name a Stack or Repo uses to pick the account; it is
+   never sent to the git server. The token is sent as the password with the
+   username `token`, so it must be an access token with read access to the
+   repo, such as a Forgejo or Gitea token with `read:repository` scope or a
+   GitHub fine-grained token with read access to Contents. An account
+   password is rejected. To send a real username and password, set the token
+   to `username:password`.
 2. Create a Stack pointing at a directory of quadlet files. In a ResourceSync
    TOML file:
 
