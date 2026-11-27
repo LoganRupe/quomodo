@@ -101,6 +101,28 @@ changed or not. `auto_pull = true` pulls every container image before the
 restart. `ignore_units` leaves units out of the stack's health state, for
 example an init container that exits.
 
+## One-shot containers
+
+Quadlet runs a container with `--rm`, so a container a timer starts, like
+a nightly backup with `StartWithPod=false` and `Type=oneshot`, only exists
+while it runs. Between runs the Server's Containers tab doesn't list it,
+and the Stack lists its unit as Down. Add the unit to `ignore_units` so the
+stack still reads Running.
+
+A deploy doesn't start a `Type=oneshot` unit, even when its file changed:
+its timer, or a unit that needs it, starts it, and the new file applies
+from that run. To run it now, use Run on the unit's page (click it in the
+Stack's Services), or name it in `services` to run it as part of a deploy.
+Either waits for the run to finish and fails if it fails. A one-shot
+with `RemainAfterExit=yes`, such as an init container other units wait
+on, restarts like any other unit.
+
+Pruning images, by hand or with the Server's Auto Prune Images, keeps every
+image a unit under the quadlet directory names: a `.container`'s `Image=`,
+an `.image`'s `Image=` and the tag a `.build` makes. The image is still
+there when the timer next starts the container. Images named only in a
+`.kube` unit's YAML are not kept.
+
 ## Unit names
 
 Quadlet names each systemd service after its unit file's name alone, not

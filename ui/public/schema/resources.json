@@ -150,7 +150,7 @@
           }
         },
         "auto_prune": {
-          "description": "Whether to run `podman image prune -a -f` once a day. Each server\nprunes at its own fixed time between 00:00 and 01:00 UTC.\ndefault: true",
+          "description": "Whether to remove, once a day, the images no container uses and no\ninstalled quadlet unit names (see `PruneImages`). Each server prunes\nat its own fixed time between 00:00 and 01:00 UTC.\ndefault: true",
           "type": [
             "boolean",
             "null"
@@ -2024,7 +2024,7 @@
       ]
     },
     "PruneImages": {
-      "description": "Prunes the docker images on the target server. Response: [Update].\n\n1. Runs `docker image prune -a -f`.",
+      "description": "Removes the images on the target server that no container uses and\nno installed quadlet unit names. Response: [Update].\n\nQuadlet removes a container when it stops, so the image of a stopped\nunit, or of a one-shot a timer starts, is kept for its next start.",
       "type": "object",
       "properties": {
         "server": {
@@ -2037,7 +2037,7 @@
       ]
     },
     "PruneSystem": {
-      "description": "Prunes the docker system on the target server, including volumes. Response: [Update].\n\n1. Runs `docker system prune -a -f --volumes`.",
+      "description": "Prunes the podman system on the target server, including volumes.\nResponse: [Update].\n\n1. Runs `podman system prune -f --volumes`.\n2. Removes images as [PruneImages] does.",
       "type": "object",
       "properties": {
         "server": {

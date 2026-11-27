@@ -145,14 +145,7 @@ impl Resolve<Args> for PruneImages {
     fields(id = args.id.to_string(), core = args.core)
   )]
   async fn resolve(self, args: &Args) -> anyhow::Result<Log> {
-    Ok(
-      run_komodo_standard_command(
-        "Prune Images",
-        "podman image prune -a -f",
-        CommandOptions::default(),
-      )
-      .await,
-    )
+    Ok(crate::prune::prune_images("Prune Images").await)
   }
 }
 
@@ -163,13 +156,28 @@ impl Resolve<Args> for PruneSystem {
     fields(id = args.id.to_string(), core = args.core)
   )]
   async fn resolve(self, args: &Args) -> anyhow::Result<Log> {
-    Ok(
-      run_komodo_standard_command(
-        "Prune System",
-        "podman system prune -a -f --volumes",
-        CommandOptions::default(),
-      )
-      .await,
+    // Without `-a`, which would take the images of stopped units and
+    // timer started one-shots: the image pass below spares those.
+    let mut log = run_komodo_standard_command(
+      "Prune System",
+      "podman system prune -f --volumes",
+      CommandOptions::default(),
     )
+    .await;
+    let images = crate::prune::prune_images("Prune Images").await;
+    log.command = format!("{} && {}", log.command, images.command);
+    log.stdout = [log.stdout.trim(), images.stdout.as_str()]
+      .into_iter()
+      .filter(|s| !s.is_empty())
+      .collect::<Vec<_>>()
+      .join("\n");
+    log.stderr = [log.stderr.trim(), images.stderr.as_str()]
+      .into_iter()
+      .filter(|s| !s.is_empty())
+      .collect::<Vec<_>>()
+      .join("\n");
+    log.success = log.success && images.success;
+    log.end_ts = images.end_ts;
+    Ok(log)
   }
 }

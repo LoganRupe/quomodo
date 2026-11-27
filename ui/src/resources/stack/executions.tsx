@@ -223,14 +223,17 @@ export const StartStopStack = ({
     { refetchInterval: 5_000 },
   ).data;
   const services = useRead("ListStackServices", { stack: id }).data;
+  const found = service
+    ? services?.find((s) => s.service === service)
+    : undefined;
   const container_state =
-    (service
-      ? services?.find((s) => s.service === service)?.container?.state
-      : undefined) ?? Types.ContainerStateStatusEnum.Empty;
+    found?.container?.state ?? Types.ContainerStateStatusEnum.Empty;
 
   if (
     !stack ||
-    [Types.StackState.Down, Types.StackState.Unknown].includes(state)
+    [Types.StackState.Down, Types.StackState.Unknown].includes(state) ||
+    // A one-shot has Run instead.
+    found?.unit.runs_and_exits
   ) {
     return null;
   }
@@ -274,5 +277,49 @@ export const StartStopStack = ({
         </ConfirmModalWithDisable>
       )}
     </>
+  );
+};
+
+/** Run a one-shot unit now, as its timer would. Shown whatever the
+ * stack's state: a stack whose units are all one-shots reads Down. */
+export const RunOneShot = ({
+  id,
+  service,
+}: {
+  id: string;
+  service?: string;
+}) => {
+  const stack = useStack(id);
+  const { mutate: start, isPending } = useExecute(
+    "StartStack",
+    useInvalidateActionState(),
+  );
+  const starting = useRead(
+    "GetStackActionState",
+    { stack: id },
+    { refetchInterval: 5_000 },
+  ).data?.starting;
+  const unit = useRead("ListStackServices", { stack: id }).data?.find(
+    (s) => s.service === service,
+  )?.unit;
+
+  if (
+    !stack ||
+    !service ||
+    !unit?.runs_and_exits ||
+    stack.info.state === Types.StackState.Unknown
+  ) {
+    return null;
+  }
+
+  return (
+    <ConfirmButton
+      icon={<ICONS.Run size="1rem" />}
+      onClick={() => start({ stack: id, services: [service] })}
+      disabled={isPending}
+      loading={isPending || starting}
+    >
+      Run
+    </ConfirmButton>
   );
 };
