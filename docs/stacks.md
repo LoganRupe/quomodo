@@ -109,10 +109,12 @@ while it runs. Between runs the Server's Containers tab doesn't list it,
 and the Stack lists its unit as Down. Add the unit to `ignore_units` so the
 stack still reads Running.
 
-A deploy starts or restarts a one-shot unit like any other, so a first
-deploy or a change to its file runs it once. The deploy waits for that run
-to finish and fails if it fails, but doesn't expect the unit to stay
-active afterwards.
+A deploy doesn't start a `Type=oneshot` unit, even when its file changed:
+its timer, or a unit that needs it, starts it, and the new file applies
+from that run. Name it in `services` to run it as part of a deploy; the
+deploy then waits for the run to finish and fails if it fails. A one-shot
+with `RemainAfterExit=yes`, such as an init container other units wait
+on, restarts like any other unit.
 
 Pruning images, by hand or with the Server's Auto Prune Images, keeps every
 image a unit under the quadlet directory names: a `.container`'s `Image=`,

@@ -33,9 +33,17 @@ pub struct ParsedUnit {
   /// `[Service]` `Type=oneshot`: `systemctl start` returns when it has
   /// run, and it is inactive after unless `RemainAfterExit=yes`.
   pub oneshot: bool,
+  /// `[Service]` `RemainAfterExit=yes`.
+  pub remain_after_exit: bool,
 }
 
 impl ParsedUnit {
+  /// A one-shot that is inactive once it has run, like a backup a timer
+  /// starts. A deploy leaves starting it to whatever starts it.
+  pub fn runs_and_exits(&self) -> bool {
+    self.oneshot && !self.remain_after_exit
+  }
+
   /// Whether a change to the stack file at `path` affects this unit.
   /// `files` is the stack's text files by path, for a `.build`'s ignore
   /// file.
@@ -319,6 +327,18 @@ pub fn parse_unit(path: &str, contents: &str) -> Option<ParsedUnit> {
     // systemd takes the last `Type=`.
     oneshot: get_values(contents, "Service", "Type").last()
       == Some(&"oneshot"),
+    remain_after_exit: get_values(
+      contents,
+      "Service",
+      "RemainAfterExit",
+    )
+    .last()
+    .is_some_and(|v| {
+      matches!(
+        v.to_ascii_lowercase().as_str(),
+        "yes" | "true" | "1" | "on"
+      )
+    }),
   })
 }
 
@@ -546,6 +566,16 @@ mod tests {
     ));
     assert!(!oneshot("[Container]\nImage=x\nType=oneshot\n"));
     assert!(!oneshot("[Container]\nImage=x\n"));
+    let exits = |c: &str| {
+      parse_unit("b.container", c).unwrap().runs_and_exits()
+    };
+    assert!(exits("[Container]\nImage=x\n[Service]\nType=oneshot\n"));
+    assert!(!exits(
+      "[Container]\nImage=x\n[Service]\nType=oneshot\nRemainAfterExit=yes\n"
+    ));
+    assert!(exits(
+      "[Container]\nImage=x\n[Service]\nType=oneshot\nRemainAfterExit=yes\nRemainAfterExit=no\n"
+    ));
   }
 
   const WEB: &str = "[Unit]\nDescription=web\n\n[Container]\nImage=docker.io/library/nginx:latest\nContainerName=web\nPod=app.pod\nNetwork=app.network\nVolume=data.volume:/data\nVolume=/etc/localtime:/etc/localtime:ro\nSecret=DB_PASSWORD,type=env,target=DB_PASSWORD\nSecret=app-config,type=mount,target=/etc/app.yml\n\n[Install]\nWantedBy=multi-user.target\n";

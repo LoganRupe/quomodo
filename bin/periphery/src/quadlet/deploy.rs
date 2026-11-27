@@ -43,6 +43,8 @@ pub struct Plan {
   pub timeout: Duration,
 }
 
+const ONE_SHOT: &str = "one-shot, not started: the new file applies from its next run, started by its timer or a unit that needs it";
+
 /// Decide which units to (re)start.
 ///
 /// - `services` non-empty restricts restarts to those unit files (and forces them).
@@ -55,6 +57,8 @@ pub struct Plan {
 ///   `.containerignore` / `.dockerignore` leaves out (a rebuild restarts
 ///   the image's dependents).
 /// - a unit referencing a changed podman secret restarts.
+/// - a `Type=oneshot` unit without `RemainAfterExit=yes` is only started
+///   when named in `services`.
 pub fn plan(
   prepared: &Prepared,
   previous: Option<&StackState>,
@@ -94,6 +98,12 @@ pub fn plan(
     plan.restart = units
       .iter()
       .filter(|u| u.unit.kind.is_runnable())
+      .filter(|u| {
+        if u.runs_and_exits() {
+          plan.reasons.push(format!("{}: {ONE_SHOT}", u.unit.file));
+        }
+        !u.runs_and_exits()
+      })
       .map(|u| u.unit.service.clone())
       .collect();
     plan.restart.sort();
@@ -267,6 +277,21 @@ pub fn plan(
     }
   }
 
+  // A one-shot runs when its timer, or a unit that needs it, starts it.
+  // Restarting it here would run it, or cut short a run in progress.
+  let one_shots = to_restart
+    .iter()
+    .filter(|f| {
+      !forced.contains(*f)
+        && by_file.get(*f).is_some_and(|u| u.runs_and_exits())
+    })
+    .copied()
+    .collect::<Vec<_>>();
+  for f in one_shots {
+    to_restart.remove(f);
+    plan.reasons.push(format!("{f}: {ONE_SHOT}"));
+  }
+
   // A container whose pod is restarting follows the pod.
   let restarting_pods = to_restart
     .iter()
@@ -307,7 +332,7 @@ pub fn plan(
   if services.is_empty() {
     plan.ensure = units
       .iter()
-      .filter(|u| u.unit.kind.is_runnable())
+      .filter(|u| u.unit.kind.is_runnable() && !u.runs_and_exits())
       .map(|u| u.unit.service.clone())
       .filter(|s| {
         !plan.start.contains(s) && !plan.restart.contains(s)
@@ -734,7 +759,7 @@ mod tests {
   }
 
   #[test]
-  fn oneshot_units_run_but_are_not_waited_for() {
+  fn one_shot_units_are_left_to_what_starts_them() {
     // A timer-started backup: inactive once it has run.
     const BACKUP: &str = "[Container]\nImage=restic\nPod=app.pod\nStartWithPod=false\n[Service]\nType=oneshot\n";
     let mut p = base();
@@ -745,8 +770,7 @@ mod tests {
       .filter_map(|(k, v)| parse_unit(k, v))
       .collect();
     let first = plan(&p, None, &[]);
-    assert!(first.restart.contains(&"backup.service".to_string()));
-    assert!(!first.wait.contains(&"backup.service".to_string()));
+    assert!(!first.restart.contains(&"backup.service".to_string()));
     assert!(first.wait.contains(&"web.service".to_string()));
     assert_eq!(
       first.oneshot.iter().collect::<Vec<_>>(),
@@ -765,8 +789,38 @@ mod tests {
       .filter_map(|(k, v)| parse_unit(k, v))
       .collect();
     let changed = plan(&p2, Some(&s), &[]);
-    assert_eq!(changed.restart, vec!["backup.service"]);
-    assert!(changed.wait.is_empty());
+    assert!(changed.restart.is_empty() && changed.start.is_empty());
+    assert!(!changed.ensure.contains(&"backup.service".to_string()));
+    assert!(
+      changed
+        .reasons
+        .iter()
+        .any(|r| r.starts_with("backup.container: one-shot"))
+    );
+
+    // Named in `services`, it runs, and the deploy does not wait for it
+    // to stay active.
+    let forced =
+      plan(&p2, Some(&s), &["backup.container".to_string()]);
+    assert_eq!(forced.restart, vec!["backup.service"]);
+    assert!(forced.wait.is_empty());
+
+    // RemainAfterExit=yes: an init container others wait on, restarted
+    // as before.
+    let mut p3 = p2;
+    p3.write.insert(
+      "backup.container".into(),
+      format!("{BACKUP}RemainAfterExit=yes\n"),
+    );
+    p3.units = p3
+      .write
+      .iter()
+      .filter_map(|(k, v)| parse_unit(k, v))
+      .collect();
+    assert_eq!(
+      plan(&p3, Some(&s), &[]).restart,
+      vec!["backup.service"]
+    );
   }
 
   #[test]

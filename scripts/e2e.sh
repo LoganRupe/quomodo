@@ -33,7 +33,8 @@
 #      restarts its container, and nothing else
 #   8. a changed binary file in the build context does the same
 #   9. a changed file the build's .containerignore excludes does not rebuild
-#  9b. a Type=oneshot unit deploys and runs; PruneImages keeps its image and
+#  9b. a Type=oneshot unit deploys without running, and runs when a deploy
+#      names it; PruneImages keeps its image and
 #      a stopped unit's, neither having a container, and removes an image
 #      nothing uses, under both its names
 #  10. DestroyStack removes units and the directory
@@ -319,6 +320,10 @@ elif cmd == "busy-skip":
     print(json.dumps({"skipped": True}))
 elif cmd == "refresh":
     print(api("write", "RefreshStackCache", {"stack": STACK}))
+elif cmd == "deploy-services":
+    u = execute("DeployStack", {"stack": STACK, "services": sys.argv[2:]})
+    print(json.dumps({"success": u["success"], "stages": [(l["stage"], l["success"]) for l in u["logs"]]}))
+    if not u["success"]: raise SystemExit("DeployStack failed")
 elif cmd == "prune-images":
     u = execute("PruneImages", {"server": SERVER})
     for l in u["logs"]: print(l["stdout"], l["stderr"], sep="\n")
@@ -614,7 +619,7 @@ $API DeployStackIfChanged
 hexec podman exec e2e-app test ! -e /app/README.md || fail "README.md is in the image despite .containerignore"
 echo "app untouched"
 
-log "9b. a one-shot unit deploys, and pruning keeps the images of units with no container"
+log "9b. a one-shot unit runs only when named, and pruning keeps the images of units with no container"
 # A timer-started backup: Type=oneshot, inactive once it has run. Quadlet
 # removes its container when it exits, as it does a stopped unit's.
 cat > "$WORK/git/work/$STACK/nightly.container" <<UNIT
@@ -627,7 +632,9 @@ Type=oneshot
 UNIT
 publish "v8 nightly"
 $API DeployStackIfChanged || fail "a stack with a one-shot unit did not deploy"
-hexec journalctl -u nightly.service --no-pager | grep -q "backup done" || fail "the one-shot did not run"
+hexec journalctl -u nightly.service --no-pager | grep -q "backup done" && fail "the deploy ran the one-shot; its timer should"
+$API deploy-services nightly.container || fail "a deploy naming the one-shot failed"
+hexec journalctl -u nightly.service --no-pager | grep -q "backup done" || fail "a deploy naming the one-shot did not run it"
 hexec podman container exists e2e-nightly && fail "the one-shot's container outlived it"
 hexec systemctl stop app.service
 hexec podman container exists e2e-app && fail "e2e-app container still exists after stop"
