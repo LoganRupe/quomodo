@@ -33,6 +33,9 @@
 #      restarts its container, and nothing else
 #   8. a changed binary file in the build context does the same
 #   9. a changed file the build's .containerignore excludes does not rebuild
+#  9b. a Type=oneshot unit deploys and runs; PruneImages keeps its image and
+#      a stopped unit's, neither having a container, and removes an image
+#      nothing uses, under both its names
 #  10. DestroyStack removes units and the directory
 #  11. a second agent running as the lingering user alice reports the same
 #      host as the root agent, keeps that host and its user on Core while
@@ -316,6 +319,10 @@ elif cmd == "busy-skip":
     print(json.dumps({"skipped": True}))
 elif cmd == "refresh":
     print(api("write", "RefreshStackCache", {"stack": STACK}))
+elif cmd == "prune-images":
+    u = execute("PruneImages", {"server": SERVER})
+    for l in u["logs"]: print(l["stdout"], l["stderr"], sep="\n")
+    if not u["success"]: raise SystemExit("PruneImages failed")
 elif cmd == "create-alerter":
     r = api("write", "CreateAlerter", {"name": "e2e-hook", "config": {"enabled": True, "endpoint": {"type": "Custom", "params": {"url": sys.argv[2]}}}})
     if "error" in r: raise SystemExit("CreateAlerter failed: %s" % r["error"])
@@ -606,6 +613,34 @@ $API DeployStackIfChanged
 [ "$(hexec podman inspect -f '{{.Id}}' e2e-app)" = "$APP_ID_BEFORE" ] || fail "app was rebuilt for an ignored file"
 hexec podman exec e2e-app test ! -e /app/README.md || fail "README.md is in the image despite .containerignore"
 echo "app untouched"
+
+log "9b. a one-shot unit deploys, and pruning keeps the images of units with no container"
+# A timer-started backup: Type=oneshot, inactive once it has run. Quadlet
+# removes its container when it exits, as it does a stopped unit's.
+cat > "$WORK/git/work/$STACK/nightly.container" <<UNIT
+[Container]
+Image=docker.io/library/busybox:1.36
+ContainerName=e2e-nightly
+Exec=echo backup done
+[Service]
+Type=oneshot
+UNIT
+publish "v8 nightly"
+$API DeployStackIfChanged || fail "a stack with a one-shot unit did not deploy"
+hexec journalctl -u nightly.service --no-pager | grep -q "backup done" || fail "the one-shot did not run"
+hexec podman container exists e2e-nightly && fail "the one-shot's container outlived it"
+hexec systemctl stop app.service
+hexec podman container exists e2e-app && fail "e2e-app container still exists after stop"
+# An image nothing uses, under two names.
+hexec sh -c 'printf "FROM docker.io/library/alpine:3.20\nLABEL e2e=spare\n" | podman build -q -t localhost/e2e-spare:1 -f - /tmp >/dev/null'
+hexec podman tag localhost/e2e-spare:1 localhost/e2e-spare:2
+$API prune-images
+hexec podman image exists docker.io/library/busybox:1.36 || fail "prune removed the one-shot's image"
+hexec podman image exists localhost/e2e-app || fail "prune removed the image of the stopped app unit"
+hexec podman image exists docker.io/library/alpine:3.20 || fail "prune removed an image running units use"
+hexec podman image exists localhost/e2e-spare:1 && fail "prune kept an image nothing uses"
+hexec podman image exists localhost/e2e-spare:2 && fail "prune kept the second name of an unused image"
+echo "deployed the one-shot; kept busybox and localhost/e2e-app, removed e2e-spare under both names"
 
 log "10. destroy"
 $API DestroyStack

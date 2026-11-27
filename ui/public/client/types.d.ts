@@ -1503,8 +1503,9 @@ export interface ServerConfig {
      */
     ignore_mounts?: string[];
     /**
-     * Whether to run `podman image prune -a -f` once a day. Each server
-     * prunes at its own fixed time between 00:00 and 01:00 UTC.
+     * Whether to remove, once a day, the images no container uses and no
+     * installed quadlet unit names (see `PruneImages`). Each server prunes
+     * at its own fixed time between 00:00 and 01:00 UTC.
      * default: true
      */
     auto_prune: boolean;
@@ -4730,18 +4731,22 @@ export interface NtfyAlerterEndpoint {
     email?: string;
 }
 /**
- * Prunes the docker images on the target server. Response: [Update].
+ * Removes the images on the target server that no container uses and
+ * no installed quadlet unit names. Response: [Update].
  *
- * 1. Runs `docker image prune -a -f`.
+ * Quadlet removes a container when it stops, so the image of a stopped
+ * unit, or of a one-shot a timer starts, is kept for its next start.
  */
 export interface PruneImages {
     /** Id or name */
     server: string;
 }
 /**
- * Prunes the docker system on the target server, including volumes. Response: [Update].
+ * Prunes the podman system on the target server, including volumes.
+ * Response: [Update].
  *
- * 1. Runs `docker system prune -a -f --volumes`.
+ * 1. Runs `podman system prune -f --volumes`.
+ * 2. Removes images as [PruneImages] does.
  */
 export interface PruneSystem {
     /** Id or name */

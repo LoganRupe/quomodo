@@ -12,7 +12,7 @@ use super::KomodoExecuteRequest;
 #[utoipa::path(
   post,
   path = "/PruneImages",
-  description = "Prunes the docker images on the target server.",
+  description = "Removes the images on the target server that no container uses and no installed quadlet unit names.",
   request_body(content = PruneImages),
   responses(
     (status = 200, description = "The update", body = Update),
@@ -20,9 +20,11 @@ use super::KomodoExecuteRequest;
 )]
 pub fn prune_images() {}
 
-/// Prunes the docker images on the target server. Response: [Update].
+/// Removes the images on the target server that no container uses and
+/// no installed quadlet unit names. Response: [Update].
 ///
-/// 1. Runs `docker image prune -a -f`.
+/// Quadlet removes a container when it stops, so the image of a stopped
+/// unit, or of a one-shot a timer starts, is kept for its next start.
 #[typeshare]
 #[derive(
   Serialize, Deserialize, Debug, Clone, PartialEq, Resolve, Parser,
@@ -43,7 +45,7 @@ pub struct PruneImages {
 #[utoipa::path(
   post,
   path = "/PruneSystem",
-  description = "Prunes the docker system on the target server, including volumes.",
+  description = "Prunes the podman system on the target server, including volumes. Images installed quadlet units name are kept.",
   request_body(content = PruneSystem),
   responses(
     (status = 200, description = "The update", body = Update),
@@ -51,9 +53,11 @@ pub struct PruneImages {
 )]
 pub fn prune_system() {}
 
-/// Prunes the docker system on the target server, including volumes. Response: [Update].
+/// Prunes the podman system on the target server, including volumes.
+/// Response: [Update].
 ///
-/// 1. Runs `docker system prune -a -f --volumes`.
+/// 1. Runs `podman system prune -f --volumes`.
+/// 2. Removes images as [PruneImages] does.
 #[typeshare]
 #[derive(
   Serialize, Deserialize, Debug, Clone, PartialEq, Resolve, Parser,

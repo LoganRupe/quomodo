@@ -68,7 +68,7 @@ pub type ListImageRegistriesResponse = Vec<ImageRegistry>;
 
 //
 
-/// `podman image prune -a -f`
+/// Remove the images no container uses and no installed unit names.
 #[derive(Serialize, Deserialize, Debug, Clone, Resolve)]
 #[response(Log)]
 #[error(anyhow::Error)]
@@ -76,7 +76,7 @@ pub struct PruneImages {}
 
 //
 
-/// `podman system prune -a -f --volumes`
+/// `podman system prune -f --volumes`, then [PruneImages].
 #[derive(Serialize, Deserialize, Debug, Clone, Resolve)]
 #[response(Log)]
 #[error(anyhow::Error)]

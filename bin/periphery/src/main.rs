@@ -20,6 +20,7 @@ mod connection;
 mod helpers;
 mod host;
 mod podman;
+mod prune;
 mod quadlet;
 mod state;
 mod stats;

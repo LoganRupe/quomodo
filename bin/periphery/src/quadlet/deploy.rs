@@ -24,9 +24,12 @@ pub struct Plan {
   /// Services to `systemctl restart` (changed runnable units, or dependents of changed ones).
   pub restart: Vec<String>,
   /// Services among `start` / `restart` which must stay active: the
-  /// runnable ones. A `.build` / `.image` service is a oneshot that exits
-  /// when done; `systemctl` already fails if it fails.
+  /// runnable ones. A `.build` / `.image` service, or a container with
+  /// `Type=oneshot` such as a timer-started backup, exits when done;
+  /// `systemctl` waits for it and already fails if it fails.
   pub wait: Vec<String>,
+  /// The stack's `Type=oneshot` services, which are left out of `wait`.
+  pub oneshot: BTreeSet<String>,
   /// Human readable reasons, for the log.
   pub reasons: Vec<String>,
   /// Warnings about changes systemd will not apply on its own.
@@ -65,6 +68,11 @@ pub fn plan(
     ..Default::default()
   };
   let units = &prepared.units;
+  plan.oneshot = units
+    .iter()
+    .filter(|u| u.oneshot)
+    .map(|u| u.unit.service.clone())
+    .collect();
   let by_file = units
     .iter()
     .map(|u| (u.unit.file.as_str(), u))
@@ -90,7 +98,12 @@ pub fn plan(
       .collect();
     plan.restart.sort();
     plan.restart.dedup();
-    plan.wait = plan.restart.clone();
+    plan.wait = plan
+      .restart
+      .iter()
+      .filter(|s| !plan.oneshot.contains(*s))
+      .cloned()
+      .collect();
     return plan;
   };
 
@@ -276,7 +289,7 @@ pub fn plan(
   for file in to_restart {
     let Some(u) = by_file.get(file) else { continue };
     let service = u.unit.service.clone();
-    if u.unit.kind.is_runnable() {
+    if u.unit.kind.is_runnable() && !u.oneshot {
       plan.wait.push(service.clone());
     }
     if previous.units.iter().any(|f| f == file) {
@@ -566,7 +579,8 @@ pub async fn apply(
       ),
     ));
     start.extend(down.iter().cloned());
-    wait.extend(down);
+    wait
+      .extend(down.into_iter().filter(|s| !plan.oneshot.contains(s)));
   }
   if !start.is_empty() {
     let log = systemd::systemctl(
@@ -717,6 +731,42 @@ mod tests {
       ]
     );
     assert!(plan.start.is_empty());
+  }
+
+  #[test]
+  fn oneshot_units_run_but_are_not_waited_for() {
+    // A timer-started backup: inactive once it has run.
+    const BACKUP: &str = "[Container]\nImage=restic\nPod=app.pod\nStartWithPod=false\n[Service]\nType=oneshot\n";
+    let mut p = base();
+    p.write.insert("backup.container".into(), BACKUP.into());
+    p.units = p
+      .write
+      .iter()
+      .filter_map(|(k, v)| parse_unit(k, v))
+      .collect();
+    let first = plan(&p, None, &[]);
+    assert!(first.restart.contains(&"backup.service".to_string()));
+    assert!(!first.wait.contains(&"backup.service".to_string()));
+    assert!(first.wait.contains(&"web.service".to_string()));
+    assert_eq!(
+      first.oneshot.iter().collect::<Vec<_>>(),
+      vec!["backup.service"]
+    );
+
+    let s = state(&p);
+    let mut p2 = p;
+    p2.write.insert(
+      "backup.container".into(),
+      BACKUP.replace("restic", "restic:0.17"),
+    );
+    p2.units = p2
+      .write
+      .iter()
+      .filter_map(|(k, v)| parse_unit(k, v))
+      .collect();
+    let changed = plan(&p2, Some(&s), &[]);
+    assert_eq!(changed.restart, vec!["backup.service"]);
+    assert!(changed.wait.is_empty());
   }
 
   #[test]

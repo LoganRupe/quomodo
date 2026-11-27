@@ -163,8 +163,9 @@ pub struct ServerConfig {
   #[builder(default)]
   pub ignore_mounts: Vec<String>,
 
-  /// Whether to run `podman image prune -a -f` once a day. Each server
-  /// prunes at its own fixed time between 00:00 and 01:00 UTC.
+  /// Whether to remove, once a day, the images no container uses and no
+  /// installed quadlet unit names (see `PruneImages`). Each server prunes
+  /// at its own fixed time between 00:00 and 01:00 UTC.
   /// default: true
   #[serde(default = "default_auto_prune")]
   #[builder(default = "default_auto_prune()")]

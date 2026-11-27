@@ -30,6 +30,9 @@ pub struct ParsedUnit {
   /// `[Service]` `TimeoutStartSec=`, if set. `Duration::MAX` for
   /// `infinity` or `0`, which systemd reads as no timeout.
   pub start_timeout: Option<Duration>,
+  /// `[Service]` `Type=oneshot`: `systemctl start` returns when it has
+  /// run, and it is inactive after unless `RemainAfterExit=yes`.
+  pub oneshot: bool,
 }
 
 impl ParsedUnit {
@@ -313,6 +316,9 @@ pub fn parse_unit(path: &str, contents: &str) -> Option<ParsedUnit> {
     build,
     start_timeout: get_value(contents, "Service", "TimeoutStartSec")
       .and_then(parse_timespan),
+    // systemd takes the last `Type=`.
+    oneshot: get_values(contents, "Service", "Type").last()
+      == Some(&"oneshot"),
   })
 }
 
@@ -527,6 +533,20 @@ pub fn name_collisions<'a>(
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn reads_oneshot_from_the_last_type() {
+    let oneshot =
+      |c: &str| parse_unit("b.container", c).unwrap().oneshot;
+    assert!(oneshot(
+      "[Container]\nImage=x\n[Service]\nType=oneshot\n"
+    ));
+    assert!(!oneshot(
+      "[Container]\nImage=x\n[Service]\nType=oneshot\nType=notify\n"
+    ));
+    assert!(!oneshot("[Container]\nImage=x\nType=oneshot\n"));
+    assert!(!oneshot("[Container]\nImage=x\n"));
+  }
 
   const WEB: &str = "[Unit]\nDescription=web\n\n[Container]\nImage=docker.io/library/nginx:latest\nContainerName=web\nPod=app.pod\nNetwork=app.network\nVolume=data.volume:/data\nVolume=/etc/localtime:/etc/localtime:ro\nSecret=DB_PASSWORD,type=env,target=DB_PASSWORD\nSecret=app-config,type=mount,target=/etc/app.yml\n\n[Install]\nWantedBy=multi-user.target\n";
 
