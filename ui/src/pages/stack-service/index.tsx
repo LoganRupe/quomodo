@@ -4,6 +4,7 @@ import {
   DeployStack,
   PullStack,
   RestartStack,
+  RunOneShot,
   StartStopStack,
 } from "@/resources/stack/executions";
 import { useStack } from "@/resources/stack";
@@ -28,6 +29,7 @@ const Executions: { [action: string]: IdServiceComponent } = {
   PullStack,
   RestartStack,
   StartStopStack,
+  RunOneShot,
 };
 
 export default function StackService() {

@@ -34,7 +34,7 @@
 #   8. a changed binary file in the build context does the same
 #   9. a changed file the build's .containerignore excludes does not rebuild
 #  9b. a Type=oneshot unit deploys without running, and runs when a deploy
-#      names it; PruneImages keeps its image and
+#      names it or StartStack (the unit's Run) names it; PruneImages keeps its image and
 #      a stopped unit's, neither having a container, and removes an image
 #      nothing uses, under both its names
 #  10. DestroyStack removes units and the directory
@@ -320,6 +320,13 @@ elif cmd == "busy-skip":
     print(json.dumps({"skipped": True}))
 elif cmd == "refresh":
     print(api("write", "RefreshStackCache", {"stack": STACK}))
+elif cmd == "start-services":
+    # What Run on a one-shot unit's page sends.
+    u = execute("StartStack", {"stack": STACK, "services": sys.argv[2:]})
+    if not u["success"]: raise SystemExit("StartStack failed")
+    print(json.dumps({"success": True}))
+elif cmd == "runs-and-exits":
+    print(" ".join(sorted(s["service"] for s in api("read", "ListStackServices", {"stack": STACK}) if s["unit"].get("runs_and_exits"))))
 elif cmd == "deploy-services":
     u = execute("DeployStack", {"stack": STACK, "services": sys.argv[2:]})
     print(json.dumps({"success": u["success"], "stages": [(l["stage"], l["success"]) for l in u["logs"]]}))
@@ -635,6 +642,9 @@ $API DeployStackIfChanged || fail "a stack with a one-shot unit did not deploy"
 hexec journalctl -u nightly.service --no-pager | grep -q "backup done" && fail "the deploy ran the one-shot; its timer should"
 $API deploy-services nightly.container || fail "a deploy naming the one-shot failed"
 hexec journalctl -u nightly.service --no-pager | grep -q "backup done" || fail "a deploy naming the one-shot did not run it"
+[ "$($API runs-and-exits)" = "nightly.container" ] || fail "Core does not mark nightly.container as a one-shot: $($API runs-and-exits)"
+$API start-services nightly.container
+[ "$(hexec journalctl -u nightly.service --no-pager | grep -c 'Finished nightly.service')" -ge 2 ] || fail "Run (StartStack on the unit) did not run the one-shot"
 hexec podman container exists e2e-nightly && fail "the one-shot's container outlived it"
 hexec systemctl stop app.service
 hexec podman container exists e2e-app && fail "e2e-app container still exists after stop"

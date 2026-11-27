@@ -1687,6 +1687,11 @@ export interface QuadletUnit {
     image?: string;
     /** For container units, the `Pod=` reference, if any (eg `db.pod`). */
     pod?: string;
+    /**
+     * `Type=oneshot` without `RemainAfterExit=yes`: runs and exits, like a
+     * backup a timer starts. A deploy doesn't start it unless named.
+     */
+    runs_and_exits?: boolean;
 }
 export interface StackInfo {
     /** Deployed short commit hash, or null. */
